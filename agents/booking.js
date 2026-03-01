@@ -38,6 +38,9 @@ async function create({ sessionId, nombre, phone, servicio, extra, dia, hora, em
 
 async function cancel({ bookingData, phone, email }) {
   await bookingCancel(bookingData.id, 'Cancelado');
+  // Actualizar estado en Sheets
+  const { updateTurnoStatus } = require('../core/sheets');
+  updateTurnoStatus(bookingData.code, bookingData.servicio, 'Cancelado').catch(() => {});
   if (email) {
     mailTurnoCancelado({ to: email, nombre: bookingData.nombre, servicio: bookingData.servicio, fecha: bookingData.fecha, hora: bookingData.hora, code: bookingData.code }).catch(()=>{});
   }
@@ -47,6 +50,8 @@ async function cancel({ bookingData, phone, email }) {
 async function reschedule({ bookingData, newDia, newHora, phone, email, sessionId }) {
   // Cancelar el viejo
   await bookingCancel(bookingData.id, 'Reprogramado');
+  const { updateTurnoStatus } = require('../core/sheets');
+  updateTurnoStatus(bookingData.code, bookingData.servicio, 'Reprogramado').catch(() => {});
 
   // Crear el nuevo
   const evento = await addToCalendar({ clientName: bookingData.nombre, phone, service: bookingData.servicio, date: newDia, time: newHora, duration: 60, sena: 0 });
