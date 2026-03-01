@@ -230,6 +230,14 @@ async function handle({ sessionId, phone, text }) {
   const intent = parsed.intent;
 
   if (intent === 'PRECIO') {
+    // Si ya tiene servicio acumulado y quiere reservar, combinar precio + avanzar
+    if (session.data.servicio || session.data.nombre) {
+      session.step = 'RESERVANDO';
+      const intro = parsed.texto && !/\$[0-9]/.test(parsed.texto) ? parsed.texto + '\n\n' : '';
+      const precios = MSGS.precios();
+      // Devolver precios y en el próximo mensaje avanzar la reserva
+      return send(intro + precios);
+    }
     const intro = parsed.texto && !/\$[0-9]/.test(parsed.texto) ? parsed.texto + '\n\n' : '';
     return send(intro + MSGS.precios());
   }
@@ -265,7 +273,15 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
     session.step = 'CONSULTA_PREVIA';
     return send(`Para *${d.servicio.nombre}* necesito preguntarte: ¿te hiciste alisado, keratina o botox en los últimos 6 meses?\n\n1 — No\n2 — Sí`);
   }
-  if (!d.nombre)   return send('¿Cuál es tu nombre? 😊');
+  if (!d.nombre) {
+    // Si ya preguntamos el nombre y no lo dio, seguir igual sin nombre
+    if (d.nombrePreguntado) {
+      d.nombre = 'linda'; // placeholder para que fluya — se reemplaza si lo da después
+    } else {
+      d.nombrePreguntado = true;
+      return send(parsed?.texto || '¿Cuál es tu nombre? 😊');
+    }
+  }
   if (!d.servicio) return send(MSGS.servicios());
   if (!d.dia)      return send(`📅 ¿Qué día te viene bien?\n\nAtendemos *lunes a sábado, 10:00 a 20:00hs*`);
   if (!d.hora)     return send(`⏰ ¿A qué hora el ${d.dia}?\n\nHorario: 10:00 a 20:00hs · Ej: _"14:00"_ · _"4 de la tarde"_`);
