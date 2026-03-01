@@ -70,9 +70,10 @@ app.post('/webhook', async (req, res) => {
 // ── WEB CHAT (Dashboard) ─────────────────────────────────────────────────────
 app.post('/chat', async (req, res) => {
   try {
-    const { sessionId, message } = req.body;
-    if (!sessionId || !message) return res.status(400).json({ error: 'Faltan campos' });
-    const reply = await orchestrator.handle({ sessionId, phone: sessionId, text: message });
+    const { sessionId, message, text } = req.body;
+    const userText = text || message;
+    if (!sessionId || !userText) return res.status(400).json({ error: 'Faltan campos' });
+    const reply = await orchestrator.handle({ sessionId, phone: sessionId, text: userText });
     const session = getSession(sessionId);
     res.json({
       reply,
