@@ -4,8 +4,14 @@
 
 const axios = require('axios');
 
+const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI || 'https://peluqueria-bot.onrender.com/auth/callback';
+const GOOGLE_CALENDAR_ID   = process.env.GOOGLE_CALENDAR_ID  || 'primary';
 
-
+let googleTokens = null;
+let serviceAccountToken = null;
+let serviceAccountTokenExpiry = 0;
 
 function setGoogleTokens(tokens) { googleTokens = tokens; }
 function getGoogleTokens() { return googleTokens; }
@@ -36,8 +42,6 @@ async function getValidAccessToken() {
 }
 
 // ── SERVICE ACCOUNT AUTH (para Sheets) ───────────────────────────────────────
-let serviceAccountToken = null;
-let serviceAccountTokenExpiry = 0;
 
 async function getServiceAccountToken() {
   if (serviceAccountToken && Date.now() < serviceAccountTokenExpiry - 60000) {
