@@ -6,6 +6,8 @@ const axios = require('axios');
 
 const SHEET_TURNOS   = 'Turnos';
 const SHEET_CLIENTES = 'Clientes';
+// Soporte para ambas variantes del nombre de la variable
+const SHEETS_ID = SHEETS_ID || process.env.SHEET_ID;
 
 let _getServiceAccountToken = null;
 let _getDB = null;
@@ -20,7 +22,7 @@ function getDB() { return _getDB ? _getDB() : null; }
 
 async function sheetsRequest(method, path, data = null) {
   const token = await getServiceAccountToken();
-  const sheetsId = process.env.SHEETS_ID;
+  const sheetsId = SHEETS_ID;
   console.log('[sheets] sheetsId:', sheetsId ? sheetsId.slice(0,15) : 'UNDEFINED', '| path:', path.slice(0,30));
   if (!token || !sheetsId) { console.log('[sheets] Sin token SA o SHEETS_ID'); return null; }
   try {
@@ -40,7 +42,7 @@ async function sheetsRequest(method, path, data = null) {
   } catch(e) {
     const errDetail = e.response?.data?.error;
     console.error('[sheets] Error completo:', JSON.stringify(e.response?.data || e.message));
-    console.error('[sheets] URL intentada:', `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEETS_ID}${path}`);
+    console.error('[sheets] URL intentada:', `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}${path}`);
     return null;
   }
 }
