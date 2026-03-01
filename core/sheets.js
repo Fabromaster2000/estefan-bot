@@ -212,7 +212,8 @@ async function updateTurnoStatus(clientNameOrCode, service, newStatus) {
 }
 
 async function syncClientesToSheet() {
-  if (!SHEETS_ID || !db) return;
+  if (!SHEETS_ID) return;
+  const db = getDB(); if (!db) return;
   try {
     const res = await db.query(`
       SELECT c.phone, c.name, c.last_name, c.email, c.visit_count, c.total_spent,
@@ -247,7 +248,8 @@ async function syncClientesToSheet() {
 }
 
 async function refreshMetricas() {
-  if (!SHEETS_ID || !db) return;
+  if (!SHEETS_ID) return;
+  const db = getDB(); if (!db) return;
   try {
     const [turnos, clientes, factura] = await Promise.all([
       db.query(`SELECT COUNT(*) as total, SUM(sena_amount) as senas, AVG(sena_amount) as avg FROM bookings WHERE created_at > NOW() - INTERVAL '30 days'`),
