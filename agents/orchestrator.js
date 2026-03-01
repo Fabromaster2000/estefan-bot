@@ -183,7 +183,9 @@ async function handle({ sessionId, phone, text }) {
   if (session.step === 'PEDIR_APELLIDO') {
     if (/^no\b/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('¡Todo listo! Te esperamos 💛'); }
     if (t.length > 1 && t.length < 60) {
-      session.data.apellido = t;
+      // Extraer solo el apellido — ignorar frases como "mi apellido es X"
+      const apellidoMatch = t.match(/(?:es|apellido es|llamo|soy)\s+([A-Za-záéíóúÁÉÍÓÚñÑ]+(?:\s+[A-Za-záéíóúÁÉÍÓÚñÑ]+)?)/i);
+      session.data.apellido = apellidoMatch ? apellidoMatch[1].trim() : t.trim();
       session.step = 'PEDIR_PROMO';
       return send(`¿Querés que te avisemos de descuentos y sorteos? 🎁\n\n1 — Sí, me interesa\n2 — No, gracias`);
     }
@@ -372,7 +374,6 @@ async function doCreateBooking(session, phone, send) {
   try {
     const d = session.data;
     const client = await clientGet(phone);
-    const email = d.email || client?.email;
     const result = await booking.create({ sessionId: session.id, nombre: d.nombre, phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: null }); // email se manda después
 
     const { formatFecha } = require('../core/utils');
