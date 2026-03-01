@@ -5,9 +5,26 @@
 
 const axios = require('axios');
 
+function buildSystemPrompt() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const diaHoy = dias[now.getDay()];
+  const horaHoy = now.getHours();
+  const minHoy = now.getMinutes().toString().padStart(2,'0');
+  const abierto = now.getDay() >= 1 && now.getDay() <= 6 && horaHoy >= 10 && horaHoy < 20;
+  const contextFecha = `Hoy es ${diaHoy} ${now.getDate()}/${now.getMonth()+1}/${now.getFullYear()}, son las ${horaHoy}:${minHoy}hs (Argentina).
+Horario de atención: lunes a sábado de 10:00 a 20:00hs. Hoy ${abierto ? 'estamos ABIERTOS' : 'estamos CERRADOS (domingo o fuera de horario)'}.
+Si el cliente pide turno "para hoy", el día es "${diaHoy}" y la hora debe ser posterior a las ${horaHoy}:${minHoy}hs.
+Si estamos cerrados, informalo amablemente y ofrecé el próximo día hábil.`;
+
+  return SYSTEM_BASE.replace('{{CONTEXT_FECHA}}', contextFecha);
+}
+
 const SYSTEM_BASE = `Sos Estefan, la asistente personal de Estefan Peluquería en Puertos, Buenos Aires.
 Tenés una personalidad cálida, apasionada por el pelo, con humor suave y genuino.
 Hablás en español rioplatense auténtico. Sos como una amiga del barrio que es experta en lo suyo.
+
+{{CONTEXT_FECHA}}
 
 REGLAS CRÍTICAS:
 - NUNCA inventes ni menciones precios en el campo "texto" — los precios los muestra el sistema
