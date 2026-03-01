@@ -311,11 +311,14 @@ async function handle({ sessionId, phone, text }) {
     return await avanzarReserva(session, phone, parsed, send, clientCtx);
   }
 
-  // Upsell
+  // Upsell — interceptar ANTES de Haiku
   if (session.step === 'UPSELL') {
     const u = session.data.pendingUpsell;
-    if (parsed.upsell === true || intent === 'CONFIRMAR') {
+    const acepta = /^(1|s[ií]|dale|ok|claro|quiero|sí|si)$/i.test(tl);
+    const rechaza = /^(2|no\b|nop|nel|paso)$/i.test(tl);
+    if (acepta) {
       session.data.extra = SERVICIOS.findById(u?.targetId);
+      console.log(`[orch] UPSELL aceptado: ${session.data.extra?.nombre}`);
     }
     session.data.pendingUpsell = null;
     session.step = 'CONFIRM_TURNO';
