@@ -1,0 +1,10 @@
+node_modules/
+npm-debug.log*
+.env
+.env.local
+*_backup.js
+index_v*.js
+flow.js
+mailer.js
+.DS_Store
+*.log
