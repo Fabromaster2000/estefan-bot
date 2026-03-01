@@ -234,6 +234,84 @@ app.get('/health', async (req, res) => {
 
 app.get('/', (req, res) => res.send('Estefan Peluquería Bot v4 ✂️ — running'));
 
+// ── TEST CHAT (accesible desde cualquier browser) ─────────────────────────────
+app.get('/test', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estefan — Test Chat</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#f0f0f0;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.container{width:100%;max-width:420px;height:100vh;max-height:700px;background:white;border-radius:16px;box-shadow:0 4px 30px rgba(0,0,0,.15);display:flex;flex-direction:column;overflow:hidden}
+.header{background:#1a1a2e;color:white;padding:16px 20px;display:flex;align-items:center;gap:12px}
+.avatar{width:40px;height:40px;background:#e91e8c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px}
+.header-info h3{font-size:15px}.header-info p{font-size:12px;color:#aaa}
+.messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:82%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+.msg.bot{background:#f0f0f0;align-self:flex-start;border-bottom-left-radius:4px}
+.msg.user{background:#e91e8c;color:white;align-self:flex-end;border-bottom-right-radius:4px}
+.msg.system{background:#fff3cd;color:#856404;align-self:center;font-size:12px;border-radius:8px;text-align:center;max-width:90%}
+.input-area{padding:12px 16px;border-top:1px solid #eee;display:flex;gap:8px}
+input{flex:1;border:1px solid #ddd;border-radius:24px;padding:10px 16px;font-size:14px;outline:none}
+input:focus{border-color:#e91e8c}
+button{background:#e91e8c;color:white;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer;flex-shrink:0}
+.typing{display:none;align-self:flex-start;background:#f0f0f0;border-radius:18px;border-bottom-left-radius:4px;padding:12px 16px}
+.typing span{width:8px;height:8px;background:#999;border-radius:50%;display:inline-block;margin:0 2px;animation:bounce 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="avatar">✂️</div>
+    <div class="header-info"><h3>Estefan Peluquería</h3><p>Asistente virtual — modo test</p></div>
+  </div>
+  <div class="messages" id="messages"><div class="msg system">— Conectando... —</div></div>
+  <div class="typing" id="typing"><span></span><span></span><span></span></div>
+  <div class="input-area">
+    <input id="input" placeholder="Escribí tu mensaje..." autocomplete="off"/>
+    <button onclick="sendMsg()">➤</button>
+  </div>
+</div>
+<script>
+let sessionId=null;
+async function init(){
+  try{
+    const r=await fetch('/chat/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:'web-'+Math.random().toString(36).slice(2,8)})});
+    const d=await r.json();sessionId=d.sessionId;
+    document.getElementById('messages').innerHTML='';
+    if(d.message)addMsg(d.message,'bot');
+  }catch(e){addMsg('No se pudo conectar 😅','system');}
+}
+async function sendMsg(){
+  const inp=document.getElementById('input');
+  const text=inp.value.trim();if(!text||!sessionId)return;
+  inp.value='';addMsg(text,'user');showTyping(true);
+  try{
+    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId,text})});
+    const d=await r.json();showTyping(false);
+    if(d.reply)addMsg(d.reply,'bot');
+  }catch(e){showTyping(false);addMsg('Error 😅','system');}
+}
+function addMsg(text,type){
+  const d=document.createElement('div');d.className='msg '+type;d.textContent=text;
+  const m=document.getElementById('messages');m.appendChild(d);m.scrollTop=m.scrollHeight;
+}
+function showTyping(s){
+  document.getElementById('typing').style.display=s?'flex':'none';
+  if(s)document.getElementById('messages').scrollTop=9999;
+}
+document.getElementById('input').addEventListener('keydown',e=>{if(e.key==='Enter')sendMsg();});
+init();
+</script>
+</body>
+</html>`);
+});
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
   console.log('\n✂️  Estefan Peluquería Bot v4');
