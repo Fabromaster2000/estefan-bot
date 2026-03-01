@@ -260,13 +260,27 @@ async function handle({ sessionId, phone, text }) {
   }
   if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
     session.step = 'RESERVANDO';
-    // Si Haiku respondió algo que no es pedir datos, mostrarlo primero
-    // y solo agregar el próximo dato faltante si la conversación avanzó
     const datoNuevo = parsed.servicio || parsed.dia || parsed.hora || parsed.nombre || parsed.email;
-    if (!datoNuevo && parsed.texto && session.data.servicio) {
-      // La clienta hizo una pregunta libre (ej: "¿quién corta?") — Haiku responde, no avanzamos
+
+    // Pregunta libre durante la reserva — Haiku responde, no avanzamos
+    if (!datoNuevo && parsed.texto) {
       return send(parsed.texto);
     }
+
+    // Hay datos nuevos y Haiku tiene un texto cálido de transición
+    // Mostramos el texto de Haiku primero, avanzarReserva decide si ya hay suficiente
+    // para el próximo paso o si esperar
+    if (datoNuevo && parsed.texto && !parsed.texto.includes('$')) {
+      // Verificar cuántos datos nos faltan todavía
+      const d = session.data;
+      const falta = !d.servicio || !d.dia || !d.hora;
+      if (falta) {
+        // Todavía faltan datos — mostrar texto de Haiku + próxima pregunta juntos
+        return await avanzarReserva(session, phone, parsed, send, clientCtx);
+      }
+      // Tenemos todo — avanzar directamente
+    }
+
     return await avanzarReserva(session, phone, parsed, send, clientCtx);
   }
 
@@ -300,7 +314,9 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
       d.email = clientEmail;
     } else {
       session.step = 'PEDIR_EMAIL_RESERVA';
-      return send(`¿Cuál es tu email? Te mando la confirmación del turno ✉️\n_(o *no* para saltear)_`);
+      // Usar el texto cálido de Haiku como introducción si existe
+      const intro = (parsed?.texto && !parsed.texto.includes('$')) ? parsed.texto + '\n\n' : '';
+      return send(intro + `¿Cuál es tu email? Te mando la confirmación del turno ✉️\n_(o *no* para saltear)_`);
     }
   }
 
