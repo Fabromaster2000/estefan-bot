@@ -199,7 +199,21 @@ async function handle({ sessionId, phone, text }) {
 
   if (parsed.nombre   && !session.data.nombre)   session.data.nombre   = parsed.nombre.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   if (parsed.servicio && !session.data.servicio)  session.data.servicio = SERVICIOS.findByName(parsed.servicio);
-  if (parsed.dia      && !session.data.dia)       session.data.dia      = parsed.dia;
+  // Si pide dos servicios juntos (ej: "corte y ozono"), el segundo va como extra
+  if (parsed.servicio2 && !session.data.extra) {
+    const srv2 = SERVICIOS.findByName(parsed.servicio2);
+    if (srv2) { session.data.extra = srv2; session.data.upsellOfrecido = true; }
+  }
+  if (parsed.dia      && !session.data.dia) {
+    // Convertir "hoy" al nombre real del día en Argentina
+    if (/^hoy$/i.test(parsed.dia)) {
+      const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+      session.data.dia = dias[now.getDay()];
+    } else {
+      session.data.dia = parsed.dia;
+    }
+  }
   if (parsed.hora     && !session.data.hora)      session.data.hora     = parsed.hora;
   if (parsed.email    && !session.data.email)     session.data.email    = parsed.email;
 
@@ -245,7 +259,7 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
     session.step = 'CONSULTA_PREVIA';
     return send(`Para *${d.servicio.nombre}* necesito preguntarte: ¿te hiciste alisado, keratina o botox en los últimos 6 meses?\n\n1 — No\n2 — Sí`);
   }
-  if (!d.nombre)   return send(parsed?.texto || '¿Cuál es tu nombre? 😊');
+  if (!d.nombre)   return send('¿Cuál es tu nombre? 😊');
   if (!d.servicio) return send(MSGS.servicios());
   if (!d.dia)      return send(`📅 ¿Qué día te viene bien?\n\nAtendemos *lunes a sábado, 10:00 a 20:00hs*`);
   if (!d.hora)     return send(`⏰ ¿A qué hora el ${d.dia}?\n\nHorario: 10:00 a 20:00hs · Ej: _"14:00"_ · _"4 de la tarde"_`);
