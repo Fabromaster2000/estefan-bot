@@ -27,7 +27,7 @@ async function refreshGoogleToken() {
     });
     googleTokens.access_token = res.data.access_token;
     googleTokens.expiry_date  = Date.now() + (res.data.expires_in * 1000);
-    await saveTokensToDB(googleTokens);
+    try { const db = require('./db'); await db.configSet('google_tokens', JSON.stringify(googleTokens)); } catch(e) {}
     return true;
   } catch(e) {
     console.error('[google] Refresh failed:', e.message);
