@@ -275,7 +275,9 @@ async function handle({ sessionId, phone, text }) {
   const intent = parsed.intent;
 
   if (intent === 'PRECIO') {
-    return send(parsed.texto + '\n\n' + MSGS.precios() + '\n\n_Escribí *reservar* para sacar un turno_ 💛');
+    // parsed.texto ya puede mencionar precios — usarlo solo si no inventa valores
+    const intro = parsed.texto && !/\$[0-9]/.test(parsed.texto) ? parsed.texto + '\n\n' : '';
+    return send(intro + MSGS.precios());
   }
 
   if (intent === 'LOYALTY' || /puntos|beneficio|canje|premio/i.test(tl)) {
