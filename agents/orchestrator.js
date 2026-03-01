@@ -1,4 +1,4 @@
-// ── AGENT: ORCHESTRATOR ───────────────────────────────────────────────────────
+// ── AGENT: ORCHESTRATOR ─────────────────────────────────────────────────────
 'use strict';
 
 const intake   = require('./intake');
@@ -15,19 +15,19 @@ const { syncClientesToSheet } = require('../core/sheets');
 const MSGS = {
   servicios: () => `💇 *¿Qué servicio querés?*\n\n✂️ *Cortes*\n  1 — Corte de pelo · $50.000\n  2 — Corte + Brushing · $70.000\n  3 — Brushing / Planchita · $20.000\n  4 — Lavado + Aireado · $15.000\n\n💆 *Spa & Tratamientos*\n  5 — Ozono · $30.000\n  6 — Head Spa completo · $120.000\n  7 — Ampolla · $30.000\n\n🎨 *Color*\n  8 — Retoque / Raíz · $60.000\n  9 — Color entero · desde $80.000\n  10 — Contorno · $80.000\n  11 — Balayage · desde $200.000\n  12 — Decoloración total · desde $200.000\n\n💐 *Peinados*\n  13 — Fiesta / 15 años · desde $60.000\n  14 — Novia · desde $150.000\n\n_Respondé con el número_ 👆`,
 
-  precios: () => `💈 *Servicios y Precios*\n\n✂️ *Cortes*\n  • Corte de pelo: *$50.000*\n  • Brushing / Planchita: *+$20.000*\n  • Lavado + Aireado: *$15.000*\n\n🎨 *Color*\n  • Retoque / Raíz: *$60.000*\n  • Color entero: *desde $80.000*\n  • Balayage: *desde $200.000* ⚠️ requiere consulta\n  • Decoloración total: *desde $200.000*\n\n💐 *Peinados*\n  • Fiesta / 15 años: *desde $60.000*\n  • Novia: *desde $150.000*\n\n💆 *Head Spa*\n  • Ozono: *$30.000*\n  • Head Spa completo: *$120.000*\n\n✨ *Adicionales*\n  • Ampolla: *$30.000*\n\n_Escribí *reservar* para sacar un turno_ 💛`,
+  precios: () => `💈 *Servicios y Precios*\n\n✂️ *Cortes*\n  • Corte de pelo: *$50.000* (incluye lavado y aireado)\n  • Corte + Brushing: *$70.000*\n  • Brushing / Planchita: *$20.000*\n  • Lavado + Aireado: *$15.000*\n\n🎨 *Color*\n  • Retoque / Raíz: *$60.000*\n  • Color entero: *desde $80.000*\n  • Balayage: *desde $200.000* ⚠️ requiere consulta\n  • Decoloración total: *desde $200.000*\n\n💐 *Peinados*\n  • Fiesta / 15 años: *desde $60.000*\n  • Novia: *desde $150.000*\n\n💆 *Head Spa*\n  • Ozono: *$30.000*\n  • Head Spa completo: *$120.000*\n\n✨ *Adicionales*\n  • Ampolla: *$30.000*\n\n_Escribí *reservar* para sacar un turno_ 💛`,
 
   turnoEncontrado: (b) => `📋 *Tu turno:*\n\n👤 ${b.nombre}\n✂️ ${b.servicio}\n📅 ${b.fecha} · ⏰ ${b.hora}\n🔖 ${b.code}\n\n¿Qué querés hacer?\n1️⃣ Cambiar fecha/hora\n2️⃣ Cancelar turno\n3️⃣ Volver`,
 
   confirmar: (d) => {
     const base = d.servicio.precio + (d.extra?.precio || 0);
     let msg = `📋 *Resumen de tu turno:*\n\n`;
-    msg += `👤 *${d.nombre}*\n`;
+    if (d.nombre) msg += `👤 *${d.nombre}*\n`;
     msg += `✂️ ${d.servicio.nombre}`;
     if (d.extra) msg += ` + ${d.extra.nombre}`;
     msg += `\n📅 ${d.dia} · ⏰ ${d.hora}\n`;
     msg += `💰 $${base.toLocaleString('es-AR')}`;
-    if (d.extra) msg += ` _(corte $${d.servicio.precio.toLocaleString('es-AR')} + ${d.extra.nombre} $${d.extra.precio.toLocaleString('es-AR')})_`;
+    if (d.extra) msg += ` _(${d.servicio.nombre} $${d.servicio.precio.toLocaleString('es-AR')} + ${d.extra.nombre} $${d.extra.precio.toLocaleString('es-AR')})_`;
     if (d.servicio.seña) {
       const seña = Math.round(base * (d.servicio.pct || 10) / 100).toLocaleString('es-AR');
       msg += `\n⚠️ Requiere seña del ${d.servicio.pct}% — $${seña}`;
@@ -39,7 +39,7 @@ const MSGS = {
   },
 
   turnoConfirmado: (nombre, servicio, fechaDisplay, hora, code) =>
-    `✅ *¡Listo, ${nombre}!* 💛\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n_Guardá el código — con ese podés cambiar o cancelar cuando quieras_ 😊`,
+    `✅ *¡Listo${nombre ? ', ' + nombre : ''}!* 💛\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n_Guardá el código — con ese podés cambiar o cancelar cuando quieras_ 😊`,
 };
 
 async function handle({ sessionId, phone, text }) {
@@ -54,7 +54,7 @@ async function handle({ sessionId, phone, text }) {
 
   const send = async (msg) => { await conversationLog(phone, 'assistant', msg); return msg; };
 
-  // 1. Atajos globales
+  // ── Atajos globales ───────────────────────────────────────────────────────
   if (/^(\.?menu|menú|inicio|volver|start)$/i.test(tl)) {
     session.step = 'LIBRE'; session.data = {};
     return send(await personal.greet({ clientCtx: await intake.buildContext(phone) }));
@@ -63,16 +63,16 @@ async function handle({ sessionId, phone, text }) {
     return send('Te conecto con alguien del equipo — te responden en menos de 2 horas 💛');
   }
 
-  // 2. Menú numérico en LIBRE
+  // ── Menú numérico en LIBRE ────────────────────────────────────────────────
   if (session.step === 'LIBRE' && /^[1-4]$/.test(t)) {
     const n = parseInt(t);
-    if (n === 1) { session.step = 'RESERVANDO'; session.data = {}; return send('¡Dale! 💛 ¿Cuál es tu nombre?'); }
+    if (n === 1) { session.step = 'RESERVANDO'; session.data = {}; return send('¡Dale! 💛 ¿Qué servicio te gustaría hacerte?'); }
     if (n === 2) { session.step = 'BUSCANDO_TURNO'; return send('Ingresá tu *código* (ej: #AB12) o tu nombre 🔍'); }
     if (n === 3) return send(MSGS.precios());
     if (n === 4) return send('Te conecto con alguien del equipo 💛');
   }
 
-  // 3. UPSELL — siempre antes de Haiku
+  // ── UPSELL — antes de Haiku ───────────────────────────────────────────────
   if (session.step === 'UPSELL') {
     const u = session.data.pendingUpsell;
     const acepta = /^(1|s[ií]|dale|ok|claro|quiero|si\b|sí\b|bueno|perfecto)/i.test(tl);
@@ -87,10 +87,10 @@ async function handle({ sessionId, phone, text }) {
     return send(MSGS.confirmar(session.data));
   }
 
-  // 4. Confirmaciones
+  // ── Confirmaciones ────────────────────────────────────────────────────────
   if (session.step === 'CONFIRM_TURNO') {
     if (/^(s[ií]|dale|ok|va|claro|confirmo|bueno|perfecto)/i.test(tl)) return await doCreateBooking(session, phone, send);
-    if (/^(no\b|nop|mejor no)/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('Perfecto, no reservé nada 😊\n\nCuando quieras, acá estoy 💛'); }
+    if (/^(no\b|nop|mejor no)/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('Perfecto, no reservé nada 😊 Cuando quieras, acá estoy 💛'); }
     return send(MSGS.confirmar(session.data));
   }
   if (session.step === 'CONFIRM_CANCELAR') {
@@ -104,17 +104,17 @@ async function handle({ sessionId, phone, text }) {
     return send('Perfecto, no cambié nada 😊');
   }
 
-  // 5. Email dentro del flujo de reserva
+  // ── Email en flujo de reserva ─────────────────────────────────────────────
   if (session.step === 'PEDIR_EMAIL_RESERVA') {
     const em = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (em) { session.data.email = em[0]; session.emailCollected = em[0]; }
-    if (/^no/i.test(tl)) session.data.emailSkipped = true;
+    if (em) session.data.email = em[0];
+    if (/^no\b/i.test(tl)) session.data.emailSkipped = true;
     session.data.emailPreguntado = true;
     session.step = 'RESERVANDO';
     return await avanzarReserva(session, phone, {}, send, await intake.buildContext(phone));
   }
 
-  // 6. Post-confirmación
+  // ── Post-confirmación: email, apellido, promo ─────────────────────────────
   if (session.step === 'PEDIR_EMAIL') {
     const em = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     if (em) {
@@ -127,7 +127,7 @@ async function handle({ sessionId, phone, text }) {
         mailTurnoConfirmado({ to: em[0], nombre: b.nombre, servicio: b.servicio, fecha: b.fecha, hora: b.hora, code: b.code, calendarLink: b.calLink, monto: b.monto, senaAmount: null }).catch(() => {});
       }
       session.step = 'PEDIR_APELLIDO';
-      return send(`✅ ¡Invitación enviada a *${em[0]}*! 📆\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛\n_(o *no* para saltear)_`);
+      return send(`✅ ¡Confirmación enviada a *${em[0]}*! 📆\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛\n_(o *no* para saltear)_`);
     }
     if (/^no\b/i.test(tl)) { session.step = 'PEDIR_APELLIDO'; return send('¿Me decís tu apellido? 💛 _(o *no* para saltear)_'); }
     return send('Escribí tu *mail* o *no* para saltear 😊');
@@ -135,7 +135,7 @@ async function handle({ sessionId, phone, text }) {
   if (session.step === 'PEDIR_APELLIDO') {
     if (/^no\b/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('¡Todo listo! Te esperamos 💛'); }
     if (t.length > 1 && t.length < 60) {
-      const m = t.match(/(?:es|apellido es|llamo|soy)\s+([A-Za-záéíóúÁÉÍÓÚñÑ]+(?:\s+[A-Za-záéíóúÁÉÍÓÚñÑ]+)?)/i);
+      const m = t.match(/(?:apellido es|llamo|soy)\s+([A-Za-záéíóúÁÉÍÓÚñÑ]+)/i);
       session.data.apellido = m ? m[1].trim() : t.trim();
       session.step = 'PEDIR_PROMO';
       return send(`¿Querés que te avisemos de descuentos y sorteos? 🎁\n\n1 — Sí, me interesa\n2 — No, gracias`);
@@ -154,7 +154,7 @@ async function handle({ sessionId, phone, text }) {
     return send('Respondé *1* para sí o *2* para no 😊');
   }
 
-  // 7. Loyalty
+  // ── Loyalty ───────────────────────────────────────────────────────────────
   if (session.step === 'LOYALTY_CANJE') {
     const n = parseInt(tl);
     if (n > 0 && session.data.availableRewards?.[n - 1]) {
@@ -165,7 +165,7 @@ async function handle({ sessionId, phone, text }) {
     if (/^(no\b|volver)/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('¡Cuando quieras! 💛'); }
   }
 
-  // 8. Buscar turno
+  // ── Buscar turno ──────────────────────────────────────────────────────────
   if (session.step === 'BUSCANDO_TURNO') {
     const found = await booking.findBooking(t, phone);
     if (found) { session.data.booking = found; session.step = 'OPCION_TURNO'; return send(MSGS.turnoEncontrado(found)); }
@@ -180,7 +180,7 @@ async function handle({ sessionId, phone, text }) {
     return send('¡Listo! ¿En qué más te puedo ayudar? 💛');
   }
 
-  // 9. Reprogramar
+  // ── Reprogramar ───────────────────────────────────────────────────────────
   if (session.step === 'REPROGRAM_DATOS') {
     const p2 = await personal.interpret({ text: t, clientCtx: await intake.buildContext(phone), historial: session.historial, step: session.step });
     if (p2.dia)  session.data.newDia  = p2.dia;
@@ -194,24 +194,22 @@ async function handle({ sessionId, phone, text }) {
     return send(`¿A qué *hora* el ${session.data.newDia}?`);
   }
 
-  // 10. Haiku interpreta
+  // ── Haiku interpreta ──────────────────────────────────────────────────────
   const clientCtx = await intake.buildContext(phone);
   const parsed = await personal.interpret({ text: t, clientCtx, historial: session.historial, step: session.step });
 
-  if (parsed.nombre   && !session.data.nombre)   session.data.nombre   = parsed.nombre.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-  if (parsed.servicio && !session.data.servicio)  session.data.servicio = SERVICIOS.findByName(parsed.servicio);
-  // servicio2: cliente pide dos servicios a la vez
+  // Acumular datos
+  if (parsed.nombre && !session.data.nombre) {
+    session.data.nombre = parsed.nombre.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  }
+  if (parsed.servicio && !session.data.servicio) {
+    session.data.servicio = SERVICIOS.findByName(parsed.servicio);
+  }
   if (parsed.servicio2 && !session.data.extra) {
     const srv2 = SERVICIOS.findByName(parsed.servicio2);
-    if (srv2) { session.data.extra = srv2; session.data.upsellOfrecido = true; console.log(`[orch] servicio2 capturado: ${srv2.nombre}`); }
+    if (srv2) { session.data.extra = srv2; session.data.upsellOfrecido = true; console.log(`[orch] servicio2: ${srv2.nombre}`); }
   }
-  // Si pide dos servicios juntos (ej: "corte y ozono"), el segundo va como extra
-  if (parsed.servicio2 && !session.data.extra) {
-    const srv2 = SERVICIOS.findByName(parsed.servicio2);
-    if (srv2) { session.data.extra = srv2; session.data.upsellOfrecido = true; }
-  }
-  if (parsed.dia      && !session.data.dia) {
-    // Convertir "hoy" al nombre real del día en Argentina
+  if (parsed.dia && !session.data.dia) {
     if (/^hoy$/i.test(parsed.dia)) {
       const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
       const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
@@ -220,8 +218,8 @@ async function handle({ sessionId, phone, text }) {
       session.data.dia = parsed.dia;
     }
   }
-  if (parsed.hora     && !session.data.hora)      session.data.hora     = parsed.hora;
-  if (parsed.email    && !session.data.email)     session.data.email    = parsed.email;
+  if (parsed.hora  && !session.data.hora)  session.data.hora  = parsed.hora;
+  if (parsed.email && !session.data.email) session.data.email = parsed.email;
 
   session.historial.push({ role: 'user', content: t });
   session.historial.push({ role: 'assistant', content: parsed.texto || '' });
@@ -229,18 +227,13 @@ async function handle({ sessionId, phone, text }) {
 
   const intent = parsed.intent;
 
+  // ── Routing ───────────────────────────────────────────────────────────────
   if (intent === 'PRECIO') {
-    // Si ya tiene servicio acumulado y quiere reservar, combinar precio + avanzar
-    if (session.data.servicio || session.data.nombre) {
-      session.step = 'RESERVANDO';
-      const intro = parsed.texto && !/\$[0-9]/.test(parsed.texto) ? parsed.texto + '\n\n' : '';
-      const precios = MSGS.precios();
-      // Devolver precios y en el próximo mensaje avanzar la reserva
-      return send(intro + precios);
-    }
     const intro = parsed.texto && !/\$[0-9]/.test(parsed.texto) ? parsed.texto + '\n\n' : '';
+    if (session.step === 'RESERVANDO') session.step = 'RESERVANDO'; // mantener estado
     return send(intro + MSGS.precios());
   }
+
   if (intent === 'LOYALTY' || /puntos|beneficio|canje|premio/i.test(tl)) {
     const result = await loyalty.showBalance(phone);
     if (result.available.length > 0) {
@@ -250,6 +243,7 @@ async function handle({ sessionId, phone, text }) {
     }
     return send(result.msg);
   }
+
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
     session.step = 'BUSCANDO_TURNO'; session.data = {};
     if (parsed.codigo) {
@@ -258,29 +252,12 @@ async function handle({ sessionId, phone, text }) {
     }
     return send(`${parsed.texto || 'Claro'} 🔍 Ingresá tu *código* (ej: #AB12) o tu *nombre*:`);
   }
+
   if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
     session.step = 'RESERVANDO';
-    const datoNuevo = parsed.servicio || parsed.dia || parsed.hora || parsed.nombre || parsed.email;
-
-    // Pregunta libre durante la reserva — Haiku responde, no avanzamos
-    if (!datoNuevo && parsed.texto) {
-      return send(parsed.texto);
-    }
-
-    // Hay datos nuevos y Haiku tiene un texto cálido de transición
-    // Mostramos el texto de Haiku primero, avanzarReserva decide si ya hay suficiente
-    // para el próximo paso o si esperar
-    if (datoNuevo && parsed.texto && !parsed.texto.includes('$')) {
-      // Verificar cuántos datos nos faltan todavía
-      const d = session.data;
-      const falta = !d.servicio || !d.dia || !d.hora;
-      if (falta) {
-        // Todavía faltan datos — mostrar texto de Haiku + próxima pregunta juntos
-        return await avanzarReserva(session, phone, parsed, send, clientCtx);
-      }
-      // Tenemos todo — avanzar directamente
-    }
-
+    const datoNuevo = parsed.servicio || parsed.dia || parsed.hora || parsed.nombre;
+    // Pregunta libre dentro del flujo — Haiku responde, no avanzamos
+    if (!datoNuevo && parsed.texto) return send(parsed.texto);
     return await avanzarReserva(session, phone, parsed, send, clientCtx);
   }
 
@@ -288,38 +265,50 @@ async function handle({ sessionId, phone, text }) {
   return send(parsed.texto || '¿En qué te puedo ayudar? 💛');
 }
 
+// ── avanzarReserva ────────────────────────────────────────────────────────────
 async function avanzarReserva(session, phone, parsed, send, clientCtx) {
   const d = session.data;
+  const haiku = parsed?.texto && !parsed.texto.includes('$') ? parsed.texto : null;
+
   if (d.servicio?.consulta && !d.consultaOk) {
     session.step = 'CONSULTA_PREVIA';
     return send(`Para *${d.servicio.nombre}* necesito preguntarte: ¿te hiciste alisado, keratina o botox en los últimos 6 meses?\n\n1 — No\n2 — Sí`);
   }
+
+  if (!d.servicio) return send((haiku ? haiku + '\n\n' : '') + MSGS.servicios());
+
+  // Servicio recién elegido — Haiku celebra y pregunta el día, nosotros no agregamos nada
+  if (!d.servicioConfirmado) {
+    d.servicioConfirmado = true;
+    return send(haiku || `¡Buena elección! ✨ ¿Qué día te viene bien?\n\nAtendemos *lunes a sábado de 10:00 a 20:00hs*`);
+  }
+
+  if (!d.dia)  return send((haiku ? haiku + '\n\n' : '') + `📅 ¿Qué día te viene bien?\n\nAtendemos *lunes a sábado, 10:00 a 20:00hs*`);
+  if (!d.hora) return send((haiku ? haiku + '\n\n' : '') + `⏰ ¿A qué hora el ${d.dia}? (Horario: 10:00 a 20:00hs)`);
+
+  // Nombre — justo antes de confirmar
   if (!d.nombre) {
-    // Si ya preguntamos el nombre y no lo dio, seguir igual sin nombre
     if (d.nombrePreguntado) {
-      d.nombre = 'linda'; // placeholder para que fluya — se reemplaza si lo da después
+      d.nombre = '';
     } else {
       d.nombrePreguntado = true;
-      return send(parsed?.texto || '¿Cuál es tu nombre? 😊');
+      return send((haiku ? haiku + '\n\n' : '') + '¿Me decís tu nombre para anotar el turno? 😊');
     }
   }
-  if (!d.servicio) return send(MSGS.servicios());
-  if (!d.dia)      return send(`📅 ¿Qué día te viene bien?\n\nAtendemos *lunes a sábado, 10:00 a 20:00hs*`);
-  if (!d.hora)     return send(`⏰ ¿A qué hora el ${d.dia}?\n\nHorario: 10:00 a 20:00hs · Ej: _"14:00"_ · _"4 de la tarde"_`);
 
+  // Email
   if (!d.emailPreguntado) {
     d.emailPreguntado = true;
-    const clientEmail = clientCtx?.client?.email || parsed?.email;
+    const clientEmail = clientCtx?.client?.email;
     if (clientEmail) {
       d.email = clientEmail;
     } else {
       session.step = 'PEDIR_EMAIL_RESERVA';
-      // Usar el texto cálido de Haiku como introducción si existe
-      const intro = (parsed?.texto && !parsed.texto.includes('$')) ? parsed.texto + '\n\n' : '';
-      return send(intro + `¿Cuál es tu email? Te mando la confirmación del turno ✉️\n_(o *no* para saltear)_`);
+      return send((haiku ? haiku + '\n\n' : '') + `¿Cuál es tu email? Te mando la confirmación ✉️\n_(o *no* para saltear)_`);
     }
   }
 
+  // Upsell
   const upsell = getPersonalizedUpsell(d.servicio.id, clientCtx?.recentBookings || []);
   if (upsell && !d.upsellOfrecido) {
     d.pendingUpsell = upsell;
@@ -332,18 +321,30 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
   return send(MSGS.confirmar(d));
 }
 
+// ── doCreateBooking ───────────────────────────────────────────────────────────
 async function doCreateBooking(session, phone, send) {
   try {
     const d = session.data;
-    const result = await booking.create({ sessionId: session.id, nombre: d.nombre, phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: null });
+    const result = await booking.create({ sessionId: session.id, nombre: d.nombre || '', phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: null });
     const { formatFecha } = require('../core/utils');
     const fechaDisplay = await formatFecha(result.fechaReal);
-    session.lastCalendarEventId = result.calendarEventId;
-    session.lastBooking = { nombre: d.nombre, servicio: d.servicio.nombre + (d.extra ? ' + ' + d.extra.nombre : ''), fecha: result.fechaReal, hora: result.horaReal, code: result.code, calLink: result.calLink, monto: result.monto };
-    session.step = 'PEDIR_EMAIL';
-    const ptsMsg = result.pointsEarned > 0 ? `\n⭐ Ganaste *+${result.pointsEarned} puntos*` : '';
     const srvDisplay = d.servicio.nombre + (d.extra ? ' + ' + d.extra.nombre : '');
-    return send(MSGS.turnoConfirmado(d.nombre, srvDisplay, fechaDisplay, result.horaReal, result.code) + ptsMsg + '\n\n¿Querés recibir la confirmación por mail? ✉️\nEscribí tu *mail* o *no* para saltear');
+    session.lastCalendarEventId = result.calendarEventId;
+    session.lastBooking = { nombre: d.nombre, servicio: srvDisplay, fecha: result.fechaReal, hora: result.horaReal, code: result.code, calLink: result.calLink, monto: result.monto };
+    const ptsMsg = result.pointsEarned > 0 ? `\n⭐ Ganaste *+${result.pointsEarned} puntos*` : '';
+    const confirmMsg = MSGS.turnoConfirmado(d.nombre, srvDisplay, fechaDisplay, result.horaReal, result.code) + ptsMsg;
+
+    // Si ya tenemos email, mandar directo sin preguntar
+    if (d.email && !d.emailSkipped) {
+      const { addGuestToCalendarEvent } = require('../core/calendar');
+      const { mailTurnoConfirmado } = require('./mailer');
+      await addGuestToCalendarEvent(result.calendarEventId, d.email).catch(() => {});
+      mailTurnoConfirmado({ to: d.email, nombre: d.nombre, servicio: srvDisplay, fecha: result.fechaReal, hora: result.horaReal, code: result.code, calendarLink: result.calLink, monto: result.monto, senaAmount: null }).catch(() => {});
+      session.step = 'PEDIR_APELLIDO';
+      return send(confirmMsg + `\n\n✉️ Confirmación enviada a *${d.email}* 💌\n\n¿Me decís tu apellido para el programa de beneficios? 💛 _(o *no* para saltear)_`);
+    }
+    session.step = 'PEDIR_EMAIL';
+    return send(confirmMsg + '\n\n¿Querés recibir la confirmación por mail? ✉️\nEscribí tu *mail* o *no* para saltear');
   } catch(e) {
     console.error('[orch] Error creando turno:', e.message);
     session.step = 'LIBRE';
