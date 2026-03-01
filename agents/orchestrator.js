@@ -163,6 +163,18 @@ async function handle({ sessionId, phone, text }) {
   }
 
   // ── Post-confirmación: email, apellido, promo ─────────────────────────────
+  if (session.step === 'PEDIR_EMAIL_RESERVA') {
+    const emailMatch = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) {
+      session.data.email = emailMatch[0];
+    }
+    // Avanzar siempre (con o sin email)
+    session.data.emailPreguntado = true;
+    session.step = 'RESERVANDO';
+    const clientCtx2 = await intake.buildContext(phone);
+    return await avanzarReserva(session, phone, {}, send, clientCtx2);
+  }
+
   if (session.step === 'PEDIR_EMAIL') {
     const emailMatch = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     if (emailMatch) {
@@ -258,6 +270,28 @@ async function handle({ sessionId, phone, text }) {
     return send(`¿A qué *hora* el ${session.data.newDia}? (10:00 a 20:00hs)`);
   }
 
+  // Upsell — interceptar ANTES de Haiku
+  if (session.step === 'UPSELL') {
+    const u = session.data.pendingUpsell;
+    const acepta = /^(1|s[ií]|dale|ok|claro|quiero|sí|si)$/i.test(tl);
+    const rechaza = /^(2|no\b|nop|nel|paso)$/i.test(tl);
+    if (acepta) {
+      session.data.extra = SERVICIOS.findById(u?.targetId);
+      console.log(`[orch] UPSELL aceptado: ${session.data.extra?.nombre}`);
+    }
+    session.data.pendingUpsell = null;
+    session.step = 'CONFIRM_TURNO';
+    return send(MSGS.confirmar(session.data));
+  }
+
+  // Charla libre / saludo
+  const texto = parsed.texto || '¿En qué te puedo ayudar? 💛';
+  if (session.step === 'LIBRE') {
+    // Actualizar memoria en background
+    memory.update(phone, clientCtx?.client, t).catch(()=>{});
+    return send(texto);
+  }
+  return send(texto);
   // ── HAIKU interpreta todo lo demás ───────────────────────────────────────
   const clientCtx = await intake.buildContext(phone);
   const parsed = await personal.interpret({ text: t, clientCtx, historial: session.historial, step: session.step });
@@ -311,31 +345,9 @@ async function handle({ sessionId, phone, text }) {
     return await avanzarReserva(session, phone, parsed, send, clientCtx);
   }
 
-  // Upsell — interceptar ANTES de Haiku
-  if (session.step === 'UPSELL') {
-    const u = session.data.pendingUpsell;
-    const acepta = /^(1|s[ií]|dale|ok|claro|quiero|sí|si)$/i.test(tl);
-    const rechaza = /^(2|no\b|nop|nel|paso)$/i.test(tl);
-    if (acepta) {
-      session.data.extra = SERVICIOS.findById(u?.targetId);
-      console.log(`[orch] UPSELL aceptado: ${session.data.extra?.nombre}`);
-    }
-    session.data.pendingUpsell = null;
-    session.step = 'CONFIRM_TURNO';
-    return send(MSGS.confirmar(session.data));
-  }
 
-  // Charla libre / saludo
-  const texto = parsed.texto || '¿En qué te puedo ayudar? 💛';
-  if (session.step === 'LIBRE') {
-    // Actualizar memoria en background
-    memory.update(phone, clientCtx?.client, t).catch(()=>{});
-    return send(texto);
-  }
-  return send(texto);
 }
 
-// ── Avanzar reserva: preguntar solo lo que falta ──────────────────────────────
 async function avanzarReserva(session, phone, parsed, send, clientCtx) {
   const d = session.data;
   const haikuTexto = parsed?.texto;
@@ -356,6 +368,20 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
   }
   if (!d.hora) {
     return send((haikuTexto ? haikuTexto + '\n\n' : '') + `⏰ ¿A qué hora el ${d.dia}?\n\nHorario: 10:00 a 20:00hs\n\nEj: _"14:00"_ · _"4 de la tarde"_ · _"10 y media"_`);
+  }
+  // Pedir email antes de upsell (si no lo tenemos aún)
+  if (!d.emailPreguntado) {
+    d.emailPreguntado = true;
+    // Chequear si ya lo tenemos del cliente o del mensaje de Haiku
+    const clientEmail = clientCtx?.client?.email;
+    if (parsed?.email) {
+      d.email = parsed.email;
+    } else if (clientEmail) {
+      d.email = clientEmail;
+    } else {
+      session.step = 'PEDIR_EMAIL_RESERVA';
+      return send(`¿Cuál es tu email? Te mando la confirmación del turno ✉️\n_(o *no* para saltear)_`);
+    }
   }
 
   // Todo completo → upsell o confirmar
