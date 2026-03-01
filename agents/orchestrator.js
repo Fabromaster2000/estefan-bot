@@ -48,6 +48,7 @@ async function handle({ sessionId, phone, text }) {
   const session = getSession(sessionId);
   if (!session.data)      session.data      = {};
   if (!session.historial) session.historial = [];
+  if (!session.profile)   session.profile   = {}; // persiste entre reservas: nombre, email
 
   await conversationLog(phone, 'user', t);
   console.log(`[orch] step=${session.step} | "${t.substring(0, 50)}"`);
@@ -66,7 +67,7 @@ async function handle({ sessionId, phone, text }) {
   // ── Menú numérico en LIBRE ────────────────────────────────────────────────
   if (session.step === 'LIBRE' && /^[1-4]$/.test(t)) {
     const n = parseInt(t);
-    if (n === 1) { session.step = 'RESERVANDO'; session.data = {}; return send('¡Dale! 💛 ¿Qué servicio te gustaría hacerte?'); }
+    if (n === 1) { session.step = 'RESERVANDO'; session.data = { nombre: session.profile?.nombre, email: session.profile?.email, emailPreguntado: !!session.profile?.email, nombrePreguntado: !!session.profile?.nombre }; return send('¡Dale! 💛 ¿Qué servicio te gustaría hacerte?'); }
     if (n === 2) { session.step = 'BUSCANDO_TURNO'; return send('Ingresá tu *código* (ej: #AB12) o tu nombre 🔍'); }
     if (n === 3) return send(MSGS.precios());
     if (n === 4) return send('Te conecto con alguien del equipo 💛');
@@ -137,6 +138,7 @@ async function handle({ sessionId, phone, text }) {
     if (t.length > 1 && t.length < 60) {
       const m = t.match(/(?:apellido es|llamo|soy)\s+([A-Za-záéíóúÁÉÍÓÚñÑ]+)/i);
       session.data.apellido = m ? m[1].trim() : t.trim();
+      session.profile.apellido = session.data.apellido;
       session.step = 'PEDIR_PROMO';
       return send(`¿Querés que te avisemos de descuentos y sorteos? 🎁\n\n1 — Sí, me interesa\n2 — No, gracias`);
     }
@@ -201,6 +203,7 @@ async function handle({ sessionId, phone, text }) {
   // Acumular datos
   if (parsed.nombre && !session.data.nombre) {
     session.data.nombre = parsed.nombre.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    session.profile.nombre = session.data.nombre;
   }
   if (parsed.servicio && !session.data.servicio) {
     session.data.servicio = SERVICIOS.findByName(parsed.servicio);
@@ -254,6 +257,15 @@ async function handle({ sessionId, phone, text }) {
   }
 
   if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
+    // Restaurar perfil si arrancamos una nueva reserva sin datos
+    if (session.step !== 'RESERVANDO' && session.profile?.nombre && !session.data.nombre) {
+      session.data.nombre        = session.profile.nombre;
+      session.data.nombrePreguntado = true;
+    }
+    if (session.step !== 'RESERVANDO' && session.profile?.email && !session.data.email) {
+      session.data.email          = session.profile.email;
+      session.data.emailPreguntado = true;
+    }
     session.step = 'RESERVANDO';
     const datoNuevo = parsed.servicio || parsed.dia || parsed.hora || parsed.nombre;
     // Pregunta libre dentro del flujo — Haiku responde, no avanzamos
