@@ -7,7 +7,7 @@ const axios = require('axios');
 const SHEET_TURNOS   = 'Turnos';
 const SHEET_CLIENTES = 'Clientes';
 // Soporte para ambas variantes del nombre de la variable
-const SHEETS_ID = SHEETS_ID || process.env.SHEET_ID;
+const SHEETS_ID = process.env.SHEETS_ID || process.env.SHEET_ID;
 
 let _getServiceAccountToken = null;
 let _getDB = null;
