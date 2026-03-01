@@ -21,7 +21,7 @@ function getDB() { return _getDB ? _getDB() : null; }
 
 
 async function sheetsRequest(method, path, data = null) {
-  const token = await getServiceAccountToken();
+  const token = await _getServiceAccountToken();
   const sheetsId = SHEETS_ID;
   console.log('[sheets] sheetsId:', sheetsId ? sheetsId.slice(0,15) : 'UNDEFINED', '| path:', path.slice(0,30));
   if (!token || !sheetsId) { console.log('[sheets] Sin token SA o SHEETS_ID'); return null; }
