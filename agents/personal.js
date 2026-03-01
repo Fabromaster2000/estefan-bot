@@ -122,7 +122,7 @@ async function greet({ clientCtx }) {
   const bookings = clientCtx?.recentBookings || [];
 
   if (!client?.name) {
-    return '¡Hola! 💛 Bienvenida a Estefan Peluquería. ¿Cómo te llamás?';
+    return '¡Hola! 💛 Bienvenida a Estefan Peluquería. ¿En qué te podemos ayudar hoy?';
   }
 
   // Cliente conocida con historial
