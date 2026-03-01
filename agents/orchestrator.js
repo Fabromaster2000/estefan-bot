@@ -42,6 +42,17 @@ const MSGS = {
     `✅ *¡Listo${nombre ? ', ' + nombre : ''}!* 💛\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n_Guardá el código — con ese podés cambiar o cancelar cuando quieras_ 😊`,
 };
 
+function extractEmail(text) {
+  const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+  return matches.sort((a, b) => b.length - a.length)[0] || null;
+}
+
+function extractEmail(text) {
+  // Encuentra todos los emails posibles, devuelve el más largo (más probable que sea correcto)
+  const matches = (text || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+  return matches.sort((a, b) => b.length - a.length)[0] || null;
+}
+
 async function handle({ sessionId, phone, text }) {
   const t   = (text || '').trim();
   const tl  = t.toLowerCase();
@@ -117,18 +128,18 @@ async function handle({ sessionId, phone, text }) {
 
   // ── Post-confirmación: email, apellido, promo ─────────────────────────────
   if (session.step === 'PEDIR_EMAIL') {
-    const em = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const em = extractEmail(t);
     if (em) {
-      session.data.email = em[0];
+      session.data.email = em;
       const { addGuestToCalendarEvent } = require('../core/calendar');
       const { mailTurnoConfirmado } = require('./mailer');
-      if (session.lastCalendarEventId) await addGuestToCalendarEvent(session.lastCalendarEventId, em[0]).catch(() => {});
+      if (session.lastCalendarEventId) await addGuestToCalendarEvent(session.lastCalendarEventId, em).catch(() => {});
       if (session.lastBooking) {
         const b = session.lastBooking;
-        mailTurnoConfirmado({ to: em[0], nombre: b.nombre, servicio: b.servicio, fecha: b.fecha, hora: b.hora, code: b.code, calendarLink: b.calLink, monto: b.monto, senaAmount: null }).catch(() => {});
+        mailTurnoConfirmado({ to: em, nombre: b.nombre, servicio: b.servicio, fecha: b.fecha, hora: b.hora, code: b.code, calendarLink: b.calLink, monto: b.monto, senaAmount: null }).catch(() => {});
       }
       session.step = 'PEDIR_APELLIDO';
-      return send(`✅ ¡Confirmación enviada a *${em[0]}*! 📆\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛\n_(o *no* para saltear)_`);
+      return send(`✅ ¡Confirmación enviada a *${em}*! 📆\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛\n_(o *no* para saltear)_`);
     }
     if (/^no\b/i.test(tl)) { session.step = 'PEDIR_APELLIDO'; return send('¿Me decís tu apellido? 💛 _(o *no* para saltear)_'); }
     return send('Escribí tu *mail* o *no* para saltear 😊');
@@ -196,6 +207,37 @@ async function handle({ sessionId, phone, text }) {
     return send(`¿A qué *hora* el ${session.data.newDia}?`);
   }
 
+  // ── Actualizar email ─────────────────────────────────────────────────────────
+  if (session.step === 'ACTUALIZAR_EMAIL') {
+    const em = extractEmail(t);
+    if (em) {
+      // Actualizar en DB y perfil
+      await clientUpdateProfile(phone, { email: em });
+      session.profile.email = em;
+      session.data.email = em;
+      session.step = 'LIBRE';
+      syncClientesToSheet().catch(() => {});
+      return send(`✅ ¡Listo! Tu email quedó actualizado a *${em}* 💛`);
+    }
+    if (/^no/i.test(tl)) { session.step = 'LIBRE'; return send('¡Sin problema! 💛'); }
+    return send('Escribí tu nuevo email o *no* para cancelar 😊');
+  }
+
+  // ── Actualizar email ─────────────────────────────────────────────────────────
+  if (session.step === 'ACTUALIZAR_EMAIL') {
+    const em = extractEmail(t);
+    if (em) {
+      await clientUpdateProfile(phone, { email: em });
+      session.profile.email = em;
+      session.data.email = em;
+      session.step = 'LIBRE';
+      syncClientesToSheet().catch(e => console.error('[sheets] sync error:', e.message));
+      return send(`✅ ¡Listo! Tu email quedó actualizado a *${em}* 💛`);
+    }
+    if (/^no/i.test(tl)) { session.step = 'LIBRE'; return send('¡Sin problema! 💛'); }
+    return send('Escribí tu nuevo email o *no* para cancelar 😊');
+  }
+
   // ── Haiku interpreta ──────────────────────────────────────────────────────
   const clientCtx = await intake.buildContext(phone);
   const parsed = await personal.interpret({ text: t, clientCtx, historial: session.historial, step: session.step });
@@ -245,6 +287,20 @@ async function handle({ sessionId, phone, text }) {
       return send(result.msg + '\n\n_Respondé con el número para canjear, o *no* para volver_ 💛');
     }
     return send(result.msg);
+  }
+
+  // Detectar pedido de actualizar email
+  if (/actualiz|correg|cambiar.*mail|mail.*mal|email.*mal|mail.*wrong/i.test(tl) || 
+      (intent === 'CHARLA' && /email|mail/i.test(tl) && /cambiar|actualiz|correg|mal|error/i.test(tl))) {
+    session.step = 'ACTUALIZAR_EMAIL';
+    return send('¡Claro! 💛 Pasame tu email correcto y lo actualizamos ahora mismo 📧');
+  }
+
+  // Detectar pedido de actualizar/corregir email — antes de cualquier otro routing
+  if (/actualiz|correg|cambiar.*mail|mail.*mal|email.*mal|equivoc.*mail|mail.*equivoc|pase.*mal.*mail|mail.*error/i.test(tl) ||
+      (session.step === 'LIBRE' && /email|mail/i.test(tl) && /cambiar|actualiz|correg|nuevo|mal|error|equivoc/i.test(tl))) {
+    session.step = 'ACTUALIZAR_EMAIL';
+    return send('¡Claro! 💛 Escribime tu email correcto y lo actualizamos ahora mismo 📧');
   }
 
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
