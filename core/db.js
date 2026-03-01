@@ -113,6 +113,8 @@ async function initDB() {
 
     // ── Rewards por defecto ──────────────────────────────────────────────────
     await db.query(`
+      -- Limpiar rewards duplicados y recrear
+      DELETE FROM loyalty_rewards WHERE id > 0;
       INSERT INTO loyalty_rewards (name, description, points_cost, active)
       VALUES
         ('Descuento $5.000',   '$5.000 de descuento en tu próximo servicio', 5, true),
@@ -120,7 +122,6 @@ async function initDB() {
         ('Ampolla gratis',     'Ampolla reparadora sin cargo', 30, true),
         ('Ozono gratis',       'Tratamiento de ozono sin cargo', 30, true),
         ('Corte gratis',       'Corte de pelo sin cargo', 50, true)
-      ON CONFLICT DO NOTHING
     `).catch(() => {});
 
     console.log('[db] ✓ PostgreSQL conectado y tablas listas');
@@ -244,12 +245,15 @@ async function bookingSave({ sessionId, nombre, phone, servicio, fecha, hora, mo
 
 async function bookingFindByCode(code) {
   if (!db) return null;
+  // Normalizar: buscar con y sin # 
+  const clean = code.replace('#','').toUpperCase();
   const r = await db.query(`
     SELECT id, client_name as nombre, service as servicio, date_str as fecha,
            time_str as hora, booking_code as code, status as estado, monto
-    FROM bookings WHERE booking_code = $1 AND status NOT IN ('Cancelado','Reprogramado','cancelled')
+    FROM bookings WHERE (booking_code = $1 OR booking_code = $2)
+    AND status NOT IN ('Cancelado','Reprogramado','cancelled')
     ORDER BY created_at DESC LIMIT 1
-  `, [code.toUpperCase()]);
+  `, ['#' + clean, clean]);
   return r.rows[0] || null;
 }
 
