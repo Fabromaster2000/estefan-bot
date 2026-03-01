@@ -107,7 +107,8 @@ async function handle({ sessionId, phone, text }) {
   // 5. Email dentro del flujo de reserva
   if (session.step === 'PEDIR_EMAIL_RESERVA') {
     const em = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (em) session.data.email = em[0];
+    if (em) { session.data.email = em[0]; session.emailCollected = em[0]; }
+    if (/^no/i.test(tl)) session.data.emailSkipped = true;
     session.data.emailPreguntado = true;
     session.step = 'RESERVANDO';
     return await avanzarReserva(session, phone, {}, send, await intake.buildContext(phone));
@@ -146,7 +147,7 @@ async function handle({ sessionId, phone, text }) {
     const no = /^(2|no\b|nop)/i.test(tl);
     if (si || no) {
       await clientUpdateProfile(phone, { lastName: session.data.apellido || null, email: session.data.email || null, promoOptIn: si, profileComplete: !!(session.data.apellido && session.data.email) });
-      syncClientesToSheet().catch(() => {});
+      syncClientesToSheet().catch(e => console.error('[sheets] sync error:', e.message));
       session.step = 'LIBRE'; session.data = {};
       return send(si ? '¡Genial! Ya estás en el programa de beneficios 🎉 Te avisamos de todo 💛' : 'Perfecto 👍');
     }
@@ -199,6 +200,11 @@ async function handle({ sessionId, phone, text }) {
 
   if (parsed.nombre   && !session.data.nombre)   session.data.nombre   = parsed.nombre.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   if (parsed.servicio && !session.data.servicio)  session.data.servicio = SERVICIOS.findByName(parsed.servicio);
+  // servicio2: cliente pide dos servicios a la vez
+  if (parsed.servicio2 && !session.data.extra) {
+    const srv2 = SERVICIOS.findByName(parsed.servicio2);
+    if (srv2) { session.data.extra = srv2; session.data.upsellOfrecido = true; console.log(`[orch] servicio2 capturado: ${srv2.nombre}`); }
+  }
   // Si pide dos servicios juntos (ej: "corte y ozono"), el segundo va como extra
   if (parsed.servicio2 && !session.data.extra) {
     const srv2 = SERVICIOS.findByName(parsed.servicio2);
