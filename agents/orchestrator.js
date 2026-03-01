@@ -260,6 +260,13 @@ async function handle({ sessionId, phone, text }) {
   }
   if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
     session.step = 'RESERVANDO';
+    // Si Haiku respondió algo que no es pedir datos, mostrarlo primero
+    // y solo agregar el próximo dato faltante si la conversación avanzó
+    const datoNuevo = parsed.servicio || parsed.dia || parsed.hora || parsed.nombre || parsed.email;
+    if (!datoNuevo && parsed.texto && session.data.servicio) {
+      // La clienta hizo una pregunta libre (ej: "¿quién corta?") — Haiku responde, no avanzamos
+      return send(parsed.texto);
+    }
     return await avanzarReserva(session, phone, parsed, send, clientCtx);
   }
 
