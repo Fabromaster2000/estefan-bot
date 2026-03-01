@@ -1,424 +1,111 @@
-// ── AGENT: ORCHESTRATOR ───────────────────────────────────────────────────────
-// Coordina todos los agentes. Es el único que habla con el usuario.
-// Recibe el mensaje, decide qué agente(s) activar, y devuelve la respuesta.
-//
-// FLUJO:
-//   1. Intake: identificar cliente
-//   2. Personal: interpretar intención con contexto
-//   3. Según intención → Booking / Loyalty / etc.
-//   4. Memory: actualizar en background
+// ── AGENT: PERSONAL ───────────────────────────────────────────────────────────
+// El asistente personal de cada clienta. Conoce su historial completo,
+// sus preferencias, su tono. Se activa cuando el cliente ya está identificado.
+// Devuelve { texto, intent, datos } — nunca ejecuta acciones directamente.
 
-const intake   = require('./intake');
-const personal = require('./personal');
-const booking  = require('./booking');
-const loyalty  = require('./loyalty');
-const memory   = require('./memory');
-const { getUpsell, getPersonalizedUpsell } = require('./upsell');
-const SERVICIOS = require('../core/servicios');
-const { getSession } = require('../core/session');
-const { conversationLog, clientGet, clientUpdateProfile, loyaltyGetBalance } = require('../core/db');
-const { syncClientesToSheet } = require('../core/sheets');
+const axios = require('axios');
 
-// ── Mensajes del sistema ──────────────────────────────────────────────────────
-const MSGS = {
-  servicios: () => `💇 *¿Qué servicio querés?*
+const SYSTEM_BASE = `Sos Estefan, la asistente personal de Estefan Peluquería en Puertos, Buenos Aires.
+Tenés una personalidad cálida, apasionada por el pelo, con humor suave y genuino.
+Hablás en español rioplatense auténtico. Sos como una amiga del barrio que es experta en lo suyo.
 
-✂️ *Cortes*
-  1 — Corte de pelo · $50.000
-  2 — Corte + Brushing · $70.000
-  3 — Brushing / Planchita · $20.000
-  4 — Lavado + Aireado · $15.000
+REGLAS CRÍTICAS:
+- NUNCA inventes ni menciones precios en el campo "texto" — los precios los muestra el sistema
+- Nunca confirmes ni ejecutes acciones (turnos, pagos, etc) — eso lo hace el sistema
+- Si reconocés a una clienta habitual, mencioná algo de sus visitas anteriores naturalmente
+- Usá su nombre cuando lo sepás, pero no de forma robótica
+- Máx 2 oraciones en el campo "texto", sin listas ni precios
+- Si detectás intención de reservar/cancelar/ver turno, guiá suavemente hacia eso
 
-💆 *Spa & Tratamientos*
-  5 — Ozono · $30.000
-  6 — Head Spa completo · $120.000
-  7 — Ampolla · $30.000
+FORMATO DE RESPUESTA (JSON puro, sin markdown):
+{
+  "intent": "RESERVAR|GESTIONAR|CANCELAR|PRECIO|LOYALTY|SALUDO|CHARLA|OTRO",
+  "nombre": "string o null",
+  "servicio": "nombre exacto del servicio o null",
+  "dia": "lunes|martes|miércoles|jueves|viernes|sábado o null",
+  "hora": "HH:MM en formato 24hs o null",
+  "email": "email o null",
+  "apellido": "string o null",
+  "promo": true|false|null,
+  "codigo": "código #XXXX o null",
+  "upsell": true|false|null,
+  "texto": "respuesta cálida y natural para mostrarle al cliente"
+}
 
-🎨 *Color*
-  8 — Retoque / Raíz · $60.000
-  9 — Color entero · desde $80.000
-  10 — Contorno · $80.000
-  11 — Balayage · desde $200.000
-  12 — Decoloración total · desde $200.000
+CONVERSIÓN DE HORA:
+"3" o "3pm"→"15:00" | "4 de la tarde"→"16:00" | "10 de la mañana"→"10:00" | "10 y media"→"10:30"
+"n" o "nop" o "nel" → intent NO, upsell false
 
-💐 *Peinados*
-  13 — Fiesta / 15 años · desde $60.000
-  14 — Novia · desde $150.000
+SERVICIOS (nombre exacto):
+Corte de pelo | Corte + Brushing | Brushing / Planchita | Lavado + Aireado
+Ozono | Head Spa completo | Ampolla | Retoque / Raíz | Color entero | Contorno
+Balayage | Decoloración total | Peinado fiesta / 15 | Peinado novia
 
-_Respondé con el número_ 👆`,
+DÍAS: corregí errores → "lumes"→"lunes", "mier"→"miércoles", "sab"→"sábado"`;
 
-  precios: () => `💈 *Servicios y Precios*
+async function interpret({ text, clientCtx, historial = [], step = 'LIBRE' }) {
+  const contextBlock = clientCtx?.context
+    ? `\nCONTEXTO DEL CLIENTE:\n${clientCtx.context}\n`
+    : '\nCliente nuevo — primera interacción.\n';
 
-✂️ *Cortes*
-  • Corte de pelo: *$50.000*
-  • Brushing / Planchita: *+$20.000*
-  • Lavado + Aireado: *$15.000*
+  const stepBlock = `Estado del flujo: ${step}
+Datos ya recolectados: ${JSON.stringify(clientCtx?.currentData || {})}`;
 
-🎨 *Color*
-  • Retoque / Raíz: *$60.000*
-  • Color entero: *desde $80.000*
-  • Contorno: *$80.000*
-  • Balayage: *desde $200.000* ⚠️ requiere consulta
-  • Decoloración total: *desde $200.000*
+  const historialBlock = historial.length > 0
+    ? `\nÚltimos mensajes:\n${historial.slice(-6).map(m=>`${m.role}: ${m.content}`).join('\n')}`
+    : '';
 
-💐 *Peinados*
-  • Fiesta / 15 años: *desde $60.000*
-  • Novia: *desde $150.000*
+  const system = SYSTEM_BASE + contextBlock + historialBlock;
 
-💆 *Head Spa*
-  • Ozono (15 min): *$30.000*
-  • Head Spa completo: *$120.000*
-
-✨ *Adicionales*
-  • Ampolla: *$30.000*
-
-_Escribí *reservar* para sacar un turno_ 💛`,
-
-  turnoEncontrado: (b) => `📋 *Tu turno:*
-
-👤 ${b.nombre}
-✂️ ${b.servicio}
-📅 ${b.fecha} · ⏰ ${b.hora}
-🔖 ${b.code}
-📊 ${b.estado || 'Confirmado'}
-
-¿Qué querés hacer?
-1️⃣ Cambiar fecha/hora
-2️⃣ Cancelar turno
-3️⃣ Volver`,
-
-  confirmar: (d) => {
-    const p = d.servicio.precio.toLocaleString('es-AR');
-    let msg = `📋 *Resumen de tu turno:*\n\n`;
-    msg += `👤 *${d.nombre}*\n`;
-    msg += `✂️ ${d.servicio.nombre}\n`;
-    msg += `📅 ${d.dia} · ⏰ ${d.hora}\n`;
-    msg += `💰 $${p}`;
-    if (d.extra) {
-      msg += `\n✨ + ${d.extra.nombre} ($${d.extra.precio.toLocaleString('es-AR')})`;
-      msg += `\n💰 *Total: $${(d.servicio.precio + d.extra.precio).toLocaleString('es-AR')}*`;
-    }
-    if (d.servicio.seña) {
-      const base = d.servicio.precio + (d.extra?.precio || 0);
-      const seña = Math.round(base * d.servicio.pct / 100).toLocaleString('es-AR');
-      msg += `\n⚠️ Requiere seña del ${d.servicio.pct}% — $${seña}`;
-    }
-    const pts = Math.floor((d.servicio.precio + (d.extra?.precio||0)) / 1000);
-    if (pts > 0) msg += `\n⭐ Ganás *+${pts} puntos* con este turno`;
-    msg += `\n\n✅ *¿Confirmamos?* · sí / no`;
-    return msg;
-  },
-
-  turnoConfirmado: (nombre, servicio, fechaDisplay, hora, code) =>
-    `✅ *¡Listo, ${nombre}!* 💛\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n_Guardá el código — con ese podés cambiar o cancelar cuando quieras_ 😊`,
-};
-
-// ── HANDLER PRINCIPAL ─────────────────────────────────────────────────────────
-async function handle({ sessionId, phone, text }) {
-  const t  = (text||'').trim();
-  const tl = t.toLowerCase();
-  const session = getSession(sessionId);
-  if (!session.data) session.data = {};
-  if (!session.historial) session.historial = [];
-
-  await conversationLog(phone, 'user', t);
-  console.log(`[orch] step=${session.step} | "${t.substring(0,50)}"`);
-
-  const send = async (msg) => { await conversationLog(phone, 'assistant', msg); return msg; };
-
-  // ── Atajos globales ───────────────────────────────────────────────────────
-  if (/^(\.?menu|menú|inicio|volver|start)$/i.test(tl)) {
-    session.step = 'LIBRE'; session.data = {};
-    const clientCtx = await intake.buildContext(phone);
-    return send(await personal.greet({ clientCtx }));
-  }
-  if (/hablar.*persona|quiero.*humano|hablar.*alguien|agente/i.test(tl)) {
-    return send('Te conecto con alguien del equipo — te responden en menos de 2 horas 💛');
-  }
-
-  // ── Menú numérico directo ─────────────────────────────────────────────────
-  if (session.step === 'LIBRE' && /^[1-4]$/.test(t)) {
-    const n = parseInt(t);
-    if (n === 1) { session.step = 'RESERVANDO'; session.data = {}; return send('¡Dale! 💛 ¿Cuál es tu nombre?'); }
-    if (n === 2) { session.step = 'BUSCANDO_TURNO'; session.data = {}; return send('Ingresá tu *código* (ej: #AB12) o tu nombre 🔍'); }
-    if (n === 3) { return send(MSGS.precios()); }
-    if (n === 4) { return send('Te conecto con alguien del equipo 💛'); }
-  }
-
-  // ── Steps críticos: sí/no sin pasar por Haiku ─────────────────────────────
-  if (session.step === 'CONFIRM_TURNO') {
-    if (/^(s[ií]|dale|ok|va|claro|confirmo|bueno|perfecto)/i.test(tl)) return await doCreateBooking(session, phone, send);
-    if (/^(no\b|nop|mejor no)/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('Perfecto, no reservé nada 😊\n\nCuando quieras, acá estoy 💛'); }
-    return send(MSGS.confirmar(session.data));
-  }
-  if (session.step === 'CONFIRM_CANCELAR') {
-    if (/^(s[ií]|dale|ok|si cancelar)/i.test(tl)) return await doCancelBooking(session, phone, send);
-    session.step = 'LIBRE';
-    return send('Perfecto, no cancelé nada 😊');
-  }
-  if (session.step === 'CONFIRM_REPROGRAM') {
-    if (/^(s[ií]|dale|ok|va|claro)/i.test(tl)) return await doReschedule(session, phone, send);
-    session.step = 'LIBRE';
-    return send('Perfecto, no cambié nada 😊');
-  }
-
-  // ── Post-confirmación: email, apellido, promo ─────────────────────────────
-  if (session.step === 'PEDIR_EMAIL') {
-    const emailMatch = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (emailMatch) {
-      session.data.email = emailMatch[0];
-      const { addGuestToCalendarEvent } = require('../core/calendar');
-      const { mailTurnoConfirmado } = require('./mailer');
-      if (session.lastCalendarEventId) await addGuestToCalendarEvent(session.lastCalendarEventId, emailMatch[0]).catch(()=>{});
-      if (session.lastBooking) {
-        const b = session.lastBooking;
-        mailTurnoConfirmado({ to: emailMatch[0], nombre: b.nombre, servicio: b.servicio, fecha: b.fecha, hora: b.hora, code: b.code, calendarLink: b.calLink, monto: b.monto, senaAmount: null }).catch(()=>{});
+  try {
+    const res = await axios.post(
+      'https://api.anthropic.com/v1/messages',
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 350,
+        system,
+        messages: [{ role: 'user', content: `${stepBlock}\n\nMensaje: "${text}"` }]
+      },
+      {
+        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        timeout: 12000
       }
-      session.step = 'PEDIR_APELLIDO';
-      return send(`✅ ¡Invitación enviada a *${emailMatch[0]}*! 📆\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛\n_(o *no* para saltear)_`);
-    }
-    if (/^no\b/i.test(tl)) { session.step = 'PEDIR_APELLIDO'; return send('¿Me decís tu apellido? 💛 _(o *no* para saltear)_'); }
-    return send('Escribí tu *mail* o *no* para saltear 😊');
-  }
-  if (session.step === 'PEDIR_APELLIDO') {
-    if (/^no\b/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('¡Todo listo! Te esperamos 💛'); }
-    if (t.length > 1 && t.length < 60) {
-      session.data.apellido = t;
-      session.step = 'PEDIR_PROMO';
-      return send(`¿Querés que te avisemos de descuentos y sorteos? 🎁\n\n1 — Sí, me interesa\n2 — No, gracias`);
-    }
-    return send('¿Cuál es tu apellido? _(o *no* para saltear)_');
-  }
-  if (session.step === 'PEDIR_PROMO') {
-    const si = /^(1|s[ií]|dale|ok|claro)/i.test(tl);
-    const no = /^(2|no\b|nop)/i.test(tl);
-    if (si || no) {
-      await clientUpdateProfile(phone, { lastName: session.data.apellido||null, email: session.data.email||null, promoOptIn: si, profileComplete: !!(session.data.apellido && session.data.email) });
-      syncClientesToSheet().catch(()=>{});
-      console.log(`[orch] Perfil guardado: ${session.data.apellido} ${session.data.email} promo=${si}`);
-      session.step = 'LIBRE'; session.data = {};
-      return send(si ? '¡Genial! Ya estás en el programa de beneficios 🎉 Te avisamos de todo 💛' : 'Perfecto 👍');
-    }
-    return send('Respondé *1* para sí o *2* para no 😊');
-  }
-
-  // ── Loyalty: canjes y puntos ──────────────────────────────────────────────
-  if (session.step === 'LOYALTY_CANJE') {
-    const n = parseInt(tl);
-    if (n > 0 && session.data.availableRewards) {
-      const reward = session.data.availableRewards[n - 1];
-      if (reward) {
-        const result = await loyalty.redeem(phone, reward.id);
-        session.step = 'LIBRE'; session.data = {};
-        return send(result.msg);
-      }
-    }
-    if (/^no\b|volver/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('¡Cuando quieras! 💛'); }
-  }
-
-  // ── Buscar turno ──────────────────────────────────────────────────────────
-  if (session.step === 'BUSCANDO_TURNO') {
-    const found = await booking.findBooking(t, phone);
-    if (found) {
-      session.data.booking = found;
-      session.step = 'OPCION_TURNO';
-      return send(MSGS.turnoEncontrado(found));
-    }
-    return send('No encontré un turno 😅 Ingresá tu *código* (ej: #AB12) o tu *nombre completo*:');
-  }
-  if (session.step === 'OPCION_TURNO') {
-    const n = parseInt(tl);
-    const b = session.data.booking;
-    if (n === 1 || /cambiar|reprograma/i.test(tl)) {
-      session.step = 'REPROGRAM_DATOS';
-      return send(`¿A qué *día y hora* querés cambiar?\n_Podés decirme todo junto: "el viernes a las 15"_ 📅`);
-    }
-    if (n === 2 || /cancelar/i.test(tl)) {
-      session.step = 'CONFIRM_CANCELAR';
-      return send(`⚠️ ¿Confirmás que querés *cancelar*?\n\n✂️ ${b?.servicio}\n📅 ${b?.fecha} · ⏰ ${b?.hora}\n\n*sí* / *no*`);
-    }
-    session.step = 'LIBRE'; session.data = {};
-    return send('¡Listo! ¿En qué más te puedo ayudar? 💛');
-  }
-
-  // ── Reprogramar: Haiku extrae día y hora ─────────────────────────────────
-  if (session.step === 'REPROGRAM_DATOS') {
-    const clientCtx = await intake.buildContext(phone);
-    const parsed = await personal.interpret({ text: t, clientCtx, historial: session.historial, step: session.step });
-    if (parsed.dia)  session.data.newDia  = parsed.dia;
-    if (parsed.hora) session.data.newHora = parsed.hora;
-    if (session.data.newDia && session.data.newHora) {
-      const b = session.data.booking;
-      session.step = 'CONFIRM_REPROGRAM';
-      return send(`📋 *Confirmá el cambio:*\n\n✂️ ${b?.servicio}\n📅 *${session.data.newDia}* · ⏰ *${session.data.newHora}*\n\n*sí* / *no*`);
-    }
-    if (!session.data.newDia) return send('¿Qué *día* te viene bien? (lunes a sábado)');
-    return send(`¿A qué *hora* el ${session.data.newDia}? (10:00 a 20:00hs)`);
-  }
-
-  // ── HAIKU interpreta todo lo demás ───────────────────────────────────────
-  const clientCtx = await intake.buildContext(phone);
-  const parsed = await personal.interpret({ text: t, clientCtx, historial: session.historial, step: session.step });
-
-  // Acumular datos del cliente que vayan apareciendo
-  if (parsed.nombre   && !session.data.nombre)   session.data.nombre   = parsed.nombre.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
-  if (parsed.servicio && !session.data.servicio)  session.data.servicio = SERVICIOS.findByName(parsed.servicio);
-  if (parsed.dia      && !session.data.dia)       session.data.dia      = parsed.dia;
-  if (parsed.hora     && !session.data.hora)      session.data.hora     = parsed.hora;
-
-  // Guardar en historial
-  session.historial.push({ role: 'user', content: t });
-  session.historial.push({ role: 'assistant', content: parsed.texto || '' });
-  if (session.historial.length > 16) session.historial = session.historial.slice(-16);
-
-  // ── Routing por intención ─────────────────────────────────────────────────
-  const intent = parsed.intent;
-
-  if (intent === 'PRECIO') {
-    // parsed.texto ya puede mencionar precios — usarlo solo si no inventa valores
-    const intro = parsed.texto && !/\$[0-9]/.test(parsed.texto) ? parsed.texto + '\n\n' : '';
-    return send(intro + MSGS.precios());
-  }
-
-  if (intent === 'LOYALTY' || /puntos|beneficio|canje|premio/i.test(tl)) {
-    const result = await loyalty.showBalance(phone);
-    if (result.available.length > 0) {
-      session.data.availableRewards = result.available;
-      session.step = 'LOYALTY_CANJE';
-      return send(result.msg + '\n\n_Respondé con el número para canjear, o *no* para volver_ 💛');
-    }
-    return send(result.msg);
-  }
-
-  if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
-    session.step = 'BUSCANDO_TURNO'; session.data = { accion: intent };
-    if (parsed.codigo) {
-      const found = await booking.findBooking(parsed.codigo, phone);
-      if (found) { session.data.booking = found; session.step = 'OPCION_TURNO'; return send(MSGS.turnoEncontrado(found)); }
-    }
-    return send(`${parsed.texto || 'Claro'} 🔍 Ingresá tu *código* (ej: #AB12) o tu *nombre*:`);
-  }
-
-  if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
-    session.step = 'RESERVANDO';
-    return await avanzarReserva(session, phone, parsed, send, clientCtx);
-  }
-
-  // En estado RESERVANDO, seguir acumulando aunque intent no sea RESERVAR
-  if (session.step === 'RESERVANDO') {
-    return await avanzarReserva(session, phone, parsed, send, clientCtx);
-  }
-
-  // Upsell
-  if (session.step === 'UPSELL') {
-    const u = session.data.pendingUpsell;
-    if (parsed.upsell === true || intent === 'CONFIRMAR') {
-      session.data.extra = SERVICIOS.findById(u?.targetId);
-    }
-    session.data.pendingUpsell = null;
-    session.step = 'CONFIRM_TURNO';
-    return send(MSGS.confirmar(session.data));
-  }
-
-  // Charla libre / saludo
-  const texto = parsed.texto || '¿En qué te puedo ayudar? 💛';
-  if (session.step === 'LIBRE') {
-    // Actualizar memoria en background
-    memory.update(phone, clientCtx?.client, t).catch(()=>{});
-    return send(texto);
-  }
-  return send(texto);
-}
-
-// ── Avanzar reserva: preguntar solo lo que falta ──────────────────────────────
-async function avanzarReserva(session, phone, parsed, send, clientCtx) {
-  const d = session.data;
-  const haikuTexto = parsed?.texto;
-
-  if (d.servicio?.consulta && !d.consultaOk) {
-    session.step = 'CONSULTA_PREVIA';
-    return send(`Para *${d.servicio.nombre}* necesito preguntarte: ¿te hiciste alisado, keratina o botox en los últimos 6 meses?\n\n1 — No\n2 — Sí`);
-  }
-
-  if (!d.nombre) {
-    return send(haikuTexto || '¿Cuál es tu nombre? 😊');
-  }
-  if (!d.servicio) {
-    return send((haikuTexto ? haikuTexto + '\n\n' : '') + MSGS.servicios());
-  }
-  if (!d.dia) {
-    return send((haikuTexto ? haikuTexto + '\n\n' : '') + `📅 ¿Qué día te viene bien?\n\nAtendemos *lunes a sábado, 10:00 a 20:00hs*\n\nEscribí: lunes · martes · miércoles · jueves · viernes · sábado`);
-  }
-  if (!d.hora) {
-    return send((haikuTexto ? haikuTexto + '\n\n' : '') + `⏰ ¿A qué hora el ${d.dia}?\n\nHorario: 10:00 a 20:00hs\n\nEj: _"14:00"_ · _"4 de la tarde"_ · _"10 y media"_`);
-  }
-
-  // Todo completo → upsell o confirmar
-  const recentBookings = clientCtx?.recentBookings || [];
-  const upsell = getPersonalizedUpsell(d.servicio.id, recentBookings);
-  if (upsell && !d.upsellOfrecido) {
-    d.pendingUpsell = upsell;
-    d.upsellOfrecido = true;
-    session.step = 'UPSELL';
-    return send(upsell.msg);
-  }
-
-  session.step = 'CONFIRM_TURNO';
-  return send(MSGS.confirmar(d));
-}
-
-// ── Ejecutar acciones ─────────────────────────────────────────────────────────
-async function doCreateBooking(session, phone, send) {
-  try {
-    const d = session.data;
-    const client = await clientGet(phone);
-    const email = d.email || client?.email;
-    const result = await booking.create({ sessionId: session.id, nombre: d.nombre, phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: null }); // email se manda después
-
-    const { formatFecha } = require('../core/utils');
-    const fechaDisplay = await formatFecha(result.fechaReal);
-
-    session.lastCalendarEventId = result.calendarEventId;
-    session.lastBooking = { nombre: d.nombre, servicio: d.servicio.nombre, fecha: result.fechaReal, hora: result.horaReal, code: result.code, calLink: result.calLink, monto: result.monto };
-    session.step = 'PEDIR_EMAIL';
-
-    const ptsMsg = result.pointsEarned > 0 ? `\n⭐ Ganaste *+${result.pointsEarned} puntos*` : '';
-    return send(MSGS.turnoConfirmado(d.nombre, d.servicio.nombre + (d.extra ? ' + ' + d.extra.nombre : ''), fechaDisplay, result.horaReal, result.code)
-      + ptsMsg
-      + '\n\n¿Querés recibir la confirmación por mail? ✉️\nEscribí tu *mail* o *no* para saltear');
+    );
+    const raw = res.data.content?.[0]?.text || '{}';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    console.log(`[personal] intent=${parsed.intent} | srv=${parsed.servicio} | dia=${parsed.dia} | hora=${parsed.hora} | nombre=${parsed.nombre}`);
+    return parsed;
   } catch(e) {
-    console.error('[orch] Error creando turno:', e.message);
-    session.step = 'LIBRE';
-    return send('Ups, hubo un problema técnico 😅 Intentá de nuevo o escribí "hablar con alguien".');
+    console.error('[personal] Error:', e.message);
+    return { intent: 'OTRO', texto: 'Un momento, tuve un problemita técnico 😅 ¿Me repetís lo que necesitás?' };
   }
 }
 
-async function doCancelBooking(session, phone, send) {
-  try {
-    const client = await clientGet(phone);
-    await booking.cancel({ bookingData: session.data.booking, phone, email: session.data.email || client?.email });
-    session.step = 'LIBRE'; session.data = {};
-    return send('✅ Tu turno fue *cancelado* 💛\n\nCuando quieras reservar de nuevo, acá estamos.');
-  } catch(e) {
-    console.error('[orch] Error cancelando:', e.message);
-    session.step = 'LIBRE';
-    return send('Hubo un problema técnico 😅 Escribí "hablar con alguien".');
+// Generar bienvenida personalizada basada en historial
+async function greet({ clientCtx }) {
+  const client = clientCtx?.client;
+  const memory = clientCtx?.memory;
+  const bookings = clientCtx?.recentBookings || [];
+
+  if (!client?.name) {
+    return '¡Hola! 💛 Bienvenida a Estefan Peluquería. ¿Cómo te llamás?';
   }
+
+  // Cliente conocida con historial
+  if (client.visit_count > 0 && bookings.length > 0) {
+    const lastService = bookings[0]?.service;
+    const lastDate = bookings[0]?.date_str;
+    const prompts = [
+      `¡Hola ${client.name}! ¿Cómo quedó el ${lastService} del ${lastDate}? 💛`,
+      `¡${client.name}! Qué bueno verte de nuevo 💛 ¿Venís por el pelo?`,
+      `¡Hola ${client.name}! Hace un tiempo que no te veo por acá 😊 ¿Qué necesitás hoy?`,
+    ];
+    return prompts[Math.floor(Math.random() * prompts.length)];
+  }
+
+  // Cliente nueva con nombre
+  return `¡Hola ${client.name}! Bienvenida a Estefan 💛 ¿En qué te puedo ayudar?`;
 }
 
-async function doReschedule(session, phone, send) {
-  try {
-    const client = await clientGet(phone);
-    const result = await booking.reschedule({ bookingData: session.data.booking, newDia: session.data.newDia, newHora: session.data.newHora, phone, email: session.data.email || client?.email, sessionId: session.id });
-    const { formatFecha } = require('../core/utils');
-    const fechaDisplay = await formatFecha(result.fechaReal);
-    session.step = 'LIBRE'; session.data = {};
-    return send(`✅ *¡Turno reprogramado!* 💛\n\n📅 ${fechaDisplay}\n⏰ ${result.horaReal}\n🔖 Nuevo código: *${result.code}*`);
-  } catch(e) {
-    console.error('[orch] Error reprogramando:', e.message);
-    session.step = 'LIBRE';
-    return send('Hubo un problema técnico 😅 Escribí "hablar con alguien".');
-  }
-}
-
-module.exports = { handle, MSGS };
+module.exports = { interpret, greet };
