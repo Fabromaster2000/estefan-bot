@@ -64,8 +64,17 @@ async function initDB() {
         calendar_event_id TEXT,
         booking_code      TEXT,
         status            TEXT DEFAULT 'confirmed',
+        notes             TEXT,
+        mp_payment_id     TEXT,
+        mp_payment_link   TEXT,
+        email             TEXT,
         created_at        TIMESTAMPTZ DEFAULT NOW()
       );
+      -- Add columns if they don't exist (safe migration)
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_id TEXT;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_link TEXT;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;
 
       CREATE TABLE IF NOT EXISTS loyalty_transactions (
         id          SERIAL PRIMARY KEY,
@@ -232,14 +241,15 @@ function generateBookingCode() {
   return '#' + Math.random().toString(36).substring(2,6).toUpperCase();
 }
 
-async function bookingSave({ sessionId, nombre, phone, servicio, fecha, hora, monto, senaPaid, calendarEventId }) {
+async function bookingSave({ sessionId, nombre, phone, servicio, fecha, hora, monto, senaPaid, calendarEventId, email, notes, senaAmount }) {
   if (!db) return null;
   const code = generateBookingCode();
+  const sena = senaAmount || (senaPaid ? monto : 0);
   const r = await db.query(`
-    INSERT INTO bookings (session_id, client_name, client_phone, service, date_str, time_str, monto, sena_amount, sena_paid, calendar_event_id, booking_code)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    INSERT INTO bookings (session_id, client_name, client_phone, service, date_str, time_str, monto, sena_amount, sena_paid, calendar_event_id, booking_code, email, notes)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     RETURNING id, booking_code
-  `, [sessionId, nombre, phone, servicio, fecha, hora, monto||0, senaPaid?monto:0, senaPaid||false, calendarEventId||null, code]);
+  `, [sessionId, nombre, phone, servicio, fecha, hora, monto||0, sena, senaPaid||false, calendarEventId||null, code, email||null, notes||null]);
   return { id: r.rows[0].id, code: r.rows[0].booking_code };
 }
 
