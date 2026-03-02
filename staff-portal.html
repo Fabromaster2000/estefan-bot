@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estefan — Staff</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0f0d0e;
+    --surface: #1a1618;
+    --surface2: #221e20;
+    --border: #2e2a2c;
+    --pink: #e8447a;
+    --pink-soft: #f472a0;
+    --gold: #d4a754;
+    --text: #f0eaec;
+    --muted: #8a7d82;
+    --green: #5ecb8a;
+    --red: #e85c5c;
+    --blue: #5ba8f5;
+    --orange: #f0924a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* LOGIN */
+  #login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 30% 50%, #2a0d1a 0%, #0f0d0e 60%);
+  }
+
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+  }
+
+  .login-logo {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, var(--pink), #a020a0);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin: 0 auto 24px;
+    box-shadow: 0 0 40px rgba(232,68,122,0.3);
+  }
+
+  .login-card h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 26px;
+    margin-bottom: 6px;
+  }
+
+  .login-card p {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+
+  .login-card input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    margin-bottom: 16px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .login-card input:focus { border-color: var(--pink); }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--pink);
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    color: white;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary:hover { background: var(--pink-soft); transform: translateY(-1px); }
+
+  /* APP */
+  #app { display: none; }
+
+  /* HEADER */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .header-brand .logo {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--pink), #a020a0);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+
+  .header-brand span {
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .badge-pending {
+    background: var(--pink);
+    color: white;
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    display: none;
+  }
+
+  .btn-logout {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+  }
+
+  .btn-logout:hover { color: var(--text); border-color: var(--muted); }
+
+  /* NAV TABS */
+  .nav-tabs {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 20px;
+  }
+
+  .nav-tabs::-webkit-scrollbar { display: none; }
+
+  .nav-tab {
+    padding: 14px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active { color: var(--pink); border-bottom-color: var(--pink); }
+
+  .nav-tab .dot {
+    width: 6px;
+    height: 6px;
+    background: var(--pink);
+    border-radius: 50%;
+    display: none;
+  }
+
+  .nav-tab.has-pending .dot { display: inline-block; }
+
+  /* CONTENT */
+  .content {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 24px 16px;
+  }
+
+  /* PANELS */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* SECTION TITLE */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .section-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 22px;
+  }
+
+  .section-sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+
+  /* CARDS */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 12px;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .card-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .card-sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 3px;
+  }
+
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .pill {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  /* STATUS BADGES */
+  .status {
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .status-confirmado   { background: rgba(94,203,138,0.15);  color: var(--green); }
+  .status-cancelado    { background: rgba(232,92,92,0.15);   color: var(--red); }
+  .status-pendiente    { background: rgba(232,68,122,0.2);   color: var(--pink); }
+  .status-completado   { background: rgba(91,168,245,0.15);  color: var(--blue); }
+  .status-reprogramado { background: rgba(240,146,74,0.15);  color: var(--orange); }
+  .status-noasistio    { background: rgba(138,125,130,0.15); color: var(--muted); }
+
+  /* ACTIONS */
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn-sm {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+  }
+
+  .btn-sm:hover { background: var(--border); }
+  .btn-sm.pink  { background: rgba(232,68,122,0.15); border-color: var(--pink); color: var(--pink); }
+  .btn-sm.pink:hover { background: rgba(232,68,122,0.25); }
+  .btn-sm.green { background: rgba(94,203,138,0.15); border-color: var(--green); color: var(--green); }
+  .btn-sm.green:hover { background: rgba(94,203,138,0.25); }
+  .btn-sm.red   { background: rgba(232,92,92,0.15);  border-color: var(--red);   color: var(--red); }
+  .btn-sm.red:hover   { background: rgba(232,92,92,0.25); }
+
+  /* FORM */
+  .form-group { margin-bottom: 16px; }
+  .form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .form-input, .form-select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-input:focus, .form-select:focus { border-color: var(--pink); }
+  .form-select option { background: var(--surface); }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  @media (max-width: 500px) { .form-grid { grid-template-columns: 1fr; } }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 440px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal h3 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px;
+    margin-bottom: 20px;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  /* STATS ROW */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .stat-num {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px;
+    color: var(--pink);
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* SEARCH */
+  .search-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    width: 100%;
+    outline: none;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+
+  .search-bar:focus { border-color: var(--pink); }
+
+  /* EMPTY STATE */
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+  }
+
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* TOAST */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--green);
+    color: #0a2015;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-weight: 600;
+    font-size: 14px;
+    z-index: 300;
+    transition: transform 0.3s ease;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--red); color: white; }
+
+  /* LOADING */
+  .loading {
+    text-align: center;
+    padding: 32px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* CHIP GROUP */
+  .chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  .chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--muted);
+  }
+
+  .chip.active { background: rgba(232,68,122,0.15); border-color: var(--pink); color: var(--pink); }
+
+  /* CLIENT ROW */
+  .client-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .client-row:hover { border-color: var(--muted); }
+
+  .client-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--pink), #a020a0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Serif Display', serif;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .client-info { flex: 1; min-width: 0; }
+  .client-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .client-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .client-right { text-align: right; flex-shrink: 0; }
+  .client-points { font-size: 13px; color: var(--gold); font-weight: 600; }
+  .client-visits { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">✂️</div>
+    <h1>Estefan Staff</h1>
+    <p>Portal de gestión del salón</p>
+    <input type="password" id="pw-input" placeholder="Contraseña" onkeydown="if(event.key==='Enter') doLogin()">
+    <button class="btn-primary" onclick="doLogin()">Ingresar</button>
+    <p id="login-error" style="color:var(--red);margin-top:12px;font-size:13px;display:none">Contraseña incorrecta</p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="header">
+    <div class="header-brand">
+      <div class="logo">✂️</div>
+      <span>Estefan Staff</span>
+    </div>
+    <div class="header-right">
+      <span class="badge-pending" id="pending-badge">⚡ Pendientes</span>
+      <button class="btn-logout" onclick="logout()">Salir</button>
+    </div>
+  </div>
+
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showPanel('hoy')" id="tab-hoy">📅 Hoy</div>
+    <div class="nav-tab" onclick="showPanel('agenda')" id="tab-agenda">🗓️ Agenda</div>
+    <div class="nav-tab has-pending" onclick="showPanel('color')" id="tab-color">🎨 Color <span class="dot"></span></div>
+    <div class="nav-tab" onclick="showPanel('clientes')" id="tab-clientes">👤 Clientes</div>
+    <div class="nav-tab" onclick="showPanel('nuevo')" id="tab-nuevo">➕ Nuevo turno</div>
+  </div>
+
+  <div class="content">
+
+    <!-- HOY -->
+    <div class="panel active" id="panel-hoy">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Agenda de hoy</div>
+          <div class="section-sub" id="hoy-fecha">Cargando...</div>
+        </div>
+        <button class="btn-sm" onclick="loadHoy()">↺ Refrescar</button>
+      </div>
+      <div id="stats-hoy" class="stats-row"></div>
+      <div id="list-hoy"><div class="loading">Cargando...</div></div>
+    </div>
+
+    <!-- AGENDA -->
+    <div class="panel" id="panel-agenda">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Agenda general</div>
+          <div class="section-sub">Próximos turnos</div>
+        </div>
+        <button class="btn-sm" onclick="loadAgenda()">↺ Refrescar</button>
+      </div>
+      <div class="chip-group" id="agenda-filters">
+        <div class="chip active" onclick="filterAgenda('todos',this)">Todos</div>
+        <div class="chip" onclick="filterAgenda('Confirmado',this)">Confirmados</div>
+        <div class="chip" onclick="filterAgenda('Cancelado',this)">Cancelados</div>
+        <div class="chip" onclick="filterAgenda('Completado',this)">Completados</div>
+      </div>
+      <div id="list-agenda"><div class="loading">Cargando...</div></div>
+    </div>
+
+    <!-- COLOR CONSULTAS -->
+    <div class="panel" id="panel-color">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Consultas de color</div>
+          <div class="section-sub">Requieren evaluación del equipo</div>
+        </div>
+        <button class="btn-sm" onclick="loadColor()">↺ Refrescar</button>
+      </div>
+      <div id="list-color"><div class="loading">Cargando...</div></div>
+    </div>
+
+    <!-- CLIENTES -->
+    <div class="panel" id="panel-clientes">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Clientes</div>
+        </div>
+        <button class="btn-sm" onclick="loadClientes()">↺ Refrescar</button>
+      </div>
+      <input class="search-bar" placeholder="🔍 Buscar por nombre o email..." oninput="filterClientes(this.value)">
+      <div id="list-clientes"><div class="loading">Cargando...</div></div>
+    </div>
+
+    <!-- NUEVO TURNO -->
+    <div class="panel" id="panel-nuevo">
+      <div class="section-title" style="margin-bottom:20px">Crear turno</div>
+      <div class="card">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Nombre *</label>
+            <input class="form-input" id="new-nombre" placeholder="Nombre de la clienta">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Teléfono</label>
+            <input class="form-input" id="new-phone" placeholder="+5491155...">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Servicio *</label>
+          <select class="form-select" id="new-servicio">
+            <option value="">Seleccioná un servicio</option>
+            <optgroup label="✂️ Cortes">
+              <option value="Corte de pelo">Corte de pelo — $50.000</option>
+              <option value="Corte + Brushing">Corte + Brushing — $70.000</option>
+              <option value="Brushing / Planchita">Brushing / Planchita — $20.000</option>
+              <option value="Lavado + Aireado">Lavado + Aireado — $15.000</option>
+            </optgroup>
+            <optgroup label="💆 Spa">
+              <option value="Ozono">Ozono — $30.000</option>
+              <option value="Head Spa completo">Head Spa completo — $120.000</option>
+              <option value="Ampolla">Ampolla — $30.000</option>
+            </optgroup>
+            <optgroup label="🎨 Color">
+              <option value="Retoque / Raíz">Retoque / Raíz — $60.000</option>
+              <option value="Color entero">Color entero — $90.000</option>
+              <option value="Contorno">Contorno — $80.000</option>
+              <option value="Balayage">Balayage — $200.000</option>
+              <option value="Decoloración total">Decoloración total — $200.000</option>
+            </optgroup>
+            <optgroup label="💐 Peinados">
+              <option value="Peinado fiesta / 15">Peinado fiesta / 15 — $70.000</option>
+              <option value="Peinado novia">Peinado novia — $150.000</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Fecha * (DD/MM/YYYY)</label>
+            <input class="form-input" id="new-fecha" placeholder="05/03/2026">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Hora * (HH:MM)</label>
+            <input class="form-input" id="new-hora" placeholder="14:00">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Monto (dejar vacío para usar precio base)</label>
+          <input class="form-input" id="new-monto" placeholder="50000" type="number">
+        </div>
+        <button class="btn-primary" onclick="crearTurno()">Crear turno</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL: cambiar estado -->
+<div class="modal-overlay" id="modal-status">
+  <div class="modal">
+    <h3>Cambiar estado</h3>
+    <div class="form-group">
+      <label class="form-label">Nuevo estado</label>
+      <select class="form-select" id="modal-status-select">
+        <option value="Confirmado">✅ Confirmado</option>
+        <option value="Completado">✨ Completado</option>
+        <option value="Cancelado">❌ Cancelado</option>
+        <option value="No asistió">👻 No asistió</option>
+        <option value="Reprogramado">🔄 Reprogramado</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-sm green" onclick="confirmarCambioEstado()">Guardar</button>
+      <button class="btn-sm" onclick="closeModal('modal-status')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: reprogramar -->
+<div class="modal-overlay" id="modal-reprogram">
+  <div class="modal">
+    <h3>Reprogramar turno</h3>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Nueva fecha (DD/MM/YYYY)</label>
+        <input class="form-input" id="reprogram-fecha" placeholder="07/03/2026">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nueva hora (HH:MM)</label>
+        <input class="form-input" id="reprogram-hora" placeholder="15:00">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-sm green" onclick="confirmarReprogramar()">Guardar</button>
+      <button class="btn-sm" onclick="closeModal('modal-reprogram')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: confirmar consulta color -->
+<div class="modal-overlay" id="modal-color-confirm">
+  <div class="modal">
+    <h3>Confirmar turno de color</h3>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Ingresá fecha y hora para confirmar el turno</p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Fecha (DD/MM/YYYY)</label>
+        <input class="form-input" id="color-fecha" placeholder="07/03/2026">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora (HH:MM)</label>
+        <input class="form-input" id="color-hora" placeholder="15:00">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas para la clienta (opcional)</label>
+      <input class="form-input" id="color-notas" placeholder="Venir con el pelo sin productos...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-sm green" onclick="confirmarColorTurno()">Confirmar turno</button>
+      <button class="btn-sm red" onclick="rechazarColorTurno()">No es viable</button>
+      <button class="btn-sm" onclick="closeModal('modal-color-confirm')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: detalle cliente -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal">
+    <h3 id="modal-cliente-nombre">Cliente</h3>
+    <div id="modal-cliente-body"></div>
+    <div class="modal-actions">
+      <button class="btn-sm" onclick="closeModal('modal-cliente')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let PW = '';
+let allAgenda = [];
+let allClientes = [];
+let currentBookingId = null;
+let currentColorId = null;
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const pw = document.getElementById('pw-input').value;
+  const r = await fetch('/staff/today', { headers: { 'x-staff-password': pw } });
+  if (r.status === 401) {
+    document.getElementById('login-error').style.display = 'block';
+    return;
+  }
+  PW = pw;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  initApp();
+}
+
+function logout() {
+  PW = '';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('pw-input').value = '';
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'x-staff-password': PW, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+async function initApp() {
+  loadHoy();
+  loadColor();
+}
+
+// ── PANELS ────────────────────────────────────────────────────────────────────
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+
+  if (name === 'agenda')   loadAgenda();
+  if (name === 'clientes') loadClientes();
+}
+
+// ── HOY ───────────────────────────────────────────────────────────────────────
+async function loadHoy() {
+  const data = await api('GET', '/staff/today');
+  const bookings = data.bookings || [];
+  document.getElementById('hoy-fecha').textContent = 'Hoy — ' + (data.today || '');
+
+  // Stats
+  const confirmados = bookings.filter(b => b.estado === 'Confirmado').length;
+  const ingresos = bookings.filter(b => b.estado !== 'Cancelado').reduce((s, b) => s + (b.monto || 0), 0);
+  document.getElementById('stats-hoy').innerHTML = `
+    <div class="stat-card"><div class="stat-num">${bookings.length}</div><div class="stat-label">Turnos</div></div>
+    <div class="stat-card"><div class="stat-num">${confirmados}</div><div class="stat-label">Confirmados</div></div>
+    <div class="stat-card"><div class="stat-num">$${(ingresos/1000).toFixed(0)}k</div><div class="stat-label">Facturación</div></div>
+  `;
+
+  if (!bookings.length) {
+    document.getElementById('list-hoy').innerHTML = '<div class="empty"><div class="empty-icon">📅</div><p>No hay turnos para hoy</p></div>';
+    return;
+  }
+  document.getElementById('list-hoy').innerHTML = bookings.map(b => bookingCard(b)).join('');
+}
+
+// ── AGENDA ────────────────────────────────────────────────────────────────────
+async function loadAgenda() {
+  document.getElementById('list-agenda').innerHTML = '<div class="loading">Cargando...</div>';
+  allAgenda = await api('GET', '/staff/agenda');
+  renderAgenda(allAgenda);
+}
+
+function filterAgenda(status, chip) {
+  document.querySelectorAll('#agenda-filters .chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  const filtered = status === 'todos' ? allAgenda : allAgenda.filter(b => b.estado === status);
+  renderAgenda(filtered);
+}
+
+function renderAgenda(list) {
+  if (!list.length) {
+    document.getElementById('list-agenda').innerHTML = '<div class="empty"><div class="empty-icon">🗓️</div><p>Sin resultados</p></div>';
+    return;
+  }
+  document.getElementById('list-agenda').innerHTML = list.map(b => bookingCard(b)).join('');
+}
+
+// ── COLOR CONSULTAS ───────────────────────────────────────────────────────────
+async function loadColor() {
+  const list = await api('GET', '/staff/color-consultas');
+  const tab = document.getElementById('tab-color');
+  if (list.length > 0) {
+    tab.classList.add('has-pending');
+    document.getElementById('pending-badge').style.display = 'inline-block';
+  } else {
+    tab.classList.remove('has-pending');
+    document.getElementById('pending-badge').style.display = 'none';
+  }
+
+  if (!list.length) {
+    document.getElementById('list-color').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>Sin consultas pendientes</p></div>';
+    return;
+  }
+
+  document.getElementById('list-color').innerHTML = list.map(b => `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-name">${b.nombre || 'Sin nombre'}</div>
+          <div class="card-sub">${b.servicio} · ${b.phone || ''}</div>
+        </div>
+        <span class="status status-pendiente">Pendiente</span>
+      </div>
+      <div class="card-meta">
+        <span class="pill">🕐 ${new Date(b.created_at).toLocaleString('es-AR', {dateStyle:'short',timeStyle:'short'})}</span>
+        ${b.notes ? `<span class="pill">📝 ${b.notes}</span>` : ''}
+      </div>
+      <div class="card-actions">
+        <button class="btn-sm green" onclick="openColorConfirm(${b.id})">✅ Confirmar turno</button>
+        <button class="btn-sm red" onclick="rechazarColor(${b.id})">❌ No viable</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openColorConfirm(id) {
+  currentColorId = id;
+  document.getElementById('color-fecha').value = '';
+  document.getElementById('color-hora').value = '';
+  document.getElementById('color-notas').value = '';
+  document.getElementById('modal-color-confirm').classList.add('open');
+}
+
+async function confirmarColorTurno() {
+  const fecha = document.getElementById('color-fecha').value;
+  const hora  = document.getElementById('color-hora').value;
+  const notas = document.getElementById('color-notas').value;
+  if (!fecha || !hora) { showToast('Ingresá fecha y hora', true); return; }
+  await api('POST', `/staff/color-consultas/${currentColorId}/confirmar`, { fecha, hora, notas });
+  closeModal('modal-color-confirm');
+  showToast('Turno confirmado ✅');
+  loadColor();
+}
+
+async function rechazarColor(id) {
+  if (!confirm('¿Confirmar que el servicio no es viable para esta clienta?')) return;
+  await api('PUT', `/staff/booking/${id}/status`, { status: 'Cancelado' });
+  showToast('Consulta rechazada');
+  loadColor();
+}
+
+async function rechazarColorTurno() {
+  await rechazarColor(currentColorId);
+  closeModal('modal-color-confirm');
+}
+
+// ── CLIENTES ──────────────────────────────────────────────────────────────────
+async function loadClientes() {
+  document.getElementById('list-clientes').innerHTML = '<div class="loading">Cargando...</div>';
+  allClientes = await api('GET', '/staff/clients');
+  renderClientes(allClientes);
+}
+
+function filterClientes(q) {
+  const ql = q.toLowerCase();
+  const filtered = allClientes.filter(c =>
+    (c.name || '').toLowerCase().includes(ql) ||
+    (c.last_name || '').toLowerCase().includes(ql) ||
+    (c.email || '').toLowerCase().includes(ql) ||
+    (c.phone || '').includes(ql)
+  );
+  renderClientes(filtered);
+}
+
+function renderClientes(list) {
+  if (!list.length) {
+    document.getElementById('list-clientes').innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>Sin resultados</p></div>';
+    return;
+  }
+  document.getElementById('list-clientes').innerHTML = list.map(c => `
+    <div class="client-row" onclick="openCliente('${c.phone}')">
+      <div class="client-avatar">${(c.name||'?')[0].toUpperCase()}</div>
+      <div class="client-info">
+        <div class="client-name">${c.name || ''} ${c.last_name || ''}</div>
+        <div class="client-detail">${c.email || c.phone || ''}</div>
+      </div>
+      <div class="client-right">
+        <div class="client-points">⭐ ${c.points || 0}</div>
+        <div class="client-visits">${c.visit_count || 0} visitas</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openCliente(phone) {
+  const data = await api('GET', `/staff/clients/${encodeURIComponent(phone)}`);
+  const c = data.client || {};
+  const bookings = data.bookings || [];
+  document.getElementById('modal-cliente-nombre').textContent = (c.name || '') + ' ' + (c.last_name || '');
+  document.getElementById('modal-cliente-body').innerHTML = `
+    <div style="display:grid;gap:8px;margin-bottom:16px">
+      <div class="pill">📱 ${c.phone || '—'}</div>
+      <div class="pill">✉️ ${c.email || '—'}</div>
+      <div class="pill">⭐ ${c.points || 0} puntos · ${c.visit_count || 0} visitas</div>
+      <div class="pill">💰 Total: $${(c.total_spent || 0).toLocaleString('es-AR')}</div>
+    </div>
+    <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:8px">Historial de turnos</div>
+    ${bookings.slice(0,6).map(b => `
+      <div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px">
+        <span style="font-weight:600">${b.service}</span>
+        <span style="color:var(--muted);margin-left:8px">${b.date_str} ${b.time_str}</span>
+        <span class="status status-${b.status?.toLowerCase().replace(' ','')||'confirmado'}" style="float:right;font-size:11px">${b.status}</span>
+      </div>
+    `).join('')}
+  `;
+  document.getElementById('modal-cliente').classList.add('open');
+}
+
+// ── BOOKING CARD ──────────────────────────────────────────────────────────────
+function bookingCard(b) {
+  const statusClass = {
+    'Confirmado': 'confirmado',
+    'Cancelado': 'cancelado',
+    'Completado': 'completado',
+    'Consulta Pendiente': 'pendiente',
+    'Reprogramado': 'reprogramado',
+    'No asistió': 'noasistio',
+  }[b.estado] || 'confirmado';
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-name">${b.nombre || 'Sin nombre'}</div>
+          <div class="card-sub">${b.servicio}</div>
+        </div>
+        <span class="status status-${statusClass}">${b.estado || 'Confirmado'}</span>
+      </div>
+      <div class="card-meta">
+        <span class="pill">📅 ${b.fecha}</span>
+        <span class="pill">⏰ ${b.hora}</span>
+        <span class="pill">🔖 ${b.code || b.booking_code || ''}</span>
+        ${b.monto ? `<span class="pill">💰 $${Number(b.monto).toLocaleString('es-AR')}</span>` : ''}
+        ${b.phone ? `<span class="pill">📱 ${b.phone}</span>` : ''}
+      </div>
+      <div class="card-actions">
+        <button class="btn-sm" onclick="openStatusModal(${b.id})">Cambiar estado</button>
+        <button class="btn-sm pink" onclick="openReprogramModal(${b.id})">Reprogramar</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── MODALS ────────────────────────────────────────────────────────────────────
+function openStatusModal(id) {
+  currentBookingId = id;
+  document.getElementById('modal-status').classList.add('open');
+}
+
+async function confirmarCambioEstado() {
+  const status = document.getElementById('modal-status-select').value;
+  await api('PUT', `/staff/booking/${currentBookingId}/status`, { status });
+  closeModal('modal-status');
+  showToast('Estado actualizado ✅');
+  loadHoy(); if (document.getElementById('panel-agenda').classList.contains('active')) loadAgenda();
+}
+
+function openReprogramModal(id) {
+  currentBookingId = id;
+  document.getElementById('reprogram-fecha').value = '';
+  document.getElementById('reprogram-hora').value = '';
+  document.getElementById('modal-reprogram').classList.add('open');
+}
+
+async function confirmarReprogramar() {
+  const fecha = document.getElementById('reprogram-fecha').value;
+  const hora  = document.getElementById('reprogram-hora').value;
+  if (!fecha || !hora) { showToast('Ingresá fecha y hora', true); return; }
+  await api('PUT', `/staff/booking/${currentBookingId}/reschedule`, { fecha, hora });
+  closeModal('modal-reprogram');
+  showToast('Turno reprogramado ✅');
+  loadHoy();
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// ── NUEVO TURNO ───────────────────────────────────────────────────────────────
+async function crearTurno() {
+  const nombre   = document.getElementById('new-nombre').value.trim();
+  const phone    = document.getElementById('new-phone').value.trim();
+  const servicio = document.getElementById('new-servicio').value;
+  const fecha    = document.getElementById('new-fecha').value.trim();
+  const hora     = document.getElementById('new-hora').value.trim();
+  const monto    = document.getElementById('new-monto').value;
+
+  if (!nombre || !servicio || !fecha || !hora) {
+    showToast('Completá los campos obligatorios (*)', true);
+    return;
+  }
+
+  const r = await api('POST', '/staff/booking/create', { nombre, phone, servicio, fecha, hora, monto: monto ? Number(monto) : null });
+  if (r.ok) {
+    showToast(`Turno creado: ${r.code} ✅`);
+    document.getElementById('new-nombre').value = '';
+    document.getElementById('new-phone').value = '';
+    document.getElementById('new-servicio').value = '';
+    document.getElementById('new-fecha').value = '';
+    document.getElementById('new-hora').value = '';
+    document.getElementById('new-monto').value = '';
+  } else {
+    showToast('Error: ' + r.error, true);
+  }
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+</script>
+</body>
+</html>
