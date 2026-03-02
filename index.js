@@ -222,6 +222,169 @@ app.post('/admin/delete-client', async (req, res) => {
 });
 
 // ── HEALTH & STATUS ───────────────────────────────────────────────────────────
+// ── STAFF PORTAL API ─────────────────────────────────────────────────────────
+const STAFF_PASSWORD = process.env.STAFF_PASSWORD || 'estefan2024';
+
+function staffAuth(req, res, next) {
+  const pw = req.headers['x-staff-password'] || req.query.pw;
+  if (pw !== STAFF_PASSWORD) return res.status(401).json({ error: 'No autorizado' });
+  next();
+}
+
+// Agenda del día / semana
+app.get('/staff/agenda', staffAuth, async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    const r = await db.query(`
+      SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
+             service as servicio, date_str as fecha, time_str as hora,
+             status as estado, monto, created_at
+      FROM bookings
+      WHERE created_at >= NOW() - INTERVAL '1 day'
+         OR date_str >= TO_CHAR(NOW(), 'DD/MM/YYYY')
+      ORDER BY date_str ASC, time_str ASC
+      LIMIT 200
+    `);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Turnos de hoy
+app.get('/staff/today', staffAuth, async (req, res) => {
+  try {
+    const today = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day:'2-digit', month:'2-digit', year:'numeric' });
+    const r = await db.query(`
+      SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
+             service as servicio, date_str as fecha, time_str as hora,
+             status as estado, monto
+      FROM bookings WHERE date_str = $1
+      ORDER BY time_str ASC
+    `, [today]);
+    res.json({ today, bookings: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Consultas de color pendientes
+app.get('/staff/color-consultas', staffAuth, async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
+             service as servicio, date_str as fecha, time_str as hora,
+             status as estado, monto, created_at, notes
+      FROM bookings WHERE status = 'Consulta Pendiente'
+      ORDER BY created_at DESC
+    `);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Crear turno manualmente
+app.post('/staff/booking/create', staffAuth, async (req, res) => {
+  try {
+    const { nombre, phone, servicio, fecha, hora, monto, notas } = req.body;
+    if (!nombre || !servicio || !fecha || !hora) return res.status(400).json({ error: 'Faltan campos' });
+    const SERVICIOS = require('./core/servicios');
+    const srv = SERVICIOS.findByName(servicio);
+    const montoFinal = monto || srv?.precio || 0;
+    await db.clientUpsert(phone || 'manual-' + Date.now(), nombre);
+    const saved = await db.bookingSave({
+      sessionId: 'staff-manual',
+      nombre, phone: phone || 'manual-' + Date.now(),
+      servicio, fecha, hora,
+      monto: montoFinal, senaPaid: false, calendarEventId: null
+    });
+    const { appendTurnoToSheet } = require('./core/sheets');
+    await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phone||'', servicio, monto: montoFinal, sena: null, senaPagada: false, estado: 'Confirmado', canal: 'Staff Manual' }).catch(() => {});
+    res.json({ ok: true, code: saved.code });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Actualizar estado de turno
+app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['Confirmado','Cancelado','Completado','Consulta Pendiente','Reprogramado','No asistió'];
+    if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
+    await db.query(`UPDATE bookings SET status = $1 WHERE id = $2`, [status, req.params.id]);
+    const { updateTurnoStatus } = require('./core/sheets');
+    const b = await db.query(`SELECT booking_code, service FROM bookings WHERE id = $1`, [req.params.id]);
+    if (b.rows[0]) await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, status).catch(() => {});
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Reprogramar turno
+app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
+  try {
+    const { fecha, hora } = req.body;
+    if (!fecha || !hora) return res.status(400).json({ error: 'Faltan fecha/hora' });
+    await db.query(`UPDATE bookings SET date_str = $1, time_str = $2, status = 'Confirmado' WHERE id = $3`, [fecha, hora, req.params.id]);
+    const b = await db.query(`SELECT booking_code, service, client_name FROM bookings WHERE id = $1`, [req.params.id]);
+    if (b.rows[0]) {
+      const { updateTurnoStatus } = require('./core/sheets');
+      await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, 'Reprogramado').catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clientes — lista completa
+app.get('/staff/clients', staffAuth, async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT phone, name, last_name, email, visit_count, total_spent,
+             last_visit, points, promo_opt_in, profile_complete, created_at
+      FROM clients ORDER BY visit_count DESC, created_at DESC
+    `);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cliente — detalle con turnos
+app.get('/staff/clients/:phone', staffAuth, async (req, res) => {
+  try {
+    const client = await db.clientGet(req.params.phone);
+    const bookings = await db.query(`
+      SELECT id, booking_code, service, date_str, time_str, status, monto, created_at
+      FROM bookings WHERE client_phone = $1 ORDER BY created_at DESC
+    `, [req.params.phone]);
+    res.json({ client, bookings: bookings.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Actualizar cliente
+app.put('/staff/clients/:phone', staffAuth, async (req, res) => {
+  try {
+    const { name, lastName, email, notes } = req.body;
+    await db.query(`UPDATE clients SET name=$1, last_name=$2, email=$3 WHERE phone=$4`,
+      [name, lastName, email, req.params.phone]);
+    const { syncClientesToSheet } = require('./core/sheets');
+    syncClientesToSheet().catch(() => {});
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Confirmar consulta de color — crear turno
+app.post('/staff/color-consultas/:id/confirmar', staffAuth, async (req, res) => {
+  try {
+    const { fecha, hora, notas } = req.body;
+    await db.query(`UPDATE bookings SET status = 'Confirmado', date_str = $1, time_str = $2, notes = $3 WHERE id = $4`,
+      [fecha, hora, notas || '', req.params.id]);
+    const b = await db.query(`SELECT * FROM bookings WHERE id = $1`, [req.params.id]);
+    if (b.rows[0]) {
+      const { appendTurnoToSheet } = require('./core/sheets');
+      const row = b.rows[0];
+      await appendTurnoToSheet({ code: row.booking_code, fecha, hora, nombre: row.client_name, phone: row.client_phone, servicio: row.service, monto: row.monto, sena: null, senaPagada: false, estado: 'Confirmado', canal: 'Staff' }).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Portal staff — sirve el HTML
+app.get('/staff', (req, res) => {
+  res.sendFile(__dirname + '/staff-portal.html');
+});
+
 app.get('/health', async (req, res) => {
   const dbConn = db.getDB();
   const sessions = getAllSessions();
