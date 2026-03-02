@@ -86,32 +86,18 @@ async function handle({ sessionId, phone, text }) {
 
   // ── COLOR — consulta previa ──────────────────────────────────────────────────
   if (session.step === 'COLOR_CONSULTA_TIPO') {
-    const noPrevios = /^(1|no|nop|natural|virgen)/i.test(tl);
-    const siPrevios = /^(2|s[ií]|dale|tengo)/i.test(tl);
-    if (noPrevios) {
-      // Sin procesos previos — apta, continuar con la reserva
-      session.data.consultaOk = true;
-      session.data.consultaResumen = 'Sin procesos químicos previos.';
-      session.step = 'RESERVANDO';
-      return send(`¡Perfecto! 💛 Con el pelo sin procesos previos el resultado va a ser increíble. ¿Qué día te viene bien para venir?\n\nAtendemos *lunes a sábado de 10:00 a 20:00hs*`);
-    }
-    if (siPrevios) {
+    // SIEMPRE deriva a staff — sin excepción, sin importar si tiene procesos previos o no
+    session.data.consultaRespuesta1 = t;
+    const noPrevios = /^(1|no\b|nop|natural|virgen)/i.test(tl);
+    session.data.consultaProceso = noPrevios ? 'Sin procesos previos' : t;
+    if (!noPrevios) {
+      // Con procesos previos — preguntar detalle antes de pedir fotos
       session.step = 'COLOR_CONSULTA_DETALLE';
-      const esDecoloracion = ['Balayage','Decoloración total'].includes(session.data.servicio?.nombre);
-      if (esDecoloracion) {
-        return send(`Entiendo 💛 Para el ${session.data.servicio.nombre} con procesos previos necesitamos evaluar bien el caso.\n\n¿Qué tipo de proceso tenés actualmente?
-
-1 — Tintura (¿de qué color?)
-2 — Alisado / Keratina / Botox
-3 — Decoloración previa`);
-      }
-      return send(`Entiendo 💛 ¿Qué tipo de proceso tenés actualmente?
-
-1 — Tintura (¿de qué color?)
-2 — Alisado / Keratina / Botox
-3 — Ambos`);
+      return send(`Entendido 💛 ¿Qué tipo de proceso tenés actualmente?\n\n1 — Tintura (¿de qué color?)\n2 — Alisado / Keratina / Botox\n3 — Decoloración o mechitas previas\n4 — Varios`);
     }
-    return send('Respondé *1* si no tenés procesos previos o *2* si sí tenés 😊');
+    // Sin procesos previos — igual va a evaluación del equipo
+    session.step = 'COLOR_PEDIR_FOTOS';
+    return send(`¡Genial! 💛 Para asegurarnos de que el resultado sea perfecto, ¿podés mandarnos una foto de tu pelo *actual* y una de *referencia* del resultado que buscás?\n\n📸 Las fotos van directo al equipo — te contactamos a la brevedad para confirmar fecha y hora 💛`);
   }
 
   if (session.step === 'COLOR_CONSULTA_DETALLE') {
