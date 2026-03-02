@@ -281,23 +281,119 @@ app.get('/staff/color-consultas', staffAuth, async (req, res) => {
 // Crear turno manualmente
 app.post('/staff/booking/create', staffAuth, async (req, res) => {
   try {
-    const { nombre, phone, servicio, fecha, hora, monto, notas } = req.body;
-    if (!nombre || !servicio || !fecha || !hora) return res.status(400).json({ error: 'Faltan campos' });
-    const SERVICIOS = require('./core/servicios');
-    const srv = SERVICIOS.findByName(servicio);
-    const montoFinal = monto || srv?.precio || 0;
-    await db.clientUpsert(phone || 'manual-' + Date.now(), nombre);
+    const { nombre, phone, email, servicios, fecha, hora, monto, senaAmount, notas, clientPhone } = req.body;
+    if (!nombre || !servicios || !fecha || !hora) return res.status(400).json({ error: 'Faltan campos' });
+    const servicioStr = Array.isArray(servicios) ? servicios.join(' + ') : servicios;
+    const phoneF = clientPhone || phone || ('manual-' + Date.now());
+    const montoFinal = monto || 0;
+    const senaFinal = senaAmount || 0;
+    await db.clientUpsert(phoneF, nombre);
+    if (email) await db.query('UPDATE clients SET email = $1 WHERE phone = $2', [email, phoneF]).catch(() => {});
     const saved = await db.bookingSave({
       sessionId: 'staff-manual',
-      nombre, phone: phone || 'manual-' + Date.now(),
-      servicio, fecha, hora,
-      monto: montoFinal, senaPaid: false, calendarEventId: null
+      nombre, phone: phoneF,
+      servicio: servicioStr, fecha, hora,
+      monto: montoFinal, senaAmount: senaFinal, senaPaid: false,
+      calendarEventId: null, email, notes: notas || null
     });
     const { appendTurnoToSheet } = require('./core/sheets');
-    await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phone||'', servicio, monto: montoFinal, sena: null, senaPagada: false, estado: 'Confirmado', canal: 'Staff Manual' }).catch(() => {});
-    res.json({ ok: true, code: saved.code });
+    await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phoneF, servicio: servicioStr, monto: montoFinal, sena: senaFinal, senaPagada: false, estado: 'Confirmado', canal: 'Staff Manual' }).catch(() => {});
+    res.json({ ok: true, code: saved.code, id: saved.id });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Buscar cliente por nombre/phone para autocompletar
+app.get('/staff/clients/search', staffAuth, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) return res.json([]);
+    const r = await db.query(`
+      SELECT phone, name, last_name, email, visit_count, points
+      FROM clients
+      WHERE LOWER(name) LIKE $1 OR LOWER(last_name) LIKE $1 OR phone LIKE $1 OR LOWER(email) LIKE $1
+      ORDER BY visit_count DESC LIMIT 8
+    `, ['%' + q.toLowerCase() + '%']);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Generar link de pago Mercado Pago
+app.post('/staff/mp/crear-link', staffAuth, async (req, res) => {
+  try {
+    const { bookingId, monto, descripcion, nombre, email } = req.body;
+    if (!monto || !descripcion) return res.status(400).json({ error: 'Faltan monto y descripción' });
+    const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+    if (!MP_ACCESS_TOKEN) return res.status(400).json({ error: 'MP_ACCESS_TOKEN no configurado en env vars' });
+    
+    const axios = require('axios');
+    const payload = {
+      items: [{
+        title: descripcion,
+        unit_price: Number(monto),
+        quantity: 1,
+        currency_id: 'ARS'
+      }],
+      payer: { name: nombre || 'Clienta', email: email || undefined },
+      statement_descriptor: 'Estefan Peluquería',
+      external_reference: bookingId ? String(bookingId) : undefined,
+      notification_url: `https://peluqueria-bot.onrender.com/mp/webhook`,
+      back_urls: {
+        success: `https://peluqueria-bot.onrender.com/mp/success`,
+        failure: `https://peluqueria-bot.onrender.com/mp/failure`,
+      },
+      auto_return: 'approved'
+    };
+
+    const mpRes = await axios.post('https://api.mercadopago.com/checkout/preferences', payload, {
+      headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
+    });
+
+    const link = mpRes.data.init_point;
+    const prefId = mpRes.data.id;
+
+    // Guardar link en el booking
+    if (bookingId) {
+      await db.query('UPDATE bookings SET mp_payment_link = $1, mp_payment_id = $2, sena_amount = $3 WHERE id = $4',
+        [link, prefId, monto, bookingId]).catch(() => {});
+    }
+
+    console.log(`[mp] ✓ Link creado: ${link.substring(0,60)}...`);
+    res.json({ ok: true, link, prefId });
+  } catch(e) {
+    console.error('[mp] Error:', e.response?.data || e.message);
+    res.status(500).json({ error: e.response?.data?.message || e.message });
+  }
+});
+
+// Webhook de Mercado Pago — notificación de pago
+app.post('/mp/webhook', async (req, res) => {
+  try {
+    const { type, data } = req.body;
+    console.log('[mp] webhook:', type, data?.id);
+    if (type === 'payment' && data?.id) {
+      const axios = require('axios');
+      const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+      const payment = await axios.get(`https://api.mercadopago.com/v1/payments/${data.id}`, {
+        headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` }
+      });
+      const p = payment.data;
+      if (p.status === 'approved') {
+        const bookingId = p.external_reference;
+        if (bookingId) {
+          await db.query('UPDATE bookings SET sena_paid = true, status = $1 WHERE id = $2', ['Seña pagada', bookingId]).catch(() => {});
+          const { updateTurnoStatus } = require('./core/sheets');
+          const b = await db.query('SELECT booking_code, service FROM bookings WHERE id = $1', [bookingId]);
+          if (b.rows[0]) await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, 'Seña pagada').catch(() => {});
+          console.log(`[mp] ✓ Seña pagada booking ${bookingId}`);
+        }
+      }
+    }
+    res.sendStatus(200);
+  } catch(e) { console.error('[mp] webhook error:', e.message); res.sendStatus(200); }
+});
+
+app.get('/mp/success', (req, res) => res.send('<h2 style="font-family:sans-serif;text-align:center;padding:40px">✅ ¡Pago recibido! Gracias por tu seña 💛<br><br>El equipo de Estefan te contactará para confirmar tu turno.</h2>'));
+app.get('/mp/failure', (req, res) => res.send('<h2 style="font-family:sans-serif;text-align:center;padding:40px">❌ Hubo un problema con el pago. Escribinos al salón y te ayudamos 💛</h2>'));
 
 // Actualizar estado de turno
 app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
