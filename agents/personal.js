@@ -127,7 +127,31 @@ Si piden esto → texto amable explicando que no hacemos ese servicio, intent=OT
 
 DÍAS: corregí errores → "lumes"→"lunes", "mier"→"miércoles", "sab"→"sábado"`;
 
-async function interpret({ text, clientCtx, historial = [], step = 'LIBRE' }) {
+async function callHaiku(system, userMsg, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        { model: 'claude-haiku-4-5-20251001', max_tokens: 400, system, messages: [{ role: 'user', content: userMsg }] },
+        { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, timeout: 15000 }
+      );
+      return res.data.content?.[0]?.text || '{}';
+    } catch(e) {
+      const status = e.response?.status;
+      const isRetryable = status === 529 || status === 503 || status === 500 || status === 429;
+      console.error(`[personal] Error intento ${i+1}/${retries}: ${status || e.message}`);
+      if (isRetryable && i < retries - 1) {
+        const wait = (i + 1) * 2000; // 2s, 4s
+        console.log(`[personal] Reintentando en ${wait}ms...`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+async function interpret({ text, clientCtx, historial = [], step = 'LIBRE', extraContext = '' }) {
   const contextBlock = clientCtx?.context
     ? `\nCONTEXTO DEL CLIENTE:\n${clientCtx.context}\n`
     : '\nCliente nueva — primera interacción.\n';
@@ -139,30 +163,26 @@ Datos ya recolectados: ${JSON.stringify(clientCtx?.currentData || {})}`;
     ? `\nÚltimos mensajes:\n${historial.slice(-6).map(m=>`${m.role}: ${m.content}`).join('\n')}`
     : '';
 
-  const system = buildSystemPrompt() + contextBlock + historialBlock;
+  const extraBlock = extraContext ? `\n\nCONTEXTO EXTRA:\n${extraContext}` : '';
+  const system = buildSystemPrompt() + contextBlock + historialBlock + extraBlock;
+  const userMsg = `${stepBlock}\n\nMensaje: "${text}"`;
 
   try {
-    const res = await axios.post(
-      'https://api.anthropic.com/v1/messages',
-      {
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
-        system,
-        messages: [{ role: 'user', content: `${stepBlock}\n\nMensaje: "${text}"` }]
-      },
-      {
-        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        timeout: 12000
-      }
-    );
-    const raw = res.data.content?.[0]?.text || '{}';
-    const clean = raw.replace(/```json|```/g, '').trim();
+    const raw = await callHaiku(system, userMsg);
+    const clean = raw.replace(/\`\`\`json|\`\`\`/g, '').trim();
     const parsed = JSON.parse(clean);
     console.log(`[personal] intent=${parsed.intent} | srv=${parsed.servicio} | dia=${parsed.dia} | hora=${parsed.hora} | nombre=${parsed.nombre}`);
     return parsed;
   } catch(e) {
-    console.error('[personal] Error:', e.message);
-    return { intent: 'OTRO', texto: 'Un momento, tuve un problemita técnico 😅 ¿Me repetís lo que necesitás?' };
+    console.error('[personal] Error final:', e.message);
+    // Fallback inteligente basado en el texto — evita el mensaje de error genérico
+    const tl = text.toLowerCase();
+    if (/reserv|turno|sacar|quiero/i.test(tl)) return { intent: 'RESERVAR', texto: '¡Claro! 💛 ¿Qué servicio te gustaría?' };
+    if (/color|tintura|mechas|balayage|decolor/i.test(tl)) return { intent: 'RESERVAR', servicio: 'Color entero', texto: '¡Claro que sí! 💛 ¿Cuándo te viene bien venir?' };
+    if (/corte|pelo|cabello/i.test(tl)) return { intent: 'RESERVAR', servicio: 'Corte de pelo', texto: '¡Perfecto! 💛 ¿Cuándo querés venir?' };
+    if (/cancel|cambiar|reprograma/i.test(tl)) return { intent: 'GESTIONAR', texto: 'Claro, ¿me decís tu código de turno o nombre? 💛' };
+    if (/precio|cuánto|costo/i.test(tl)) return { intent: 'PRECIO', texto: null };
+    return { intent: 'CHARLA', texto: '¡Hola! 💛 ¿En qué te puedo ayudar?' };
   }
 }
 
