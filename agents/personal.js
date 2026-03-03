@@ -2,6 +2,48 @@
 'use strict';
 const axios = require('axios');
 
+// ── Circuit Breaker ───────────────────────────────────────────────────────────
+// Si Haiku falla 3 veces en menos de 60s, cortamos el circuito por 30s
+// para no hacer esperar a la clienta con 3 reintentos fallidos
+const CB = {
+  failures: 0,
+  lastFailure: 0,
+  open: false,
+  THRESHOLD: 3,      // fallos para abrir
+  RESET_MS: 60000,   // ventana de tiempo (60s)
+  OPEN_MS:  30000,   // cuánto tiempo queda abierto (30s)
+};
+
+function cbCheck() {
+  const now = Date.now();
+  // Si el circuito está abierto, ver si ya pasó el tiempo de espera
+  if (CB.open) {
+    if (now - CB.lastFailure > CB.OPEN_MS) {
+      CB.open = false; CB.failures = 0;
+      console.log('[cb] Circuito CERRADO — reintentando Haiku');
+    } else {
+      return false; // sigue abierto, no llamar
+    }
+  }
+  return true; // ok para llamar
+}
+
+function cbRecordFailure() {
+  const now = Date.now();
+  // Resetear contador si pasó la ventana
+  if (now - CB.lastFailure > CB.RESET_MS) CB.failures = 0;
+  CB.failures++;
+  CB.lastFailure = now;
+  if (CB.failures >= CB.THRESHOLD) {
+    CB.open = true;
+    console.warn(`[cb] Circuito ABIERTO — ${CB.failures} fallos en ${CB.RESET_MS/1000}s. Pausa de ${CB.OPEN_MS/1000}s`);
+  }
+}
+
+function cbRecordSuccess() {
+  CB.failures = 0; CB.open = false;
+}
+
 function buildSystemPrompt() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
   const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
@@ -128,6 +170,12 @@ Si piden esto → texto amable explicando que no hacemos ese servicio, intent=OT
 DÍAS: corregí errores → "lumes"→"lunes", "mier"→"miércoles", "sab"→"sábado"`;
 
 async function callHaiku(system, userMsg, retries = 3) {
+  // Circuit breaker — si está abierto, falla rápido sin esperar
+  if (!cbCheck()) {
+    console.warn('[cb] Circuito abierto — skip Haiku, usando fallback');
+    throw new Error('circuit_open');
+  }
+
   for (let i = 0; i < retries; i++) {
     try {
       const res = await axios.post(
@@ -135,13 +183,15 @@ async function callHaiku(system, userMsg, retries = 3) {
         { model: 'claude-haiku-4-5-20251001', max_tokens: 400, system, messages: [{ role: 'user', content: userMsg }] },
         { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, timeout: 15000 }
       );
+      cbRecordSuccess();
       return res.data.content?.[0]?.text || '{}';
     } catch(e) {
       const status = e.response?.status;
       const isRetryable = status === 529 || status === 503 || status === 500 || status === 429;
       console.error(`[personal] Error intento ${i+1}/${retries}: ${status || e.message}`);
+      if (isRetryable) cbRecordFailure();
       if (isRetryable && i < retries - 1) {
-        const wait = (i + 1) * 2000; // 2s, 4s
+        const wait = (i + 1) * 2000;
         console.log(`[personal] Reintentando en ${wait}ms...`);
         await new Promise(r => setTimeout(r, wait));
         continue;
@@ -150,6 +200,7 @@ async function callHaiku(system, userMsg, retries = 3) {
     }
   }
 }
+
 
 async function interpret({ text, clientCtx, historial = [], step = 'LIBRE', extraContext = '' }) {
   const contextBlock = clientCtx?.context
