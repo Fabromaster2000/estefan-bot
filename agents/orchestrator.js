@@ -146,16 +146,36 @@ async function handle({ sessionId, phone, text }) {
   // ── UPSELL — antes de Haiku ───────────────────────────────────────────────
   if (session.step === 'UPSELL') {
     const u = session.data.pendingUpsell;
-    const acepta = /^(1|s[ií]|dale|ok|claro|quiero|si\b|sí\b|bueno|perfecto)/i.test(tl);
+    const acepta  = /^(1|s[ií]|dale|ok|claro|quiero|si\b|sí\b|bueno|perfecto|venga|obvio|re\b)/i.test(tl);
+    const rechaza = /^(2|no\b|nop|mejor no|paso\b|ahora no|gracias no)/i.test(tl);
+
     if (acepta && u) {
       session.data.extra = SERVICIOS.findById(u.targetId);
       console.log(`[orch] UPSELL aceptado: ${session.data.extra?.nombre}`);
-    } else {
-      console.log('[orch] UPSELL rechazado');
+      session.data.pendingUpsell = null;
+      session.step = 'CONFIRM_TURNO';
+      return send(MSGS.confirmar(session.data));
     }
-    session.data.pendingUpsell = null;
-    session.step = 'CONFIRM_TURNO';
-    return send(MSGS.confirmar(session.data));
+
+    if (rechaza) {
+      console.log('[orch] UPSELL rechazado');
+      session.data.pendingUpsell = null;
+      session.step = 'CONFIRM_TURNO';
+      return send(MSGS.confirmar(session.data));
+    }
+
+    // Pregunta o comentario sobre el producto — Haiku responde y mantiene el step
+    console.log('[orch] UPSELL pregunta — Haiku responde');
+    const srvNombre = u ? (SERVICIOS.findById(u.targetId)?.nombre || 'el tratamiento') : 'el tratamiento';
+    const parsed = await interpret({
+      text,
+      intent: session.data.intent,
+      clientCtx,
+      historial: session.historial,
+      extraContext: `La clienta está preguntando sobre el servicio adicional que le ofreciste: "${srvNombre}". Respondé su pregunta con entusiasmo y conocimiento. La ampolla reparadora hidrata, repara y sella la cutícula — el pelo queda suave, brillante, sin frizz. El Head Spa limpia el cuero cabelludo en profundidad, activa la circulación y deja el pelo muy liviano. Al final de tu respuesta, invitala amablemente a decidir: *1 — Sí, lo agrego* o *2 — No, gracias*.`
+    });
+    // Mantener step en UPSELL — seguimos esperando la decisión
+    return send(parsed?.texto || `La *${srvNombre}* es un tratamiento que potencia y protege el resultado de tu servicio ✨ ¿La sumamos?\n\n1 — Sí, la agrego\n2 — No, gracias`);
   }
 
   // ── Confirmaciones ────────────────────────────────────────────────────────
