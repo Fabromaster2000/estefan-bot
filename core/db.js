@@ -241,15 +241,16 @@ function generateBookingCode() {
   return '#' + Math.random().toString(36).substring(2,6).toUpperCase();
 }
 
-async function bookingSave({ sessionId, nombre, phone, servicio, fecha, hora, monto, senaPaid, calendarEventId, email, notes, senaAmount }) {
+async function bookingSave({ sessionId, nombre, phone, servicio, fecha, hora, monto, senaPaid, calendarEventId, email, notes, senaAmount, status }) {
   if (!db) return null;
   const code = generateBookingCode();
   const sena = senaAmount || (senaPaid ? monto : 0);
+  const finalStatus = status || 'Confirmado';
   const r = await db.query(`
-    INSERT INTO bookings (session_id, client_name, client_phone, service, date_str, time_str, monto, sena_amount, sena_paid, calendar_event_id, booking_code, email, notes)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    INSERT INTO bookings (session_id, client_name, client_phone, service, date_str, time_str, monto, sena_amount, sena_paid, calendar_event_id, booking_code, email, notes, status)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     RETURNING id, booking_code
-  `, [sessionId, nombre, phone, servicio, fecha, hora, monto||0, sena, senaPaid||false, calendarEventId||null, code, email||null, notes||null]);
+  `, [sessionId, nombre, phone, servicio, fecha, hora, monto||0, sena, senaPaid||false, calendarEventId||null, code, email||null, notes||null, finalStatus]);
   return { id: r.rows[0].id, code: r.rows[0].booking_code };
 }
 
@@ -261,7 +262,7 @@ async function bookingFindByCode(code) {
     SELECT id, client_name as nombre, service as servicio, date_str as fecha,
            time_str as hora, booking_code as code, status as estado, monto
     FROM bookings WHERE (booking_code = $1 OR booking_code = $2)
-    AND status NOT IN ('Cancelado','Reprogramado','cancelled')
+    AND status NOT IN ('Cancelado','Reprogramado','cancelled','Consulta Pendiente')
     ORDER BY created_at DESC LIMIT 1
   `, ['#' + clean, clean]);
   return r.rows[0] || null;
@@ -272,7 +273,7 @@ async function bookingFindByName(name) {
   const r = await db.query(`
     SELECT id, client_name as nombre, service as servicio, date_str as fecha,
            time_str as hora, booking_code as code, status as estado, monto
-    FROM bookings WHERE LOWER(client_name) LIKE $1 AND status NOT IN ('Cancelado','Reprogramado','cancelled')
+    FROM bookings WHERE LOWER(client_name) LIKE $1 AND status NOT IN ('Cancelado','Reprogramado','cancelled','Consulta Pendiente')
     ORDER BY created_at DESC LIMIT 1
   `, ['%' + name.toLowerCase() + '%']);
   return r.rows[0] || null;
@@ -296,7 +297,7 @@ async function bookingGetActive(phone) {
   if (!db) return [];
   const r = await db.query(`
     SELECT id, service, date_str, time_str, booking_code, monto
-    FROM bookings WHERE client_phone = $1 AND status = 'confirmed'
+    FROM bookings WHERE client_phone = $1 AND status NOT IN ('Cancelado','Reprogramado','cancelled','Consulta Pendiente')
     ORDER BY created_at DESC
   `, [phone]);
   return r.rows;
