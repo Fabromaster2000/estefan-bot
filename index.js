@@ -231,11 +231,14 @@ function staffAuth(req, res, next) {
   next();
 }
 
+// Helper: get raw DB connection for staff routes
+function getConn() { return db.getDB(); }
+
 // Agenda del día / semana
 app.get('/staff/agenda', staffAuth, async (req, res) => {
   try {
     const { days = 7 } = req.query;
-    const r = await db.query(`
+    const r = await getConn().query(`
       SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
              service as servicio, date_str as fecha, time_str as hora,
              status as estado, monto, created_at
@@ -253,7 +256,7 @@ app.get('/staff/agenda', staffAuth, async (req, res) => {
 app.get('/staff/today', staffAuth, async (req, res) => {
   try {
     const today = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day:'2-digit', month:'2-digit', year:'numeric' });
-    const r = await db.query(`
+    const r = await getConn().query(`
       SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
              service as servicio, date_str as fecha, time_str as hora,
              status as estado, monto
@@ -267,7 +270,7 @@ app.get('/staff/today', staffAuth, async (req, res) => {
 // Consultas de color pendientes
 app.get('/staff/color-consultas', staffAuth, async (req, res) => {
   try {
-    const r = await db.query(`
+    const r = await getConn().query(`
       SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
              service as servicio, date_str as fecha, time_str as hora,
              status as estado, monto, created_at, notes
@@ -288,7 +291,7 @@ app.post('/staff/booking/create', staffAuth, async (req, res) => {
     const montoFinal = monto || 0;
     const senaFinal = senaAmount || 0;
     await db.clientUpsert(phoneF, nombre);
-    if (email) await db.query('UPDATE clients SET email = $1 WHERE phone = $2', [email, phoneF]).catch(() => {});
+    if (email) await getConn().query('UPDATE clients SET email = $1 WHERE phone = $2', [email, phoneF]).catch(() => {});
     const saved = await db.bookingSave({
       sessionId: 'staff-manual',
       nombre, phone: phoneF,
@@ -307,7 +310,7 @@ app.get('/staff/clients/search', staffAuth, async (req, res) => {
   try {
     const { q } = req.query;
     if (!q || q.length < 2) return res.json([]);
-    const r = await db.query(`
+    const r = await getConn().query(`
       SELECT phone, name, last_name, email, visit_count, points
       FROM clients
       WHERE LOWER(name) LIKE $1 OR LOWER(last_name) LIKE $1 OR phone LIKE $1 OR LOWER(email) LIKE $1
@@ -353,7 +356,7 @@ app.post('/staff/mp/crear-link', staffAuth, async (req, res) => {
 
     // Guardar link en el booking
     if (bookingId) {
-      await db.query('UPDATE bookings SET mp_payment_link = $1, mp_payment_id = $2, sena_amount = $3 WHERE id = $4',
+      await getConn().query('UPDATE bookings SET mp_payment_link = $1, mp_payment_id = $2, sena_amount = $3 WHERE id = $4',
         [link, prefId, monto, bookingId]).catch(() => {});
     }
 
@@ -380,9 +383,9 @@ app.post('/mp/webhook', async (req, res) => {
       if (p.status === 'approved') {
         const bookingId = p.external_reference;
         if (bookingId) {
-          await db.query('UPDATE bookings SET sena_paid = true, status = $1 WHERE id = $2', ['Seña pagada', bookingId]).catch(() => {});
+          await getConn().query('UPDATE bookings SET sena_paid = true, status = $1 WHERE id = $2', ['Seña pagada', bookingId]).catch(() => {});
           const { updateTurnoStatus } = require('./core/sheets');
-          const b = await db.query('SELECT booking_code, service FROM bookings WHERE id = $1', [bookingId]);
+          const b = await getConn().query('SELECT booking_code, service FROM bookings WHERE id = $1', [bookingId]);
           if (b.rows[0]) await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, 'Seña pagada').catch(() => {});
           console.log(`[mp] ✓ Seña pagada booking ${bookingId}`);
         }
@@ -401,9 +404,9 @@ app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
     const { status } = req.body;
     const validStatuses = ['Confirmado','Cancelado','Completado','Consulta Pendiente','Reprogramado','No asistió'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
-    await db.query(`UPDATE bookings SET status = $1 WHERE id = $2`, [status, req.params.id]);
+    await getConn().query(`UPDATE bookings SET status = $1 WHERE id = $2`, [status, req.params.id]);
     const { updateTurnoStatus } = require('./core/sheets');
-    const b = await db.query(`SELECT booking_code, service FROM bookings WHERE id = $1`, [req.params.id]);
+    const b = await getConn().query(`SELECT booking_code, service FROM bookings WHERE id = $1`, [req.params.id]);
     if (b.rows[0]) await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, status).catch(() => {});
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -414,8 +417,8 @@ app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
   try {
     const { fecha, hora } = req.body;
     if (!fecha || !hora) return res.status(400).json({ error: 'Faltan fecha/hora' });
-    await db.query(`UPDATE bookings SET date_str = $1, time_str = $2, status = 'Confirmado' WHERE id = $3`, [fecha, hora, req.params.id]);
-    const b = await db.query(`SELECT booking_code, service, client_name FROM bookings WHERE id = $1`, [req.params.id]);
+    await getConn().query(`UPDATE bookings SET date_str = $1, time_str = $2, status = 'Confirmado' WHERE id = $3`, [fecha, hora, req.params.id]);
+    const b = await getConn().query(`SELECT booking_code, service, client_name FROM bookings WHERE id = $1`, [req.params.id]);
     if (b.rows[0]) {
       const { updateTurnoStatus } = require('./core/sheets');
       await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, 'Reprogramado').catch(() => {});
@@ -427,7 +430,7 @@ app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
 // Clientes — lista completa
 app.get('/staff/clients', staffAuth, async (req, res) => {
   try {
-    const r = await db.query(`
+    const r = await getConn().query(`
       SELECT phone, name, last_name, email, visit_count, total_spent,
              last_visit, points, promo_opt_in, profile_complete, created_at
       FROM clients ORDER BY visit_count DESC, created_at DESC
@@ -440,7 +443,7 @@ app.get('/staff/clients', staffAuth, async (req, res) => {
 app.get('/staff/clients/:phone', staffAuth, async (req, res) => {
   try {
     const client = await db.clientGet(req.params.phone);
-    const bookings = await db.query(`
+    const bookings = await getConn().query(`
       SELECT id, booking_code, service, date_str, time_str, status, monto, created_at
       FROM bookings WHERE client_phone = $1 ORDER BY created_at DESC
     `, [req.params.phone]);
@@ -452,7 +455,7 @@ app.get('/staff/clients/:phone', staffAuth, async (req, res) => {
 app.put('/staff/clients/:phone', staffAuth, async (req, res) => {
   try {
     const { name, lastName, email, notes } = req.body;
-    await db.query(`UPDATE clients SET name=$1, last_name=$2, email=$3 WHERE phone=$4`,
+    await getConn().query(`UPDATE clients SET name=$1, last_name=$2, email=$3 WHERE phone=$4`,
       [name, lastName, email, req.params.phone]);
     const { syncClientesToSheet } = require('./core/sheets');
     syncClientesToSheet().catch(() => {});
@@ -464,9 +467,9 @@ app.put('/staff/clients/:phone', staffAuth, async (req, res) => {
 app.post('/staff/color-consultas/:id/confirmar', staffAuth, async (req, res) => {
   try {
     const { fecha, hora, notas } = req.body;
-    await db.query(`UPDATE bookings SET status = 'Confirmado', date_str = $1, time_str = $2, notes = $3 WHERE id = $4`,
+    await getConn().query(`UPDATE bookings SET status = 'Confirmado', date_str = $1, time_str = $2, notes = $3 WHERE id = $4`,
       [fecha, hora, notas || '', req.params.id]);
-    const b = await db.query(`SELECT * FROM bookings WHERE id = $1`, [req.params.id]);
+    const b = await getConn().query(`SELECT * FROM bookings WHERE id = $1`, [req.params.id]);
     if (b.rows[0]) {
       const { appendTurnoToSheet } = require('./core/sheets');
       const row = b.rows[0];
