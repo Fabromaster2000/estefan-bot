@@ -136,12 +136,10 @@ async function handle({ sessionId, phone, text }) {
         sessionId, nombre, phone,
         servicio: srv, fecha: '', hora: '',
         monto: session.data.servicio?.precio || 0,
-        senaPaid: false, calendarEventId: null, notes
+        senaPaid: false, calendarEventId: null,
+        notes, status: 'Consulta Pendiente'
       });
-      if (saved?.id) {
-        await db.getDB()?.query('UPDATE bookings SET status = $1, notes = $2 WHERE id = $3',
-          ['Consulta Pendiente', notes, saved.id]).catch(() => {});
-      }
+      console.log(`[color-consulta] DB saved id=${saved?.id} code=${saved?.code}`);
     } catch(e) { console.error('[color-consulta] DB error:', e.message); }
 
     // Notificar al staff por WhatsApp del salón si está configurado
