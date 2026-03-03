@@ -490,18 +490,36 @@ async function loadColor(){
   const l=await api('GET','/staff/color-consultas');
   document.getElementById('tab-color').classList.toggle('has-pending',l.length>0);
   if(!l.length){document.getElementById('list-color').innerHTML='<div class="empty"><div class="empty-icon">✅</div><p>Sin consultas pendientes</p></div>';return;}
-  document.getElementById('list-color').innerHTML=l.map(b=>`
-    <div class="card">
-      <div class="card-header"><div><div class="card-name">${b.nombre||'Sin nombre'}</div><div class="card-sub">${b.servicio} · ${b.phone||''}</div></div><span class="status s-pendiente">Pendiente</span></div>
+  document.getElementById('list-color').innerHTML=l.map(b=>{
+    const notes = b.notes||'';
+    // Parse notes: "Procesos: X | Resultado buscado: Y"
+    const procesosMatch = notes.match(/Procesos: ([^|]+)/);
+    const colorMatch = notes.match(/Resultado buscado: (.+)/);
+    const procesos = procesosMatch ? procesosMatch[1].trim() : '—';
+    const colorBuscado = colorMatch ? colorMatch[1].trim() : '—';
+    return `<div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-name">${b.nombre||'Sin nombre'}</div>
+          <div class="card-sub">${b.servicio} · <a href="https://wa.me/${(b.phone||'').replace(/[^0-9]/g,'')}" target="_blank" style="color:var(--green)">${b.phone||''}</a></div>
+        </div>
+        <span class="status s-pendiente">Pendiente</span>
+      </div>
       <div class="card-meta">
         <span class="pill">🕐 ${new Date(b.created_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</span>
-        ${b.notes?`<span class="pill">📝 ${b.notes}</span>`:''}
+        <span class="pill">💆 ${procesos}</span>
+        <span class="pill">🎨 ${colorBuscado}</span>
+      </div>
+      <div style="background:var(--bg);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:13px;color:var(--muted)">
+        <strong style="color:var(--text)">📸 Fotos:</strong> Las fotos llegan por WhatsApp del salón. Revisalas ahí y confirmá o rechazá el turno acá.
       </div>
       <div class="card-actions">
-        <button class="btn-sm green" onclick="openColorModal(${b.id})">✅ Confirmar</button>
+        <button class="btn-sm green" onclick="openColorModal(${b.id})">✅ Agendar turno</button>
         <button class="btn-sm red" onclick="rechazarColor(${b.id})">❌ No viable</button>
+        <a href="https://wa.me/${(b.phone||'').replace(/[^0-9]/g,'')}" target="_blank" class="btn-sm" style="text-decoration:none">💬 WhatsApp clienta</a>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function openColorModal(id){curColorId=id;['cc-fecha','cc-hora','cc-notas'].forEach(i=>document.getElementById(i).value='');om('modal-color');}
 async function doColorConfirm(){
