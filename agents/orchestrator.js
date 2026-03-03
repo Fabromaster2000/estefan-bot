@@ -202,6 +202,11 @@ async function handle({ sessionId, phone, text }) {
 
   // ── Confirmaciones ────────────────────────────────────────────────────────
   if (session.step === 'CONFIRM_TURNO') {
+    // Última barrera: si llegó acá con un servicio de color sin consulta, redirigir
+    if (session.data.servicio?.consulta && !session.data.consultaOk) {
+      session.step = 'COLOR_CONSULTA_TIPO';
+      return send(`Un momento 💛 Antes de confirmar necesito hacerte unas preguntas sobre el *${session.data.servicio.nombre}*.\n\n¿Tenés tinturas, decoloraciones, alisados o algún tratamiento químico en el pelo actualmente?\n\n1 — No, pelo natural\n2 — Sí, tengo procesos previos`);
+    }
     if (/^(s[ií]|dale|ok|va|claro|confirmo|bueno|perfecto)/i.test(tl)) return await doCreateBooking(session, phone, send);
     if (/^(no\b|nop|mejor no)/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('Perfecto, no reservé nada 😊 Cuando quieras, acá estoy 💛'); }
     return send(MSGS.confirmar(session.data));
@@ -364,6 +369,12 @@ async function handle({ sessionId, phone, text }) {
       srv = SERVICIOS.findByName('Retoque / Raíz');
     }
     session.data.servicio = srv;
+    // Si el servicio recién asignado requiere consulta, resetear servicioConfirmado
+    // para que el guard se dispare en el próximo avanzarReserva
+    if (srv?.consulta) {
+      session.data.servicioConfirmado = false;
+      session.data.consultaOk = false;
+    }
   }
   if (parsed.servicio2 && !session.data.extra) {
     const srv2 = SERVICIOS.findByName(parsed.servicio2);
@@ -440,13 +451,23 @@ async function handle({ sessionId, phone, text }) {
     return send(`${parsed.texto || 'Claro'} 🔍 Ingresá tu *código* (ej: #AB12) o tu *nombre*:`);
   }
 
-  // Si el texto menciona color/balayage/etc y no tenemos servicio aún → forzar servicio de color
-  if ((intent === 'RESERVAR' || session.step === 'RESERVANDO') && !session.data.servicio) {
-    if (/balayage|balaige/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Balayage');
-    else if (/decolor|mechitas|mechas/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Decoloración total');
-    else if (/raiz|raíz|retoque/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Retoque / Raíz');
-    else if (/contorno/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Contorno');
-    else if (/color|tintura|teñi|cambio.*look|tinte/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Color entero');
+  // Si el texto menciona color/balayage/etc → forzar servicio correcto y resetear confirmado
+  if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
+    let srvDetectado = null;
+    if (/balayage|balaige/i.test(tl)) srvDetectado = SERVICIOS.findByName('Balayage');
+    else if (/decolor|mechitas|mechas/i.test(tl)) srvDetectado = SERVICIOS.findByName('Decoloración total');
+    else if (/raiz|raíz|retoque/i.test(tl)) srvDetectado = SERVICIOS.findByName('Retoque / Raíz');
+    else if (/contorno/i.test(tl)) srvDetectado = SERVICIOS.findByName('Contorno');
+    else if (/color|tintura|teñi|cambio.*look|tinte/i.test(tl)) srvDetectado = SERVICIOS.findByName('Color entero');
+
+    if (srvDetectado && (!session.data.servicio || session.data.servicio.id !== srvDetectado.id)) {
+      session.data.servicio = srvDetectado;
+      // Siempre resetear cuando detectamos un servicio de color — garantiza que pase por consulta
+      if (srvDetectado.consulta) {
+        session.data.servicioConfirmado = false;
+        session.data.consultaOk = false;
+      }
+    }
   }
 
   if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
@@ -475,17 +496,18 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
   const d = session.data;
   const haiku = parsed?.texto && !parsed.texto.includes('$') ? parsed.texto : null;
 
-  // Todos los servicios de color requieren consulta previa — SIEMPRE a staff
+  if (!d.servicio) return send((haiku ? haiku + '\n\n' : '') + MSGS.servicios());
+
+  // GUARD PRINCIPAL — servicios de color/químicos SIEMPRE requieren consulta previa
+  // Se chequea en CUALQUIER punto del flujo, sin importar si ya pasó servicioConfirmado
   if (d.servicio?.consulta && !d.consultaOk) {
     session.step = 'COLOR_CONSULTA_TIPO';
     const srv = d.servicio.nombre;
-    const saludo = d.nombre ? `${d.nombre}, e` : 'E';
-    return send(`¡${saludo}l *${srv}* requiere una consulta previa con nuestro equipo para garantizar el mejor resultado 💛\n\nTe hago unas preguntas rápidas para que las estilistas puedan prepararse bien.\n\n¿Tenés tinturas, decoloraciones, alisados o algún tratamiento químico en el pelo actualmente?\n\n1 — No, pelo natural\n2 — Sí, tengo procesos previos`);
+    const saludo = d.nombre ? `${d.nombre}, a` : 'A';
+    return send(`${saludo}ntes de agendar el *${srv}*, necesitamos hacer una consulta previa 💛\n\nTe hago unas preguntas rápidas para que las estilistas se preparen bien.\n\n¿Tenés tinturas, decoloraciones, alisados o algún tratamiento químico en el pelo actualmente?\n\n1 — No, pelo natural\n2 — Sí, tengo procesos previos`);
   }
 
-  if (!d.servicio) return send((haiku ? haiku + '\n\n' : '') + MSGS.servicios());
-
-  // Servicio recién elegido — Haiku celebra y pregunta el día, nosotros no agregamos nada
+  // Servicio recién elegido — Haiku celebra y pregunta el día
   if (!d.servicioConfirmado) {
     d.servicioConfirmado = true;
     return send(haiku || `¡Buena elección! ✨ ¿Qué día te viene bien?\n\nAtendemos *lunes a sábado de 10:00 a 20:00hs*`);
