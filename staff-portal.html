@@ -307,36 +307,62 @@
 
     <!-- ADMIN -->
     <div class="panel" id="panel-admin">
-      <div class="section-title" style="margin-bottom:20px">Administración</div>
+      <div class="section-title" style="margin-bottom:4px">Administración</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Todas las acciones de borrado requieren confirmar tu contraseña.</p>
 
-      <!-- Cleanup test clients -->
-      <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">🧹 Limpiar clientes de prueba</div>
-        <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Elimina todos los clientes cuyo teléfono empieza con <code style="background:var(--bg);padding:2px 6px;border-radius:4px">web-</code> (sesiones de prueba del chat de test).</p>
-        <div id="test-clients-list" style="margin-bottom:16px"></div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn-sm" onclick="loadTestClients()">Ver clientes TEST</button>
-          <button class="btn-sm red" onclick="cleanupTestClients()">🗑️ Borrar todos los TEST</button>
-        </div>
-        <div id="cleanup-result" style="margin-top:12px;font-size:13px;color:var(--green);display:none"></div>
-      </div>
-
-      <!-- Delete specific client -->
-      <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">🗑️ Borrar cliente específico</div>
-        <div class="form-group">
-          <label class="form-label">Teléfono (ej: +5491155556666 o web-xxxx)</label>
-          <input class="form-input" id="del-phone" placeholder="+5491155556666">
-        </div>
-        <button class="btn-sm red" onclick="deleteClient()">Borrar este cliente</button>
-        <div id="del-result" style="margin-top:12px;font-size:13px;display:none"></div>
-      </div>
-
-      <!-- DB Stats -->
-      <div class="card">
+      <!-- Stats -->
+      <div class="card" id="admin-stats-card">
         <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">📊 Estado de la base de datos</div>
-        <button class="btn-sm" onclick="loadDBStats()">Ver stats</button>
-        <div id="db-stats" style="margin-top:16px"></div>
+        <div id="admin-stats"><button class="btn-sm" onclick="loadAdminStats()">Ver estadísticas</button></div>
+      </div>
+
+      <!-- Turnos TEST -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">🧹 Limpiar sesiones de prueba</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Turnos y clientes con teléfono <code style="background:var(--bg);padding:2px 6px;border-radius:4px">web-*</code> generados desde el chat de test.</p>
+        <div id="test-bookings-list" style="margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="loadTestBookings()">🔍 Ver sesiones TEST</button>
+          <button class="btn-sm red" onclick="confirmDeleteAll('test')">🗑️ Borrar todo lo TEST</button>
+        </div>
+      </div>
+
+      <!-- Buscar y borrar turno -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">🗑️ Borrar turno individual</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input class="form-input" id="del-booking-q" placeholder="Nombre, código (#XXXX) o teléfono" style="flex:1">
+          <button class="btn-sm" onclick="searchBookingsAdmin()">Buscar</button>
+        </div>
+        <div id="del-booking-results"></div>
+      </div>
+
+      <!-- Borrar cliente + sus turnos -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">👤 Borrar cliente completo</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Borra el cliente y todos sus turnos asociados.</p>
+        <div style="display:flex;gap:8px;margin-bottom:4px">
+          <input class="form-input" id="del-client-phone" placeholder="Teléfono exacto (ej: +5491155556666)" style="flex:1">
+          <button class="btn-sm red" onclick="confirmDeleteClient()">Borrar</button>
+        </div>
+        <div id="del-client-result" style="margin-top:8px;font-size:13px"></div>
+      </div>
+
+      <!-- Modal confirmación con contraseña -->
+      <div id="modal-confirm-delete" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;max-width:380px;width:90%">
+          <div style="font-size:18px;font-weight:700;margin-bottom:8px">⚠️ Confirmar borrado</div>
+          <div id="confirm-delete-msg" style="color:var(--muted);font-size:14px;margin-bottom:20px"></div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:6px">Ingresá tu contraseña para confirmar:</label>
+            <input type="password" class="form-input" id="confirm-delete-pw" placeholder="Contraseña">
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn-sm" onclick="document.getElementById('modal-confirm-delete').style.display='none'">Cancelar</button>
+            <button class="btn-sm red" onclick="executeConfirmedDelete()">Confirmar borrado</button>
+          </div>
+          <div id="confirm-delete-error" style="color:var(--red);font-size:13px;margin-top:8px;display:none">Contraseña incorrecta</div>
+        </div>
       </div>
     </div>
 

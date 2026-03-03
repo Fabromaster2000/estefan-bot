@@ -197,7 +197,8 @@ app.get('/admin/clients', async (req, res) => {
 });
 
 app.post('/admin/cleanup-test-clients', async (req, res) => {
-  if (req.body?.secret !== ADMIN_SECRET) return res.status(403).json({ error: 'No autorizado' });
+  const pw = req.headers['x-staff-password'] || req.body?.password;
+  if (pw !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(403).json({ error: 'No autorizado' });
   try {
     const dbConn = db.getDB();
     const clients = await dbConn.query(`SELECT phone FROM clients WHERE phone LIKE 'web-%'`);
@@ -211,13 +212,72 @@ app.post('/admin/cleanup-test-clients', async (req, res) => {
 });
 
 app.post('/admin/delete-client', async (req, res) => {
-  if (req.body?.secret !== ADMIN_SECRET) return res.status(403).json({ error: 'No autorizado' });
+  const pw = req.headers['x-staff-password'] || req.body?.password;
+  if (pw !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(403).json({ error: 'No autorizado' });
   try {
     const dbConn = db.getDB();
     await dbConn.query(`DELETE FROM bookings WHERE client_phone = $1`, [req.body.phone]);
     await dbConn.query(`DELETE FROM clients WHERE phone = $1`, [req.body.phone]);
     await sheets.syncClientesToSheet();
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Borrar turno individual
+app.delete('/admin/booking/:id', async (req, res) => {
+  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    const dbConn = db.getDB();
+    const r = await dbConn.query('DELETE FROM bookings WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Turno no encontrado' });
+    res.json({ ok: true, id: req.params.id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Borrar múltiples turnos
+app.post('/admin/bookings/bulk-delete', async (req, res) => {
+  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    const { ids } = req.body;
+    if (!ids?.length) return res.json({ ok: true, deleted: 0 });
+    const dbConn = db.getDB();
+    const r = await dbConn.query('DELETE FROM bookings WHERE id = ANY($1)', [ids]);
+    res.json({ ok: true, deleted: r.rowCount });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Listar todos los turnos para admin (con filtros)
+app.get('/admin/bookings', async (req, res) => {
+  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    const dbConn = db.getDB();
+    const { filter } = req.query; // 'test' | 'all'
+    let q = `SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
+             service as servicio, date_str as fecha, time_str as hora,
+             status as estado, monto, created_at
+             FROM bookings`;
+    if (filter === 'test') q += ` WHERE client_phone LIKE 'web-%'`;
+    q += ` ORDER BY created_at DESC LIMIT 500`;
+    const r = await dbConn.query(q);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Stats de DB
+app.get('/admin/stats', async (req, res) => {
+  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    const dbConn = db.getDB();
+    const [bTotal, bTest, bReal, clients] = await Promise.all([
+      dbConn.query('SELECT COUNT(*) FROM bookings'),
+      dbConn.query("SELECT COUNT(*) FROM bookings WHERE client_phone LIKE 'web-%'"),
+      dbConn.query("SELECT COUNT(*) FROM bookings WHERE client_phone NOT LIKE 'web-%' AND client_phone IS NOT NULL"),
+      dbConn.query('SELECT COUNT(*) FROM clients'),
+    ]);
+    res.json({
+      bookings: { total: +bTotal.rows[0].count, test: +bTest.rows[0].count, real: +bReal.rows[0].count },
+      clients: +clients.rows[0].count
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
