@@ -115,6 +115,32 @@ async function handle({ sessionId, phone, text }) {
 
   if (session.step === 'COLOR_DETALLE_COLOR') {
     session.data.consultaColorDeseado = t;
+    // Si ya tenemos nombre (del perfil o de reserva previa), saltar al paso de fotos
+    if (session.data.nombre || session.profile?.nombre) {
+      session.data.nombre = session.data.nombre || session.profile.nombre;
+      session.step = 'COLOR_PEDIR_FOTOS';
+      return send(`¡Perfecto, eso ayuda muchísimo! 💛\n\nÚltimo paso — ¿podés mandarnos *2 fotos*?\n\n📸 *Foto 1:* Tu pelo *hoy* (con buena luz, lo más natural posible)\n📸 *Foto 2:* Una *referencia* del resultado que querés (puede ser de Pinterest, Instagram, etc.)\n\nEstas fotos van directo al equipo para que evalúen el caso y te contacten con fecha, hora y todo lo que necesitás saber 💛`);
+    }
+    session.step = 'COLOR_PEDIR_NOMBRE';
+    return send(`¡Perfecto! 💛 Antes de mandarte al equipo, ¿me decís tu nombre? Así te contactamos personalmente cuando revisemos las fotos 😊`);
+  }
+
+  if (session.step === 'COLOR_PEDIR_NOMBRE') {
+    // Guardar nombre — si dice "no" o algo corto raro, igual guardamos lo que haya
+    session.data.nombre = /^(no|nop|paso|skip|-)\s*$/i.test(tl) ? '' : t;
+    // Pedir email
+    session.step = 'COLOR_PEDIR_EMAIL';
+    const nombreBonito = session.data.nombre ? `¡Gracias, ${session.data.nombre.split(' ')[0]}! ` : '¡Gracias! ';
+    return send(`${nombreBonito}💛 ¿Me dejás un mail o número de contacto? Así el equipo puede avisarte cuando revisen las fotos 📩\n\n_(o *no* para saltear)_`);
+  }
+
+  if (session.step === 'COLOR_PEDIR_EMAIL') {
+    const esEmail = /[@.]/.test(t);
+    const esNo = /^(no|nop|paso|skip|-)\s*$/i.test(tl);
+    if (!esNo) {
+      if (esEmail) session.data.email = t.trim().toLowerCase();
+      else session.data.telefono = t.trim(); // puede ser un número
+    }
     session.step = 'COLOR_PEDIR_FOTOS';
     return send(`¡Perfecto, eso ayuda muchísimo! 💛\n\nÚltimo paso — ¿podés mandarnos *2 fotos*?\n\n📸 *Foto 1:* Tu pelo *hoy* (con buena luz, lo más natural posible)\n📸 *Foto 2:* Una *referencia* del resultado que querés (puede ser de Pinterest, Instagram, etc.)\n\nEstas fotos van directo al equipo para que evalúen el caso y te contacten con fecha, hora y todo lo que necesitás saber 💛`);
   }
@@ -127,7 +153,12 @@ async function handle({ sessionId, phone, text }) {
       session.data.consultaTiempo ? `(hace ${session.data.consultaTiempo})` : null,
     ].filter(Boolean).join(' ');
     const colorDeseado = session.data.consultaColorDeseado || 'No especificado';
-    const notes = `Procesos: ${resumenProcesos || 'Sin procesos previos'} | Resultado buscado: ${colorDeseado}`;
+    const tipoSrv = session.data.servicio?.nombre || srv;
+    const email = session.data.email || '';
+    const tel = session.data.telefono || '';
+    const contacto = email || tel || 'No dejó contacto';
+    const alistado = session.data.consultaTieneAlistado ? ' ⚠️ Tiene alisado/keratina' : '';
+    const notes = `Procesos: ${resumenProcesos || 'Sin procesos previos'}${alistado} | Resultado buscado: ${colorDeseado} | Contacto: ${contacto}`;
 
     // Guardar en DB como Consulta Pendiente para el portal staff
     try {
@@ -137,6 +168,7 @@ async function handle({ sessionId, phone, text }) {
         servicio: srv, fecha: '', hora: '',
         monto: session.data.servicio?.precio || 0,
         senaPaid: false, calendarEventId: null,
+        email: session.data.email || null,
         notes, status: 'Consulta Pendiente'
       });
       console.log(`[color-consulta] DB saved id=${saved?.id} code=${saved?.code}`);
