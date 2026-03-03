@@ -388,6 +388,14 @@ async function handle({ sessionId, phone, text }) {
   }
 
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
+    // Si estamos en medio de una reserva y la pregunta es sobre horarios/disponibilidad,
+    // NO interrumpir el flow — responder y seguir en RESERVANDO
+    const esConsultaHorario = /qué día|que dia|qué días|que dias|cuándo|cuando|horario|atienden|están|estan|disponib|abierto/i.test(tl);
+    if (session.step === 'RESERVANDO' && esConsultaHorario && intent === 'GESTIONAR') {
+      // Responder la consulta de horario sin salir del flow de reserva
+      return send(`${parsed.texto || 'Atendemos *lunes a sábado de 10:00 a 20:00hs* 💛'}\n\n¿Qué día te viene bien?`);
+    }
+
     session.step = 'BUSCANDO_TURNO'; session.data = {};
     if (parsed.codigo) {
       const found = await booking.findBooking(parsed.codigo, phone);
