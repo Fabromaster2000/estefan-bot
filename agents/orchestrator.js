@@ -349,7 +349,21 @@ async function handle({ sessionId, phone, text }) {
     session.profile.nombre = session.data.nombre;
   }
   if (parsed.servicio && !session.data.servicio) {
-    session.data.servicio = SERVICIOS.findByName(parsed.servicio);
+    let srv = SERVICIOS.findByName(parsed.servicio);
+    // Si Haiku dice "color" genérico o "cambio de look" → Color entero por defecto
+    if (!srv && /color|tintura|teñi|cambio.*look|look.*cambio|tinte/i.test(parsed.servicio)) {
+      srv = SERVICIOS.findByName('Color entero');
+    }
+    if (!srv && /balayage|balaige|balay/i.test(parsed.servicio)) {
+      srv = SERVICIOS.findByName('Balayage');
+    }
+    if (!srv && /mechas|mecha|decolor/i.test(parsed.servicio)) {
+      srv = SERVICIOS.findByName('Decoloración total');
+    }
+    if (!srv && /raiz|raíz|retoque/i.test(parsed.servicio)) {
+      srv = SERVICIOS.findByName('Retoque / Raíz');
+    }
+    session.data.servicio = srv;
   }
   if (parsed.servicio2 && !session.data.extra) {
     const srv2 = SERVICIOS.findByName(parsed.servicio2);
@@ -424,6 +438,15 @@ async function handle({ sessionId, phone, text }) {
       if (found) { session.data.booking = found; session.step = 'OPCION_TURNO'; return send(MSGS.turnoEncontrado(found)); }
     }
     return send(`${parsed.texto || 'Claro'} 🔍 Ingresá tu *código* (ej: #AB12) o tu *nombre*:`);
+  }
+
+  // Si el texto menciona color/balayage/etc y no tenemos servicio aún → forzar servicio de color
+  if ((intent === 'RESERVAR' || session.step === 'RESERVANDO') && !session.data.servicio) {
+    if (/balayage|balaige/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Balayage');
+    else if (/decolor|mechitas|mechas/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Decoloración total');
+    else if (/raiz|raíz|retoque/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Retoque / Raíz');
+    else if (/contorno/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Contorno');
+    else if (/color|tintura|teñi|cambio.*look|tinte/i.test(tl)) session.data.servicio = SERVICIOS.findByName('Color entero');
   }
 
   if (intent === 'RESERVAR' || session.step === 'RESERVANDO') {
