@@ -84,63 +84,84 @@ async function handle({ sessionId, phone, text }) {
     if (n === 4) return send('Te conecto con alguien del equipo 💛');
   }
 
-  // ── COLOR — consulta previa ──────────────────────────────────────────────────
+  // ── COLOR — consulta previa completa ────────────────────────────────────────
+  // Flujo: TIPO → DETALLE_PROCESO → DETALLE_TIEMPO → DETALLE_COLOR → PEDIR_FOTOS → cerrar
+  // SIEMPRE deriva a staff — el bot recopila info, nunca confirma turno de color solo
+
   if (session.step === 'COLOR_CONSULTA_TIPO') {
-    // SIEMPRE deriva a staff — sin excepción, sin importar si tiene procesos previos o no
-    session.data.consultaRespuesta1 = t;
+    session.data.consultaProceso1 = t;
     const noPrevios = /^(1|no\b|nop|natural|virgen)/i.test(tl);
-    session.data.consultaProceso = noPrevios ? 'Sin procesos previos' : t;
-    if (!noPrevios) {
-      // Con procesos previos — preguntar detalle antes de pedir fotos
-      session.step = 'COLOR_CONSULTA_DETALLE';
-      return send(`Entendido 💛 ¿Qué tipo de proceso tenés actualmente?\n\n1 — Tintura (¿de qué color?)\n2 — Alisado / Keratina / Botox\n3 — Decoloración o mechitas previas\n4 — Varios`);
+    if (noPrevios) {
+      session.data.consultaProcesos = 'Sin procesos previos';
+      session.step = 'COLOR_DETALLE_COLOR';
+      return send(`¡Genial, pelo natural es ideal para trabajar! 💛\n\n¿Cuál sería el resultado que buscás? (ej: "rubia platinada", "castaño con reflejos dorados", "roja vibrante")\n\nEso ayuda al equipo a preparar todo de antemano ✨`);
     }
-    // Sin procesos previos — igual va a evaluación del equipo
-    session.step = 'COLOR_PEDIR_FOTOS';
-    return send(`¡Genial! 💛 Para asegurarnos de que el resultado sea perfecto, ¿podés mandarnos una foto de tu pelo *actual* y una de *referencia* del resultado que buscás?\n\n📸 Las fotos van directo al equipo — te contactamos a la brevedad para confirmar fecha y hora 💛`);
+    session.step = 'COLOR_DETALLE_PROCESO';
+    return send(`Entendido 💛 ¿Qué tipo de proceso tenés actualmente?\n\n1 — Tintura (color entero o raíz)\n2 — Decoloración o mechitas\n3 — Alisado / Keratina / Botox\n4 — Varios de los anteriores`);
   }
 
-  if (session.step === 'COLOR_CONSULTA_DETALLE') {
-    // Guardar detalle del proceso previo
-    session.data.consultaProceso = t;
-    const tieneAlistado = /alisado|keratina|botox|2/i.test(tl);
-    const tieneTinturaNegra = /negr|oscur|castaño oscur/i.test(tl);
-    const esDecoloracion = ['Balayage','Decoloración total'].includes(session.data.servicio?.nombre);
+  if (session.step === 'COLOR_DETALLE_PROCESO') {
+    session.data.consultaProcesos = t;
+    session.data.consultaTieneAlistado = /alisado|keratina|botox|3/i.test(tl);
+    session.step = 'COLOR_DETALLE_TIEMPO';
+    return send(`¿Hace cuánto te hiciste ese proceso? (ej: "hace 2 semanas", "hace 3 meses", "más de un año") 📅`);
+  }
 
-    // Casos donde derivar a staff siempre
-    if (esDecoloracion || tieneAlistado || tieneTinturaNegra) {
-      session.step = 'COLOR_PEDIR_FOTOS';
-      let msg = '';
-      if (tieneTinturaNegra && esDecoloracion) {
-        msg = `El negro y el castaño oscuro son los colores más difíciles de extraer — necesitamos ver bien el estado del pelo antes de confirmar el turno 💛`;
-      } else if (tieneAlistado) {
-        msg = `Con alisado/keratina hay que evaluar el tiempo transcurrido y el estado del pelo antes de aplicar color 💛`;
-      } else {
-        msg = `Para asegurarnos de que el resultado sea el que buscás, necesitamos evaluar el caso 💛`;
-      }
-      return send(`${msg}\n\n¿Podés mandarnos *2 fotos*?\n📸 Una de tu pelo *actual* (con buena luz)\n📸 Una de *referencia* del resultado que querés\n\nEsas fotos van directo al equipo de Estefan y te contactamos a la brevedad 💛`);
-    }
+  if (session.step === 'COLOR_DETALLE_TIEMPO') {
+    session.data.consultaTiempo = t;
+    session.step = 'COLOR_DETALLE_COLOR';
+    return send(`¡Gracias! 💛 ¿Y cuál es el resultado que estás buscando?\n\nEj: "quiero ser rubia", "mechitas caramelo sobre el castaño", "rojo vibrante"... Cuanto más detalle, mejor se preparan las estilistas ✨`);
+  }
 
-    // Tiene tintura pero no negra y no es decoloración — continuar con reserva con nota
-    session.data.consultaOk = true;
-    session.data.consultaResumen = `Procesos previos: ${t}`;
-    session.step = 'RESERVANDO';
-    return send(`¡Gracias por la info! 💛 Con esos datos nuestras estilistas van a estar preparadas para darte el mejor resultado. ¿Qué día te viene bien para venir?\n\nAtendemos *lunes a sábado de 10:00 a 20:00hs*`);
+  if (session.step === 'COLOR_DETALLE_COLOR') {
+    session.data.consultaColorDeseado = t;
+    session.step = 'COLOR_PEDIR_FOTOS';
+    return send(`¡Perfecto, eso ayuda muchísimo! 💛\n\nÚltimo paso — ¿podés mandarnos *2 fotos*?\n\n📸 *Foto 1:* Tu pelo *hoy* (con buena luz, lo más natural posible)\n📸 *Foto 2:* Una *referencia* del resultado que querés (puede ser de Pinterest, Instagram, etc.)\n\nEstas fotos van directo al equipo para que evalúen el caso y te contacten con fecha, hora y todo lo que necesitás saber 💛`);
   }
 
   if (session.step === 'COLOR_PEDIR_FOTOS') {
-    // La clienta respondió algo — o mandó fotos (el texto llegó) o preguntó algo
-    const { sendWhatsApp } = require('../core/wassenger'); // no-op en web test
-    // Notificar a staff con el resumen
-    const srv = session.data.servicio?.nombre || 'Color';
-    const nombre = session.data.nombre || 'clienta';
-    const proceso = session.data.consultaProceso || 'no especificado';
-    const resumen = `🔔 *CONSULTA DE COLOR — EVALUACIÓN REQUERIDA*\n\n👤 ${nombre}\n✂️ Servicio: ${srv}\n💬 Procesos previos: ${proceso}\n📱 Sesión: ${sessionId}\n\n_La clienta fue informada de mandar fotos. Pendiente evaluación._`;
-    // Log para staff
-    console.log(`[color-consulta] ${resumen.replace(/\n/g, ' ')}`);
+    const srv    = session.data.servicio?.nombre || 'Color';
+    const nombre = session.data.nombre || '';
+    const resumenProcesos = [
+      session.data.consultaProcesos,
+      session.data.consultaTiempo ? `(hace ${session.data.consultaTiempo})` : null,
+    ].filter(Boolean).join(' ');
+    const colorDeseado = session.data.consultaColorDeseado || 'No especificado';
+    const notes = `Procesos: ${resumenProcesos || 'Sin procesos previos'} | Resultado buscado: ${colorDeseado}`;
+
+    // Guardar en DB como Consulta Pendiente para el portal staff
+    try {
+      const db = require('../core/db');
+      const saved = await db.bookingSave({
+        sessionId, nombre, phone,
+        servicio: srv, fecha: '', hora: '',
+        monto: session.data.servicio?.precio || 0,
+        senaPaid: false, calendarEventId: null, notes
+      });
+      if (saved?.id) {
+        await db.getDB()?.query('UPDATE bookings SET status = $1, notes = $2 WHERE id = $3',
+          ['Consulta Pendiente', notes, saved.id]).catch(() => {});
+      }
+    } catch(e) { console.error('[color-consulta] DB error:', e.message); }
+
+    // Notificar al staff por WhatsApp del salón si está configurado
+    try {
+      const STAFF_WA = process.env.STAFF_WHATSAPP_PHONE;
+      const WASS_TOKEN = process.env.WASSENGER_TOKEN;
+      if (STAFF_WA && WASS_TOKEN) {
+        const axios = require('axios');
+        const msgStaff = `🔔 *NUEVA CONSULTA DE COLOR*\n\n👤 ${nombre || 'Sin nombre'} · 📱 ${phone}\n✂️ ${srv}\n💬 ${resumenProcesos || 'Sin procesos previos'}\n🎨 Busca: ${colorDeseado}\n\n_Ver fotos y confirmar turno:_\nhttps://peluqueria-bot.onrender.com/staff`;
+        await axios.post('https://api.wassenger.com/v1/messages',
+          { phone: STAFF_WA, message: msgStaff },
+          { headers: { Token: WASS_TOKEN }, timeout: 8000 }
+        ).catch(e => console.error('[color-consulta] WA staff error:', e.message));
+      }
+    } catch(e) { console.error('[color-consulta] WA notify error:', e.message); }
+
+    console.log(`[color-consulta] NUEVA | ${nombre} | ${srv} | ${resumenProcesos} | buscado: ${colorDeseado}`);
     session.step = 'LIBRE';
     session.data = {};
-    return send(`¡Perfecto! 💛 El equipo de Estefan va a revisar las fotos y te va a contactar a la brevedad para confirmar el turno y darte todos los detalles.\n\n¡Gracias por tu consulta! 🌟`);
+    return send(`¡Perfecto! 💛 En cuanto el equipo revise las fotos te contactamos para confirmar fecha, hora y todos los detalles.\n\nNormalmente respondemos en menos de 24hs. ¡Gracias por consultarnos! 🌟`);
   }
 
   // ── UPSELL — antes de Haiku ───────────────────────────────────────────────
@@ -167,15 +188,16 @@ async function handle({ sessionId, phone, text }) {
     // Pregunta o comentario sobre el producto — Haiku responde y mantiene el step
     console.log('[orch] UPSELL pregunta — Haiku responde');
     const srvNombre = u ? (SERVICIOS.findById(u.targetId)?.nombre || 'el tratamiento') : 'el tratamiento';
-    const parsed = await interpret({
+    const clientCtxUpsell = await intake.buildContext(phone);
+    const parsedUpsell = await personal.interpret({
       text,
-      intent: session.data.intent,
-      clientCtx,
+      clientCtx: clientCtxUpsell,
       historial: session.historial,
+      step: 'UPSELL',
       extraContext: `La clienta está preguntando sobre el servicio adicional que le ofreciste: "${srvNombre}". Respondé su pregunta con entusiasmo y conocimiento. La ampolla reparadora hidrata, repara y sella la cutícula — el pelo queda suave, brillante, sin frizz. El Head Spa limpia el cuero cabelludo en profundidad, activa la circulación y deja el pelo muy liviano. Al final de tu respuesta, invitala amablemente a decidir: *1 — Sí, lo agrego* o *2 — No, gracias*.`
     });
     // Mantener step en UPSELL — seguimos esperando la decisión
-    return send(parsed?.texto || `La *${srvNombre}* es un tratamiento que potencia y protege el resultado de tu servicio ✨ ¿La sumamos?\n\n1 — Sí, la agrego\n2 — No, gracias`);
+    return send(parsedUpsell?.texto || `La *${srvNombre}* es un tratamiento que potencia y protege el resultado de tu servicio ✨ ¿La sumamos?\n\n1 — Sí, la agrego\n2 — No, gracias`);
   }
 
   // ── Confirmaciones ────────────────────────────────────────────────────────
@@ -430,27 +452,12 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
   const d = session.data;
   const haiku = parsed?.texto && !parsed.texto.includes('$') ? parsed.texto : null;
 
-  // Todos los servicios de color requieren consulta previa
+  // Todos los servicios de color requieren consulta previa — SIEMPRE a staff
   if (d.servicio?.consulta && !d.consultaOk) {
     session.step = 'COLOR_CONSULTA_TIPO';
-    const esTintura = ['Retoque / Raíz','Color entero','Contorno'].includes(d.servicio.nombre);
-    const esDecoloracion = ['Balayage','Decoloración total'].includes(d.servicio.nombre);
-    if (esTintura) {
-      return send(`¡Genial! 💛 Para el *${d.servicio.nombre}* necesito hacerte unas preguntas rápidas para prepararte el mejor resultado posible.\n\n¿Tenés tinturas o tratamientos químicos previos en el pelo? (alisado, keratina, botox, decoloración)
-
-1 — No, pelo natural
-2 — Sí, tengo procesos previos`);
-    }
-    if (esDecoloracion) {
-      return send(`¡Hermosa elección! ✨ El *${d.servicio.nombre}* requiere una evaluación previa para asegurarnos de que el resultado sea espectacular.\n\n¿Tenés tinturas o tratamientos químicos en el pelo? (color, alisado, keratina)
-
-1 — No, pelo natural o con decoloración previa
-2 — Sí, tengo tintura o alisado`);
-    }
-    return send(`Para *${d.servicio.nombre}* necesito hacerte unas preguntas previas 💛\n\n¿Tenés tinturas o tratamientos químicos previos?
-
-1 — No
-2 — Sí`);
+    const srv = d.servicio.nombre;
+    const saludo = d.nombre ? `${d.nombre}, e` : 'E';
+    return send(`¡${saludo}l *${srv}* requiere una consulta previa con nuestro equipo para garantizar el mejor resultado 💛\n\nTe hago unas preguntas rápidas para que las estilistas puedan prepararse bien.\n\n¿Tenés tinturas, decoloraciones, alisados o algún tratamiento químico en el pelo actualmente?\n\n1 — No, pelo natural\n2 — Sí, tengo procesos previos`);
   }
 
   if (!d.servicio) return send((haiku ? haiku + '\n\n' : '') + MSGS.servicios());
