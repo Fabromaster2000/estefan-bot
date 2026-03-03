@@ -496,6 +496,8 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
   const d = session.data;
   const haiku = parsed?.texto && !parsed.texto.includes('$') ? parsed.texto : null;
 
+  console.log(`[avanzar] srv=${d.servicio?.nombre} consulta=${d.servicio?.consulta} consultaOk=${d.consultaOk} srvConfirmado=${d.servicioConfirmado}`);
+
   if (!d.servicio) return send((haiku ? haiku + '\n\n' : '') + MSGS.servicios());
 
   // GUARD PRINCIPAL — servicios de color/químicos SIEMPRE requieren consulta previa
