@@ -524,13 +524,20 @@ app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
     if (bk) {
       const { updateTurnoStatus } = require('./core/sheets');
       await updateTurnoStatus(bk.booking_code, bk.service, 'Reprogramado').catch(() => {});
+      console.log(`[reschedule] bk found: ${!!bk} | email: ${bk?.email||'NONE'} | phone: ${bk?.client_phone}`);
       if (bk.email) {
         const { mailTurnoModificado } = require('./mailer');
-        await mailTurnoModificado({
-          to: bk.email, nombre: bk.client_name, servicio: bk.service,
-          fecha, hora, code: bk.booking_code, monto: bk.monto, motivo: motivo || ''
-        }).catch(e => console.error('[staff] mail reschedule error:', e.message));
-        console.log(`[staff] ✓ Mail reprogramación → ${bk.email}`);
+        try {
+          await mailTurnoModificado({
+            to: bk.email, nombre: bk.client_name, servicio: bk.service,
+            fecha, hora, code: bk.booking_code, monto: bk.monto, motivo: motivo || ''
+          });
+          console.log(`[staff] ✓ Mail reprogramación → ${bk.email}`);
+        } catch(mailErr) {
+          console.error(`[staff] ✗ Mail reschedule FAILED: ${mailErr.message}`);
+        }
+      } else {
+        console.warn(`[reschedule] ⚠️ Sin email para booking ${req.params.id} — phone=${bk?.client_phone} — mail NO enviado`);
       }
     }
     res.json({ ok: true });

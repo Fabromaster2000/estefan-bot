@@ -180,12 +180,19 @@
         <div><div class="section-title">Agenda</div></div>
         <button class="btn-sm" onclick="loadAgenda()">↺</button>
       </div>
+      <!-- Filtro por fecha -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <input type="date" class="form-input" id="agenda-date-filter" style="width:180px" onchange="renderAgenda(allAgenda)">
+        <button class="btn-sm" onclick="document.getElementById('agenda-date-filter').value='';renderAgenda(allAgenda)">✕ Limpiar fecha</button>
+        <span id="agenda-date-label" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+      <!-- Chips de estado -->
       <div class="chip-group" id="agenda-filters">
-        <div class="chip active" onclick="filterAgenda('todos',this)">Todos</div>
-        <div class="chip" onclick="filterAgenda('Confirmado',this)">Confirmados</div>
-        <div class="chip" onclick="filterAgenda('Seña pagada',this)">Seña pagada</div>
-        <div class="chip" onclick="filterAgenda('Completado',this)">Completados</div>
-        <div class="chip" onclick="filterAgenda('Cancelado',this)">Cancelados</div>
+        <div class="chip active" id="af-todos"      onclick="filterAgenda('todos',this)">Todos</div>
+        <div class="chip"        id="af-confirmados" onclick="filterAgenda('confirmados',this)">✅ Confirmados</div>
+        <div class="chip"        id="af-sena"        onclick="filterAgenda('Seña pagada',this)">💛 Seña pagada</div>
+        <div class="chip"        id="af-completados" onclick="filterAgenda('Completado',this)">✨ Completados</div>
+        <div class="chip"        id="af-cancelados"  onclick="filterAgenda('Cancelado',this)">❌ Cancelados</div>
       </div>
       <div id="list-agenda"><div class="loading">Cargando...</div></div>
     </div>
@@ -557,11 +564,48 @@ async function loadAgenda(){
   allAgenda=await api('GET','/staff/agenda');
   renderAgenda(allAgenda);
 }
-function filterAgenda(s,chip){
-  document.querySelectorAll('#agenda-filters .chip').forEach(c=>c.classList.remove('active'));chip.classList.add('active');
-  renderAgenda(s==='todos'?allAgenda:allAgenda.filter(b=>b.estado===s));
+let agendaFilter = 'todos';
+function filterAgenda(s, chip){
+  agendaFilter = s;
+  document.querySelectorAll('#agenda-filters .chip').forEach(c=>c.classList.remove('active'));
+  chip.classList.add('active');
+  renderAgenda(allAgenda);
 }
-function renderAgenda(l){document.getElementById('list-agenda').innerHTML=l.length?l.map(bCard).join(''):'<div class="empty"><div class="empty-icon">🗓️</div><p>Sin resultados</p></div>';}
+
+function renderAgenda(l){
+  // 1. Filtro por estado
+  const CONFIRMADOS = ['Confirmado','Reprogramado','confirmed','Seña pagada'];
+  let filtered = l.filter(b => {
+    if (agendaFilter === 'todos')        return b.estado !== 'Cancelado'; // todos excepto cancelados
+    if (agendaFilter === 'confirmados')  return CONFIRMADOS.includes(b.estado);
+    if (agendaFilter === 'Cancelado')    return b.estado === 'Cancelado';
+    return b.estado === agendaFilter;
+  });
+
+  // 2. Filtro por fecha
+  const dateVal = document.getElementById('agenda-date-filter')?.value; // YYYY-MM-DD
+  const labelEl = document.getElementById('agenda-date-label');
+  if (dateVal) {
+    // Convert YYYY-MM-DD to DD/MM/YYYY for comparison
+    const [y,m,d] = dateVal.split('-');
+    const fechaFiltro = `${d}/${m}/${y}`;
+    filtered = filtered.filter(b => b.fecha === fechaFiltro);
+    if (labelEl) labelEl.textContent = `Mostrando: ${fechaFiltro} (${filtered.length} turno${filtered.length!==1?'s':''})`;
+  } else {
+    if (labelEl) labelEl.textContent = '';
+  }
+
+  // 3. Ordenar por fecha y hora
+  filtered.sort((a,b) => {
+    const fa = (a.fecha||'').split('/').reverse().join('') + (a.hora||'');
+    const fb = (b.fecha||'').split('/').reverse().join('') + (b.hora||'');
+    return fa.localeCompare(fb);
+  });
+
+  document.getElementById('list-agenda').innerHTML = filtered.length
+    ? filtered.map(bCard).join('')
+    : '<div class="empty"><div class="empty-icon">🗓️</div><p>Sin resultados</p></div>';
+}
 
 async function loadColor(){
   const l=await api('GET','/staff/color-consultas');
