@@ -294,6 +294,21 @@ function staffAuth(req, res, next) {
 // Helper: get raw DB connection for staff routes
 function getConn() { return db.getDB(); }
 
+// Helper: trae booking con email resuelto (booking.email || clients.email)
+async function getBookingWithEmail(id) {
+  const r = await getConn().query(`
+    SELECT b.id, b.booking_code, b.client_name, b.client_phone, b.service,
+           b.date_str, b.time_str, b.monto, b.status, b.notes, b.sena_amount,
+           COALESCE(NULLIF(b.email,''), c.email) AS email
+    FROM bookings b
+    LEFT JOIN clients c ON c.phone = b.client_phone
+    WHERE b.id = $1
+  `, [id]);
+  const bk = r.rows[0] || null;
+  if (bk) console.log(`[booking-email] id=${id} email=${bk.email||'none'} phone=${bk.client_phone}`);
+  return bk;
+}
+
 // Agenda del día / semana
 app.get('/staff/agenda', staffAuth, async (req, res) => {
   try {
@@ -466,12 +481,8 @@ app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
     await getConn().query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
 
-    // Traer datos completos del turno para el mail
-    const b = await getConn().query(
-      'SELECT booking_code, service, client_name, client_phone, email, date_str, time_str, monto FROM bookings WHERE id = $1',
-      [req.params.id]
-    );
-    const bk = b.rows[0];
+    // Traer datos completos del turno — email desde booking o desde clients
+    const bk = await getBookingWithEmail(req.params.id);
 
     // Sheets sync
     if (bk) {
@@ -509,11 +520,7 @@ app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
       "UPDATE bookings SET date_str = $1, time_str = $2, status = 'Reprogramado' WHERE id = $3",
       [fecha, hora, req.params.id]
     );
-    const b = await getConn().query(
-      'SELECT booking_code, service, client_name, email, monto FROM bookings WHERE id = $1',
-      [req.params.id]
-    );
-    const bk = b.rows[0];
+    const bk = await getBookingWithEmail(req.params.id);
     if (bk) {
       const { updateTurnoStatus } = require('./core/sheets');
       await updateTurnoStatus(bk.booking_code, bk.service, 'Reprogramado').catch(() => {});
@@ -554,15 +561,46 @@ app.get('/staff/clients/:phone', staffAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Actualizar cliente
+// Actualizar cliente — y propagar email a todos sus bookings
 app.put('/staff/clients/:phone', staffAuth, async (req, res) => {
   try {
-    const { name, lastName, email, notes } = req.body;
-    await getConn().query(`UPDATE clients SET name=$1, last_name=$2, email=$3 WHERE phone=$4`,
-      [name, lastName, email, req.params.phone]);
+    const { name, lastName, email } = req.body;
+    const phone = req.params.phone;
+
+    // Update clients table
+    await getConn().query(
+      `UPDATE clients SET name=$1, last_name=$2, email=$3, updated_at=NOW() WHERE phone=$4`,
+      [name, lastName, email || null, phone]
+    );
+
+    // Propagate email to all bookings for this client (so mails work even for old bookings)
+    if (email) {
+      const updated = await getConn().query(
+        `UPDATE bookings SET email=$1 WHERE client_phone=$2 AND (email IS NULL OR email='') RETURNING id`,
+        [email, phone]
+      );
+      console.log(`[staff] ✓ Email propagado a ${updated.rowCount} bookings de ${phone}`);
+    }
+
     const { syncClientesToSheet } = require('./core/sheets');
     syncClientesToSheet().catch(() => {});
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Sync email desde clients → bookings para todos (util para datos viejos)
+app.post('/admin/sync-emails', staffAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(`
+      UPDATE bookings b
+      SET email = c.email
+      FROM clients c
+      WHERE c.phone = b.client_phone
+        AND c.email IS NOT NULL AND c.email != ''
+        AND (b.email IS NULL OR b.email = '')
+      RETURNING b.id
+    `);
+    res.json({ ok: true, updated: r.rowCount });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -574,8 +612,7 @@ app.post('/staff/color-consultas/:id/confirmar', staffAuth, async (req, res) => 
       "UPDATE bookings SET status = 'Confirmado', date_str = $1, time_str = $2, notes = $3 WHERE id = $4",
       [fecha, hora, notas || '', req.params.id]
     );
-    const b = await getConn().query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
-    const row = b.rows[0];
+    const row = await getBookingWithEmail(req.params.id);
     if (row) {
       // Sheets
       const { appendTurnoToSheet } = require('./core/sheets');

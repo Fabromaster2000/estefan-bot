@@ -314,6 +314,22 @@
       <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px">
         <button class="chip active" id="atab-turnos" onclick="switchAdminTab('turnos')">📋 Turnos</button>
         <button class="chip" id="atab-clientes" onclick="switchAdminTab('clientes')">👤 Clientes</button>
+        <button class="chip" id="atab-herramientas" onclick="switchAdminTab('herramientas')">🔧 DB</button>
+      </div>
+
+      <!-- PANEL HERRAMIENTAS -->
+      <div id="admin-panel-herramientas" style="display:none">
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">📧 Sincronizar emails</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Propaga los emails registrados en la tabla de clientes a todos sus turnos donde falte. Necesario para que funcionen los mails de cancelación y reprogramación en turnos viejos.</p>
+          <button class="btn-sm" onclick="syncEmails()">📧 Sync emails → turnos</button>
+          <div id="sync-result" style="margin-top:10px;font-size:13px;color:var(--green);display:none"></div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">🧹 Limpiar sesiones TEST</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Elimina todos los turnos y clientes con teléfono <code style="background:var(--bg);padding:2px 6px;border-radius:4px">web-*</code> generados desde el chat de prueba.</p>
+          <button class="btn-sm red" onclick="confirmDeleteAll('test')">🗑️ Borrar todo lo TEST</button>
+        </div>
       </div>
 
       <!-- PANEL TURNOS -->
@@ -974,12 +990,21 @@ async function loadDBStats(){
 let adminBookings = [], adminClients = [], pendingAdminDelete = null;
 
 function switchAdminTab(tab) {
-  document.getElementById('admin-panel-turnos').style.display  = tab==='turnos'   ? '' : 'none';
-  document.getElementById('admin-panel-clientes').style.display = tab==='clientes' ? '' : 'none';
-  document.getElementById('atab-turnos').classList.toggle('active',   tab==='turnos');
-  document.getElementById('atab-clientes').classList.toggle('active', tab==='clientes');
+  document.getElementById('admin-panel-turnos').style.display      = tab==='turnos'       ? '' : 'none';
+  document.getElementById('admin-panel-clientes').style.display    = tab==='clientes'     ? '' : 'none';
+  document.getElementById('admin-panel-herramientas').style.display= tab==='herramientas' ? '' : 'none';
+  document.querySelectorAll('#panel-admin .chip').forEach(c=>c.classList.remove('active'));
+  document.getElementById('atab-'+tab).classList.add('active');
   if (tab==='turnos'   && !adminBookings.length)  loadAdminBookings();
   if (tab==='clientes' && !adminClients.length)   loadAdminClients();
+}
+
+async function syncEmails(){
+  const r = await api('POST','/admin/sync-emails');
+  const el = document.getElementById('sync-result');
+  el.style.display = 'block';
+  el.textContent = r.ok ? `✓ ${r.updated} turno${r.updated!==1?'s':''} actualizados con email` : '❌ Error: '+(r.error||'');
+  setTimeout(()=>el.style.display='none', 4000);
 }
 
 async function loadAdminBookings() {
