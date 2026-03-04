@@ -492,7 +492,7 @@ app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
 
     // Email al cliente según el nuevo estado
     if (bk?.email) {
-      const { mailTurnoConfirmado, mailTurnoCancelado, mailTurnoModificado } = require('./mailer');
+      const { mailTurnoConfirmado, mailTurnoCancelado, mailTurnoModificado } = require('./agents/mailer');
       const params = {
         to: bk.email, nombre: bk.client_name, servicio: bk.service,
         fecha: bk.date_str, hora: bk.time_str, code: bk.booking_code,
@@ -526,7 +526,7 @@ app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
       await updateTurnoStatus(bk.booking_code, bk.service, 'Reprogramado').catch(() => {});
       console.log(`[reschedule] bk found: ${!!bk} | email: ${bk?.email||'NONE'} | phone: ${bk?.client_phone}`);
       if (bk.email) {
-        const { mailTurnoModificado } = require('./mailer');
+        const { mailTurnoModificado } = require('./agents/mailer');
         try {
           await mailTurnoModificado({
             to: bk.email, nombre: bk.client_name, servicio: bk.service,
@@ -631,7 +631,7 @@ app.post('/staff/color-consultas/:id/confirmar', staffAuth, async (req, res) => 
 
       // Email confirmación al cliente
       if (row.email) {
-        const { mailTurnoConfirmado } = require('./mailer');
+        const { mailTurnoConfirmado } = require('./agents/mailer');
         const senaAmt = row.sena_amount || Math.round((row.monto || 0) * 0.15);
         await mailTurnoConfirmado({
           to: row.email, nombre: row.client_name, servicio: row.service,
