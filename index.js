@@ -458,30 +458,73 @@ app.post('/mp/webhook', async (req, res) => {
 app.get('/mp/success', (req, res) => res.send('<h2 style="font-family:sans-serif;text-align:center;padding:40px">✅ ¡Pago recibido! Gracias por tu seña 💛<br><br>El equipo de Estefan te contactará para confirmar tu turno.</h2>'));
 app.get('/mp/failure', (req, res) => res.send('<h2 style="font-family:sans-serif;text-align:center;padding:40px">❌ Hubo un problema con el pago. Escribinos al salón y te ayudamos 💛</h2>'));
 
-// Actualizar estado de turno
+// Actualizar estado de turno — con email automático
 app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, motivo } = req.body;
     const validStatuses = ['Confirmado','Cancelado','Completado','Consulta Pendiente','Reprogramado','No asistió'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
-    await getConn().query(`UPDATE bookings SET status = $1 WHERE id = $2`, [status, req.params.id]);
-    const { updateTurnoStatus } = require('./core/sheets');
-    const b = await getConn().query(`SELECT booking_code, service FROM bookings WHERE id = $1`, [req.params.id]);
-    if (b.rows[0]) await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, status).catch(() => {});
+    await getConn().query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
+
+    // Traer datos completos del turno para el mail
+    const b = await getConn().query(
+      'SELECT booking_code, service, client_name, client_phone, email, date_str, time_str, monto FROM bookings WHERE id = $1',
+      [req.params.id]
+    );
+    const bk = b.rows[0];
+
+    // Sheets sync
+    if (bk) {
+      const { updateTurnoStatus } = require('./core/sheets');
+      await updateTurnoStatus(bk.booking_code, bk.service, status).catch(() => {});
+    }
+
+    // Email al cliente según el nuevo estado
+    if (bk?.email) {
+      const { mailTurnoConfirmado, mailTurnoCancelado, mailTurnoModificado } = require('./mailer');
+      const params = {
+        to: bk.email, nombre: bk.client_name, servicio: bk.service,
+        fecha: bk.date_str, hora: bk.time_str, code: bk.booking_code,
+        monto: bk.monto, motivo: motivo || ''
+      };
+      if (status === 'Confirmado') {
+        await mailTurnoConfirmado(params).catch(e => console.error('[staff] mail confirm error:', e.message));
+        console.log(`[staff] ✓ Mail confirmación → ${bk.email}`);
+      } else if (status === 'Cancelado') {
+        await mailTurnoCancelado(params).catch(e => console.error('[staff] mail cancel error:', e.message));
+        console.log(`[staff] ✓ Mail cancelación → ${bk.email}`);
+      }
+    }
+
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Reprogramar turno
+// Reprogramar turno — con email automático
 app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
   try {
-    const { fecha, hora } = req.body;
+    const { fecha, hora, motivo } = req.body;
     if (!fecha || !hora) return res.status(400).json({ error: 'Faltan fecha/hora' });
-    await getConn().query(`UPDATE bookings SET date_str = $1, time_str = $2, status = 'Confirmado' WHERE id = $3`, [fecha, hora, req.params.id]);
-    const b = await getConn().query(`SELECT booking_code, service, client_name FROM bookings WHERE id = $1`, [req.params.id]);
-    if (b.rows[0]) {
+    await getConn().query(
+      "UPDATE bookings SET date_str = $1, time_str = $2, status = 'Reprogramado' WHERE id = $3",
+      [fecha, hora, req.params.id]
+    );
+    const b = await getConn().query(
+      'SELECT booking_code, service, client_name, email, monto FROM bookings WHERE id = $1',
+      [req.params.id]
+    );
+    const bk = b.rows[0];
+    if (bk) {
       const { updateTurnoStatus } = require('./core/sheets');
-      await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, 'Reprogramado').catch(() => {});
+      await updateTurnoStatus(bk.booking_code, bk.service, 'Reprogramado').catch(() => {});
+      if (bk.email) {
+        const { mailTurnoModificado } = require('./mailer');
+        await mailTurnoModificado({
+          to: bk.email, nombre: bk.client_name, servicio: bk.service,
+          fecha, hora, code: bk.booking_code, monto: bk.monto, motivo: motivo || ''
+        }).catch(e => console.error('[staff] mail reschedule error:', e.message));
+        console.log(`[staff] ✓ Mail reprogramación → ${bk.email}`);
+      }
     }
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -523,17 +566,36 @@ app.put('/staff/clients/:phone', staffAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Confirmar consulta de color — crear turno
+// Confirmar consulta de color — crear turno + email
 app.post('/staff/color-consultas/:id/confirmar', staffAuth, async (req, res) => {
   try {
     const { fecha, hora, notas } = req.body;
-    await getConn().query(`UPDATE bookings SET status = 'Confirmado', date_str = $1, time_str = $2, notes = $3 WHERE id = $4`,
-      [fecha, hora, notas || '', req.params.id]);
-    const b = await getConn().query(`SELECT * FROM bookings WHERE id = $1`, [req.params.id]);
-    if (b.rows[0]) {
+    await getConn().query(
+      "UPDATE bookings SET status = 'Confirmado', date_str = $1, time_str = $2, notes = $3 WHERE id = $4",
+      [fecha, hora, notas || '', req.params.id]
+    );
+    const b = await getConn().query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+    const row = b.rows[0];
+    if (row) {
+      // Sheets
       const { appendTurnoToSheet } = require('./core/sheets');
-      const row = b.rows[0];
-      await appendTurnoToSheet({ code: row.booking_code, fecha, hora, nombre: row.client_name, phone: row.client_phone, servicio: row.service, monto: row.monto, sena: null, senaPagada: false, estado: 'Confirmado', canal: 'Staff' }).catch(() => {});
+      await appendTurnoToSheet({
+        code: row.booking_code, fecha, hora, nombre: row.client_name,
+        phone: row.client_phone, servicio: row.service, monto: row.monto,
+        sena: null, senaPagada: false, estado: 'Confirmado', canal: 'Staff'
+      }).catch(() => {});
+
+      // Email confirmación al cliente
+      if (row.email) {
+        const { mailTurnoConfirmado } = require('./mailer');
+        const senaAmt = row.sena_amount || Math.round((row.monto || 0) * 0.15);
+        await mailTurnoConfirmado({
+          to: row.email, nombre: row.client_name, servicio: row.service,
+          fecha, hora, code: row.booking_code,
+          monto: row.monto, senaAmount: senaAmt, senaPaid: false
+        }).catch(e => console.error('[staff] mail color confirm error:', e.message));
+        console.log(`[staff] ✓ Mail confirmación color → ${row.email}`);
+      }
     }
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }

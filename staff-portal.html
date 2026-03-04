@@ -308,60 +308,83 @@
     <!-- ADMIN -->
     <div class="panel" id="panel-admin">
       <div class="section-title" style="margin-bottom:4px">Administración</div>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Todas las acciones de borrado requieren confirmar tu contraseña.</p>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Seleccioná uno o varios registros y borralos. Siempre se pide confirmación con contraseña.</p>
 
-      <!-- Stats -->
-      <div class="card" id="admin-stats-card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">📊 Estado de la base de datos</div>
-        <div id="admin-stats"><button class="btn-sm" onclick="loadAdminStats()">Ver estadísticas</button></div>
+      <!-- Tabs internos -->
+      <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px">
+        <button class="chip active" id="atab-turnos" onclick="switchAdminTab('turnos')">📋 Turnos</button>
+        <button class="chip" id="atab-clientes" onclick="switchAdminTab('clientes')">👤 Clientes</button>
       </div>
 
-      <!-- Turnos TEST -->
-      <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">🧹 Limpiar sesiones de prueba</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Turnos y clientes con teléfono <code style="background:var(--bg);padding:2px 6px;border-radius:4px">web-*</code> generados desde el chat de test.</p>
-        <div id="test-bookings-list" style="margin-bottom:12px"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn-sm" onclick="loadTestBookings()">🔍 Ver sesiones TEST</button>
-          <button class="btn-sm red" onclick="confirmDeleteAll('test')">🗑️ Borrar todo lo TEST</button>
+      <!-- PANEL TURNOS -->
+      <div id="admin-panel-turnos">
+        <!-- Filtros + búsqueda -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+          <input class="form-input" id="admin-search" placeholder="🔍 Nombre, código o teléfono..." style="flex:1;min-width:180px" oninput="renderAdminTable()">
+          <select class="form-input" id="admin-filter" style="width:160px" onchange="renderAdminTable()">
+            <option value="all">Todos</option>
+            <option value="test">Solo TEST (web-*)</option>
+            <option value="real">Solo reales</option>
+            <option value="Confirmado">Confirmados</option>
+            <option value="confirmed">confirmed</option>
+            <option value="Consulta Pendiente">Consulta Pendiente</option>
+            <option value="Cancelado">Cancelados</option>
+          </select>
+          <button class="btn-sm" onclick="loadAdminBookings()">↺ Recargar</button>
+        </div>
+
+        <!-- Toolbar selección -->
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;min-height:32px">
+          <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="admin-select-all" onchange="toggleSelectAll(this.checked)" style="width:16px;height:16px">
+            Seleccionar todos
+          </label>
+          <span id="admin-selected-count" style="font-size:13px;color:var(--muted)"></span>
+          <button class="btn-sm red" id="btn-delete-selected" style="display:none;margin-left:auto" onclick="confirmBulkDelete()">🗑️ Borrar seleccionados</button>
+        </div>
+
+        <!-- Tabla -->
+        <div id="admin-bookings-table" style="font-size:13px">
+          <div class="empty"><div class="empty-icon">📋</div><p>Cargando...</p></div>
         </div>
       </div>
 
-      <!-- Buscar y borrar turno -->
-      <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">🗑️ Borrar turno individual</div>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <input class="form-input" id="del-booking-q" placeholder="Nombre, código (#XXXX) o teléfono" style="flex:1">
-          <button class="btn-sm" onclick="searchBookingsAdmin()">Buscar</button>
+      <!-- PANEL CLIENTES -->
+      <div id="admin-panel-clientes" style="display:none">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+          <input class="form-input" id="admin-client-search" placeholder="🔍 Nombre, email o teléfono..." style="flex:1;min-width:180px" oninput="renderAdminClientTable()">
+          <select class="form-input" id="admin-client-filter" style="width:160px" onchange="renderAdminClientTable()">
+            <option value="all">Todos</option>
+            <option value="test">Solo TEST (web-*)</option>
+            <option value="real">Solo reales</option>
+          </select>
+          <button class="btn-sm" onclick="loadAdminClients()">↺ Recargar</button>
         </div>
-        <div id="del-booking-results"></div>
-      </div>
-
-      <!-- Borrar cliente + sus turnos -->
-      <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">👤 Borrar cliente completo</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Borra el cliente y todos sus turnos asociados.</p>
-        <div style="display:flex;gap:8px;margin-bottom:4px">
-          <input class="form-input" id="del-client-phone" placeholder="Teléfono exacto (ej: +5491155556666)" style="flex:1">
-          <button class="btn-sm red" onclick="confirmDeleteClient()">Borrar</button>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;min-height:32px">
+          <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="admin-client-select-all" onchange="toggleSelectAllClients(this.checked)" style="width:16px;height:16px">
+            Seleccionar todos
+          </label>
+          <span id="admin-client-selected-count" style="font-size:13px;color:var(--muted)"></span>
+          <button class="btn-sm red" id="btn-delete-clients-selected" style="display:none;margin-left:auto" onclick="confirmBulkDeleteClients()">🗑️ Borrar seleccionados</button>
         </div>
-        <div id="del-client-result" style="margin-top:8px;font-size:13px"></div>
+        <div id="admin-clients-table" style="font-size:13px">
+          <div class="empty"><div class="empty-icon">👤</div><p>Cargando...</p></div>
+        </div>
       </div>
 
       <!-- Modal confirmación con contraseña -->
-      <div id="modal-confirm-delete" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center">
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;max-width:380px;width:90%">
-          <div style="font-size:18px;font-weight:700;margin-bottom:8px">⚠️ Confirmar borrado</div>
-          <div id="confirm-delete-msg" style="color:var(--muted);font-size:14px;margin-bottom:20px"></div>
-          <div style="margin-bottom:16px">
-            <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:6px">Ingresá tu contraseña para confirmar:</label>
-            <input type="password" class="form-input" id="confirm-delete-pw" placeholder="Contraseña">
-          </div>
+      <div id="modal-admin-confirm" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:2000;align-items:center;justify-content:center">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;max-width:400px;width:90%">
+          <div style="font-size:20px;font-weight:700;margin-bottom:8px">⚠️ Confirmar borrado</div>
+          <div id="admin-confirm-msg" style="color:var(--muted);font-size:14px;margin-bottom:20px;line-height:1.5"></div>
+          <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:6px">Ingresá tu contraseña para confirmar:</label>
+          <input type="password" class="form-input" id="admin-confirm-pw" placeholder="Contraseña" style="margin-bottom:16px" onkeydown="if(event.key==='Enter')execAdminDelete()">
+          <div id="admin-confirm-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none">❌ Contraseña incorrecta</div>
           <div style="display:flex;gap:10px">
-            <button class="btn-sm" onclick="document.getElementById('modal-confirm-delete').style.display='none'">Cancelar</button>
-            <button class="btn-sm red" onclick="executeConfirmedDelete()">Confirmar borrado</button>
+            <button class="btn-sm" onclick="document.getElementById('modal-admin-confirm').style.display='none'">Cancelar</button>
+            <button class="btn-sm red" onclick="execAdminDelete()">Confirmar borrado</button>
           </div>
-          <div id="confirm-delete-error" style="color:var(--red);font-size:13px;margin-top:8px;display:none">Contraseña incorrecta</div>
         </div>
       </div>
     </div>
@@ -375,7 +398,7 @@
     <h3>Cambiar estado</h3>
     <div class="form-group">
       <label class="form-label">Nuevo estado</label>
-      <select class="form-select" id="modal-status-sel">
+      <select class="form-select" id="modal-status-sel" onchange="toggleMotivoStatus()">
         <option value="Confirmado">✅ Confirmado</option>
         <option value="Seña pagada">💛 Seña pagada</option>
         <option value="Completado">✨ Completado</option>
@@ -384,8 +407,12 @@
         <option value="Reprogramado">🔄 Reprogramado</option>
       </select>
     </div>
+    <div class="form-group" id="motivo-status-group" style="display:none">
+      <label class="form-label">Motivo (se incluye en el email a la clienta)</label>
+      <textarea class="form-input" id="modal-status-motivo" rows="3" placeholder="Ej: Problema con el turno anterior, reagendamos para la semana que viene..." style="resize:vertical"></textarea>
+    </div>
     <div class="modal-actions">
-      <button class="btn-sm green" onclick="doStatus()">Guardar</button>
+      <button class="btn-sm green" onclick="doStatus()">Guardar y notificar</button>
       <button class="btn-sm" onclick="cm('modal-status')">Cancelar</button>
     </div>
   </div>
@@ -399,8 +426,12 @@
       <div class="form-group"><label class="form-label">Nueva fecha (DD/MM/YYYY)</label><input class="form-input" id="rp-fecha" placeholder="07/03/2026"></div>
       <div class="form-group"><label class="form-label">Nueva hora (HH:MM)</label><input class="form-input" id="rp-hora" placeholder="15:00"></div>
     </div>
+    <div class="form-group">
+      <label class="form-label">Motivo del cambio (se incluye en el email a la clienta)</label>
+      <textarea class="form-input" id="rp-motivo" rows="3" placeholder="Ej: Problema de agenda, cambiamos al mismo horario del jueves..." style="resize:vertical"></textarea>
+    </div>
     <div class="modal-actions">
-      <button class="btn-sm green" onclick="doReprogram()">Guardar</button>
+      <button class="btn-sm green" onclick="doReprogram()">Guardar y notificar</button>
       <button class="btn-sm" onclick="cm('modal-reprogram')">Cancelar</button>
     </div>
   </div>
@@ -409,15 +440,16 @@
 <!-- MODAL COLOR CONFIRM -->
 <div class="modal-overlay" id="modal-color">
   <div class="modal">
-    <h3>Confirmar turno de color</h3>
+    <h3>Confirmar turno de color 🎨</h3>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Se le enviará un email de confirmación a la clienta con fecha y hora.</p>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Fecha (DD/MM/YYYY)</label><input class="form-input" id="cc-fecha" placeholder="07/03/2026"></div>
       <div class="form-group"><label class="form-label">Hora (HH:MM)</label><input class="form-input" id="cc-hora" placeholder="15:00"></div>
     </div>
-    <div class="form-group"><label class="form-label">Notas para la clienta</label><input class="form-input" id="cc-notas" placeholder="Venir con pelo sin productos..."></div>
+    <div class="form-group"><label class="form-label">Notas para la clienta (opcional)</label><textarea class="form-input" id="cc-notas" rows="2" placeholder="Venir con pelo sin productos, sin aceites..." style="resize:vertical"></textarea></div>
     <div class="modal-actions">
-      <button class="btn-sm green" onclick="doColorConfirm()">Confirmar turno</button>
-      <button class="btn-sm red" onclick="doColorRechazar()">No viable</button>
+      <button class="btn-sm green" onclick="doColorConfirm()">✅ Confirmar y enviar email</button>
+      <button class="btn-sm red" onclick="doColorRechazar()">❌ No viable</button>
       <button class="btn-sm" onclick="cm('modal-color')">Cancelar</button>
     </div>
   </div>
@@ -431,12 +463,14 @@
   </div>
 </div>
 
-<!-- MODAL CLIENTE -->
+<!-- MODAL CLIENTE — ver/editar -->
 <div class="modal-overlay" id="modal-cl">
-  <div class="modal">
+  <div class="modal" style="max-width:480px">
     <h3 id="modal-cl-title">Cliente</h3>
     <div id="modal-cl-body"></div>
-    <div class="modal-actions"><button class="btn-sm" onclick="cm('modal-cl')">Cerrar</button></div>
+    <div class="modal-actions" id="modal-cl-actions">
+      <button class="btn-sm" onclick="cm('modal-cl')">Cerrar</button>
+    </div>
   </div>
 </div>
 
@@ -486,6 +520,7 @@ function showPanel(n){
   if(n==='agenda')loadAgenda();
   if(n==='clientes')loadClientes();
   if(n==='nuevo')resetForm();
+  if(n==='admin'){adminBookings=[];adminClients=[];loadAdminBookings();}
 }
 
 async function loadHoy(){
@@ -582,18 +617,73 @@ function renderCl(l){
       <div class="cl-right"><div style="font-size:13px;color:var(--gold);font-weight:600">⭐ ${c.points||0}</div><div style="font-size:12px;color:var(--muted)">${c.visit_count||0} visitas</div></div>
     </div>`).join(''):'<div class="empty"><div class="empty-icon">👤</div><p>Sin resultados</p></div>';
 }
+let curClPhone = null;
 async function openCl(phone){
+  curClPhone = phone;
   const d=await api('GET',`/staff/clients/${encodeURIComponent(phone)}`);
   const c=d.client||{},bks=d.bookings||[];
-  document.getElementById('modal-cl-title').textContent=(c.name||'')+' '+(c.last_name||'');
-  document.getElementById('modal-cl-body').innerHTML=`
-    <div style="display:grid;gap:8px;margin-bottom:16px">
-      <div class="pill">📱 ${c.phone||'—'}</div><div class="pill">✉️ ${c.email||'—'}</div>
-      <div class="pill">⭐ ${c.points||0} pts · ${c.visit_count||0} visitas · $${(c.total_spent||0).toLocaleString('es-AR')}</div>
-    </div>
-    <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:8px">Historial</div>
-    ${bks.slice(0,8).map(b=>`<div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center"><span><strong>${b.service}</strong> <span style="color:var(--muted)">${b.date_str} ${b.time_str}</span></span><span class="status s-${(b.status||'confirmado').toLowerCase().replace(/\s/g,'')}" style="font-size:11px">${b.status}</span></div>`).join('')}`;
+  renderClModal(c, bks, false);
   om('modal-cl');
+}
+
+function renderClModal(c, bks, editMode){
+  const nombre = (c.name||'') + ' ' + (c.last_name||'');
+  document.getElementById('modal-cl-title').textContent = nombre.trim() || c.phone || 'Cliente';
+  
+  const infoHtml = editMode ? `
+    <div style="display:grid;gap:10px;margin-bottom:16px">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="cl-edit-name" value="${c.name||''}"></div>
+        <div class="form-group"><label class="form-label">Apellido</label><input class="form-input" id="cl-edit-lastname" value="${c.last_name||''}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="cl-edit-email" type="email" value="${c.email||''}"></div>
+      <div class="form-group"><label class="form-label">Teléfono</label><input class="form-input" id="cl-edit-phone" value="${c.phone||''}" placeholder="+5491155556666"></div>
+      <div style="background:var(--bg);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--muted)">
+        ⭐ ${c.points||0} pts · ${c.visit_count||0} visitas · $${(c.total_spent||0).toLocaleString('es-AR')} gastados
+      </div>
+    </div>` : `
+    <div style="display:grid;gap:8px;margin-bottom:16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="pill">📱 ${c.phone||'—'}</span>
+        <span class="pill">✉️ ${c.email||'Sin email'}</span>
+      </div>
+      <span class="pill">⭐ ${c.points||0} pts · ${c.visit_count||0} visitas · $${(c.total_spent||0).toLocaleString('es-AR')}</span>
+    </div>`;
+
+  const historial = bks.length ? bks.slice(0,8).map(b=>`
+    <div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+      <span><strong>${b.service}</strong> <span style="color:var(--muted)">${b.date_str||''} ${b.time_str||''}</span></span>
+      <span class="status s-${(b.status||'confirmado').toLowerCase().replace(/\s/g,'')}" style="font-size:11px">${b.status||'—'}</span>
+    </div>`).join('') : '<p style="color:var(--muted);font-size:13px">Sin turnos registrados</p>';
+
+  document.getElementById('modal-cl-body').innerHTML = `
+    ${infoHtml}
+    <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Historial de turnos</div>
+    ${historial}`;
+
+  document.getElementById('modal-cl-actions').innerHTML = editMode ? `
+    <button class="btn-sm green" onclick="saveClEdit('${c.phone}')">💾 Guardar cambios</button>
+    <button class="btn-sm" onclick="openCl('${c.phone}')">Cancelar</button>` : `
+    <button class="btn-sm" onclick="editClMode('${c.phone}')">✏️ Editar info</button>
+    <button class="btn-sm" onclick="cm('modal-cl')">Cerrar</button>`;
+}
+
+async function editClMode(phone){
+  const d = await api('GET',`/staff/clients/${encodeURIComponent(phone)}`);
+  renderClModal(d.client||{}, d.bookings||[], true);
+}
+
+async function saveClEdit(phone){
+  const name     = document.getElementById('cl-edit-name').value.trim();
+  const lastName = document.getElementById('cl-edit-lastname').value.trim();
+  const email    = document.getElementById('cl-edit-email').value.trim();
+  if(!name){toast('El nombre es obligatorio',1);return;}
+  const r = await api('PUT',`/staff/clients/${encodeURIComponent(phone)}`,{name,lastName,email});
+  if(r.ok){
+    toast('Cliente actualizado ✅');
+    openCl(phone); // reload view mode
+    loadClientes(); // refresh list
+  } else toast('Error: '+(r.error||''),1);
 }
 
 // ── SERVICE GRID ──────────────────────────────────────────────────────────────
@@ -747,18 +837,41 @@ async function genMPModal(nombre,servicio){
 }
 
 // ── STATUS / REPROGRAM ────────────────────────────────────────────────────────
-function openStatus(id){curBkId=id;om('modal-status');}
+function openStatus(id){
+  curBkId=id;
+  document.getElementById('modal-status-sel').value='Confirmado';
+  document.getElementById('modal-status-motivo').value='';
+  document.getElementById('motivo-status-group').style.display='none';
+  om('modal-status');
+}
+function toggleMotivoStatus(){
+  const s=document.getElementById('modal-status-sel').value;
+  document.getElementById('motivo-status-group').style.display=['Cancelado','Reprogramado'].includes(s)?'block':'none';
+}
 async function doStatus(){
-  await api('PUT',`/staff/booking/${curBkId}/status`,{status:document.getElementById('modal-status-sel').value});
-  cm('modal-status');toast('Estado actualizado ✅');loadHoy();
+  const status=document.getElementById('modal-status-sel').value;
+  const motivo=document.getElementById('modal-status-motivo').value.trim();
+  const r=await api('PUT',`/staff/booking/${curBkId}/status`,{status,motivo});
+  cm('modal-status');
+  if(status==='Cancelado') toast('Cancelado — email enviado 📧');
+  else if(status==='Confirmado') toast('Confirmado — email enviado 📧');
+  else toast('Estado actualizado ✅');
+  loadHoy();
   if(document.getElementById('panel-agenda').classList.contains('active'))loadAgenda();
 }
-function openReprogram(id){curBkId=id;document.getElementById('rp-fecha').value='';document.getElementById('rp-hora').value='';om('modal-reprogram');}
+function openReprogram(id){
+  curBkId=id;
+  ['rp-fecha','rp-hora','rp-motivo'].forEach(i=>document.getElementById(i).value='');
+  om('modal-reprogram');
+}
 async function doReprogram(){
-  const fecha=document.getElementById('rp-fecha').value,hora=document.getElementById('rp-hora').value;
+  const fecha=document.getElementById('rp-fecha').value;
+  const hora=document.getElementById('rp-hora').value;
+  const motivo=document.getElementById('rp-motivo').value.trim();
   if(!fecha||!hora){toast('Ingresá fecha y hora',1);return;}
-  await api('PUT',`/staff/booking/${curBkId}/reschedule`,{fecha,hora});
-  cm('modal-reprogram');toast('Reprogramado ✅');loadHoy();
+  await api('PUT',`/staff/booking/${curBkId}/reschedule`,{fecha,hora,motivo});
+  cm('modal-reprogram');toast('Reprogramado — email enviado 📧');loadHoy();
+  if(document.getElementById('panel-agenda').classList.contains('active'))loadAgenda();
 }
 
 // ── BOOKING CARD ──────────────────────────────────────────────────────────────
@@ -801,6 +914,259 @@ function toast(msg,err){const t=document.getElementById('toast');t.textContent=m
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
+async function loadTestClients(){
+  const r=await api('GET','/admin/clients?pw='+PW);
+  const list=Array.isArray(r)?r:[];
+  const test=list.filter(c=>c.phone&&c.phone.startsWith('web-'));
+  const el=document.getElementById('test-clients-list');
+  if(!test.length){el.innerHTML='<p style="font-size:13px;color:var(--muted)">No hay clientes TEST</p>';return;}
+  el.innerHTML=test.map(c=>`
+    <div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+      <span><strong>${c.name||'Sin nombre'}</strong> <span style="color:var(--muted)">${c.phone}</span></span>
+      <button class="btn-sm red" style="padding:4px 10px;font-size:12px" onclick="deleteSingleClient('${c.phone}')">Borrar</button>
+    </div>`).join('');
+}
+
+async function cleanupTestClients(){
+  if(!confirm('¿Borrar TODOS los clientes web-*? Esto no se puede deshacer.'))return;
+  const r=await fetch('/admin/cleanup-test-clients',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({password:PW})});
+  const d=await r.json();
+  const el=document.getElementById('cleanup-result');
+  el.style.display='block';el.textContent=`✅ Eliminados: ${d.deleted||0} clientes TEST`;
+  document.getElementById('test-clients-list').innerHTML='';
+  toast(`${d.deleted||0} clientes eliminados ✅`);
+}
+
+async function deleteClient(){
+  const phone=document.getElementById('del-phone').value.trim();
+  if(!phone){toast('Ingresá un teléfono',1);return;}
+  if(!confirm(`¿Borrar el cliente ${phone}?`))return;
+  const r=await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({phone,password:PW})});
+  const d=await r.json();
+  const el=document.getElementById('del-result');
+  el.style.display='block';
+  if(d.ok){el.style.color='var(--green)';el.textContent='✅ Cliente eliminado';document.getElementById('del-phone').value='';}
+  else{el.style.color='var(--red)';el.textContent='Error: '+(d.error||'no encontrado');}
+}
+
+async function deleteSingleClient(phone){
+  if(!confirm(`¿Borrar ${phone}?`))return;
+  await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({phone,password:PW})});
+  toast('Eliminado ✅');loadTestClients();
+}
+
+async function loadDBStats(){
+  const clients=await api('GET','/staff/clients');
+  const agenda=await api('GET','/staff/agenda');
+  const confirmados=agenda.filter(b=>b.estado==='Confirmado'||b.estado==='Seña pagada').length;
+  const cancelados=agenda.filter(b=>b.estado==='Cancelado').length;
+  document.getElementById('db-stats').innerHTML=`
+    <div class="stats-row" style="margin-bottom:0">
+      <div class="stat-card"><div class="stat-num">${clients.length||0}</div><div class="stat-label">Clientes totales</div></div>
+      <div class="stat-card"><div class="stat-num">${agenda.length||0}</div><div class="stat-label">Turnos totales</div></div>
+      <div class="stat-card"><div class="stat-num">${confirmados}</div><div class="stat-label">Confirmados</div></div>
+      <div class="stat-card"><div class="stat-num">${cancelados}</div><div class="stat-label">Cancelados</div></div>
+    </div>`;
+}
+</script>
+</body>
+</html>// ── ADMIN FUNCTIONS ──────────────────────────────────────────────────────────
+let adminBookings = [], adminClients = [], pendingAdminDelete = null;
+
+function switchAdminTab(tab) {
+  document.getElementById('admin-panel-turnos').style.display  = tab==='turnos'   ? '' : 'none';
+  document.getElementById('admin-panel-clientes').style.display = tab==='clientes' ? '' : 'none';
+  document.getElementById('atab-turnos').classList.toggle('active',   tab==='turnos');
+  document.getElementById('atab-clientes').classList.toggle('active', tab==='clientes');
+  if (tab==='turnos'   && !adminBookings.length)  loadAdminBookings();
+  if (tab==='clientes' && !adminClients.length)   loadAdminClients();
+}
+
+async function loadAdminBookings() {
+  document.getElementById('admin-bookings-table').innerHTML = '<div class="loading">Cargando...</div>';
+  adminBookings = await api('GET', '/admin/bookings');
+  renderAdminTable();
+}
+
+function renderAdminTable() {
+  const q      = (document.getElementById('admin-search')?.value||'').toLowerCase();
+  const filter = document.getElementById('admin-filter')?.value || 'all';
+  let list = adminBookings.filter(b => {
+    const matchQ = !q || (b.nombre||'').toLowerCase().includes(q) ||
+                         (b.code||'').toLowerCase().includes(q.replace('#','')) ||
+                         (b.phone||'').includes(q) ||
+                         (b.servicio||'').toLowerCase().includes(q);
+    const isTest = (b.phone||'').startsWith('web-');
+    const matchF = filter==='all' ? true
+                 : filter==='test' ? isTest
+                 : filter==='real' ? !isTest
+                 : b.estado === filter;
+    return matchQ && matchF;
+  });
+
+  if (!list.length) {
+    document.getElementById('admin-bookings-table').innerHTML = '<div class="empty"><div class="empty-icon">📋</div><p>Sin resultados</p></div>';
+    updateAdminSelCount(); return;
+  }
+
+  const statusColor = s => s==='Confirmado'||s==='confirmed' ? 'var(--green)' : s==='Consulta Pendiente' ? 'var(--yellow)' : s==='Cancelado' ? 'var(--red)' : 'var(--muted)';
+
+  document.getElementById('admin-bookings-table').innerHTML = `
+    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <div style="display:grid;grid-template-columns:36px 1fr 1fr 100px 90px 80px;gap:0;background:var(--bg);padding:8px 12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">
+        <div></div><div>Cliente</div><div>Servicio</div><div>Fecha</div><div>Estado</div><div style="text-align:right">Acción</div>
+      </div>
+      ${list.map((b,i) => `
+      <div style="display:grid;grid-template-columns:36px 1fr 1fr 100px 90px 80px;gap:0;padding:10px 12px;border-top:1px solid var(--border);align-items:center;background:${i%2===0?'transparent':'rgba(255,255,255,.02)'}">
+        <div><input type="checkbox" class="admin-bk-cb" data-id="${b.id}" style="width:16px;height:16px" onchange="updateAdminSelCount()"></div>
+        <div>
+          <div style="font-weight:500">${b.nombre||'Sin nombre'}</div>
+          <div style="color:var(--muted);font-size:11px">${b.phone||''} ${b.code ? '· '+b.code : ''}</div>
+        </div>
+        <div style="color:var(--muted)">${b.servicio||'—'}</div>
+        <div style="color:var(--muted)">${b.fecha||'—'} ${b.hora||''}</div>
+        <div><span style="font-size:11px;color:${statusColor(b.estado)}">${b.estado||'—'}</span></div>
+        <div style="text-align:right"><button class="btn-sm red" style="padding:4px 10px;font-size:12px" onclick="confirmSingleDeleteBooking(${b.id},'${(b.nombre||'Sin nombre').replace(/'/g,'')}')">🗑️</button></div>
+      </div>`).join('')}
+    </div>`;
+  updateAdminSelCount();
+}
+
+function updateAdminSelCount() {
+  const cbs = document.querySelectorAll('.admin-bk-cb:checked');
+  const el = document.getElementById('admin-selected-count');
+  const btn = document.getElementById('btn-delete-selected');
+  el.textContent = cbs.length ? `${cbs.length} seleccionado${cbs.length>1?'s':''}` : '';
+  btn.style.display = cbs.length ? '' : 'none';
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.admin-bk-cb').forEach(cb => cb.checked = checked);
+  updateAdminSelCount();
+}
+
+function confirmSingleDeleteBooking(id, label) {
+  pendingAdminDelete = { type:'bookings', ids:[id] };
+  document.getElementById('admin-confirm-msg').innerHTML = `Vas a borrar el turno de <strong>${label}</strong>.<br><span style="color:var(--red)">Esta acción no se puede deshacer.</span>`;
+  showAdminConfirm();
+}
+
+function confirmBulkDelete() {
+  const ids = [...document.querySelectorAll('.admin-bk-cb:checked')].map(cb => +cb.dataset.id);
+  if (!ids.length) return;
+  pendingAdminDelete = { type:'bookings', ids };
+  document.getElementById('admin-confirm-msg').innerHTML = `Vas a borrar <strong>${ids.length} turno${ids.length>1?'s':''}</strong>.<br><span style="color:var(--red)">Esta acción no se puede deshacer.</span>`;
+  showAdminConfirm();
+}
+
+// ── CLIENTES ──
+async function loadAdminClients() {
+  document.getElementById('admin-clients-table').innerHTML = '<div class="loading">Cargando...</div>';
+  adminClients = await api('GET', '/staff/clients');
+  renderAdminClientTable();
+}
+
+function renderAdminClientTable() {
+  const q      = (document.getElementById('admin-client-search')?.value||'').toLowerCase();
+  const filter = document.getElementById('admin-client-filter')?.value || 'all';
+  let list = adminClients.filter(c => {
+    const matchQ = !q || (c.name||'').toLowerCase().includes(q) ||
+                         (c.last_name||'').toLowerCase().includes(q) ||
+                         (c.email||'').toLowerCase().includes(q) ||
+                         (c.phone||'').includes(q);
+    const isTest = (c.phone||'').startsWith('web-');
+    const matchF = filter==='all' ? true : filter==='test' ? isTest : !isTest;
+    return matchQ && matchF;
+  });
+
+  if (!list.length) {
+    document.getElementById('admin-clients-table').innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>Sin resultados</p></div>';
+    updateAdminClientSelCount(); return;
+  }
+
+  document.getElementById('admin-clients-table').innerHTML = `
+    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <div style="display:grid;grid-template-columns:36px 1fr 1fr 60px 80px;gap:0;background:var(--bg);padding:8px 12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">
+        <div></div><div>Cliente</div><div>Teléfono / Email</div><div>Visitas</div><div style="text-align:right">Acción</div>
+      </div>
+      ${list.map((c,i) => `
+      <div style="display:grid;grid-template-columns:36px 1fr 1fr 60px 80px;gap:0;padding:10px 12px;border-top:1px solid var(--border);align-items:center;background:${i%2===0?'transparent':'rgba(255,255,255,.02)'}">
+        <div><input type="checkbox" class="admin-cl-cb" data-phone="${c.phone}" style="width:16px;height:16px" onchange="updateAdminClientSelCount()"></div>
+        <div>
+          <div style="font-weight:500">${c.name||''} ${c.last_name||''}</div>
+          <div style="color:var(--muted);font-size:11px">⭐ ${c.points||0} pts</div>
+        </div>
+        <div style="color:var(--muted)">
+          <div>${c.phone||'—'}</div>
+          <div style="font-size:11px">${c.email||''}</div>
+        </div>
+        <div style="color:var(--muted);text-align:center">${c.visit_count||0}</div>
+        <div style="text-align:right"><button class="btn-sm red" style="padding:4px 10px;font-size:12px" onclick="confirmSingleDeleteClient('${c.phone}','${((c.name||'')+(c.last_name?' '+c.last_name:'')).replace(/'/g,'')||c.phone}')">🗑️</button></div>
+      </div>`).join('')}
+    </div>`;
+  updateAdminClientSelCount();
+}
+
+function updateAdminClientSelCount() {
+  const cbs = document.querySelectorAll('.admin-cl-cb:checked');
+  const el = document.getElementById('admin-client-selected-count');
+  const btn = document.getElementById('btn-delete-clients-selected');
+  el.textContent = cbs.length ? `${cbs.length} seleccionado${cbs.length>1?'s':''}` : '';
+  btn.style.display = cbs.length ? '' : 'none';
+}
+
+function toggleSelectAllClients(checked) {
+  document.querySelectorAll('.admin-cl-cb').forEach(cb => cb.checked = checked);
+  updateAdminClientSelCount();
+}
+
+function confirmSingleDeleteClient(phone, label) {
+  pendingAdminDelete = { type:'clients', phones:[phone] };
+  document.getElementById('admin-confirm-msg').innerHTML = `Vas a borrar al cliente <strong>${label}</strong> y todos sus turnos.<br><span style="color:var(--red)">Esta acción no se puede deshacer.</span>`;
+  showAdminConfirm();
+}
+
+function confirmBulkDeleteClients() {
+  const phones = [...document.querySelectorAll('.admin-cl-cb:checked')].map(cb => cb.dataset.phone);
+  if (!phones.length) return;
+  pendingAdminDelete = { type:'clients', phones };
+  document.getElementById('admin-confirm-msg').innerHTML = `Vas a borrar <strong>${phones.length} cliente${phones.length>1?'s':''}</strong> y todos sus turnos.<br><span style="color:var(--red)">Esta acción no se puede deshacer.</span>`;
+  showAdminConfirm();
+}
+
+// ── MODAL CONFIRMACIÓN ──
+function showAdminConfirm() {
+  document.getElementById('admin-confirm-pw').value = '';
+  document.getElementById('admin-confirm-error').style.display = 'none';
+  document.getElementById('modal-admin-confirm').style.display = 'flex';
+  setTimeout(() => document.getElementById('admin-confirm-pw').focus(), 100);
+}
+
+async function execAdminDelete() {
+  const pw = document.getElementById('admin-confirm-pw').value;
+  if (pw !== PW) { document.getElementById('admin-confirm-error').style.display='block'; return; }
+  document.getElementById('modal-admin-confirm').style.display = 'none';
+  const action = pendingAdminDelete;
+  if (!action) return;
+
+  if (action.type === 'bookings') {
+    const r = await api('POST', '/admin/bookings/bulk-delete', { ids: action.ids });
+    toast(`${r.deleted||action.ids.length} turno${action.ids.length>1?'s':''} borrado${action.ids.length>1?'s':''} ✓`);
+    adminBookings = adminBookings.filter(b => !action.ids.includes(b.id));
+    renderAdminTable();
+  }
+  else if (action.type === 'clients') {
+    let deleted = 0;
+    for (const phone of action.phones) {
+      const r = await fetch('/admin/delete-client', {method:'POST', headers:{'Content-Type':'application/json','x-staff-password':PW}, body:JSON.stringify({phone, password:PW, secret:PW})});
+      const d = await r.json();
+      if (d.ok) deleted++;
+    }
+    toast(`${deleted} cliente${deleted>1?'s':''} borrado${deleted>1?'s':''} ✓`);
+    adminClients = adminClients.filter(c => !action.phones.includes(c.phone));
+    renderAdminClientTable();
+  }
+}
 async function loadTestClients(){
   const r=await api('GET','/admin/clients?pw='+PW);
   const list=Array.isArray(r)?r:[];
