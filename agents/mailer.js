@@ -108,8 +108,14 @@ async function mailTurnoConfirmado({ to, nombre, servicio, fecha, hora, code, ca
 
 // ── EMAIL: TURNO CANCELADO ────────────────────────────────────────────────────
 async function mailTurnoCancelado({ to, nombre, servicio, fecha, hora, code, motivo }) {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  console.log(`[mailer-cancelado] to=${to} | GMAIL_USER=${user||'MISSING'} | PASS=${pass?'OK':'MISSING'}`);
   const transporter = getTransporter();
-  if (!transporter || !to) return;
+  if (!transporter || !to) {
+    console.error(`[mailer-cancelado] ✗ Abortando — transporter=${!!transporter} to=${to}`);
+    return;
+  }
 
   const motivoHtml = motivo ? `
     <div style="background:#2a1a1a;border-left:3px solid #c84a4a;border-radius:6px;padding:14px 18px;margin:16px 0">
@@ -165,8 +171,14 @@ async function mailTurnoCancelado({ to, nombre, servicio, fecha, hora, code, mot
 
 // ── EMAIL: TURNO MODIFICADO ───────────────────────────────────────────────────
 async function mailTurnoModificado({ to, nombre, servicio, fecha, hora, fechaAnterior, horaAnterior, code, calendarLink, monto, motivo }) {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  console.log(`[mailer-modificado] to=${to} | GMAIL_USER=${user||'MISSING'} | PASS=${pass?'OK':'MISSING'}`);
   const transporter = getTransporter();
-  if (!transporter || !to) return;
+  if (!transporter || !to) {
+    console.error(`[mailer-modificado] ✗ Abortando — transporter=${!!transporter} to=${to}`);
+    return;
+  }
 
   // Soporte para llamadas nuevas (fecha/hora) y antiguas (fechaNueva/horaNueva)
   const fechaFinal = fecha || fechaAnterior || '—';
