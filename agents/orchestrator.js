@@ -464,6 +464,37 @@ async function handle({ sessionId, phone, text }) {
     return send('¡Claro! 💛 Escribime tu email correcto y lo actualizamos ahora mismo 📧');
   }
 
+  // ── Asesoramiento / indecisión — derivar a turno ─────────────────────────
+  const esAsesoramiento = (
+    /asesor(amiento|arte|arme|en)|recomendar|recomend(á|a)s|recomendacion|consejo|no s[eé] qu[eé]|qu[eé] hacerme|qu[eé] me hago|no s[eé] si|ayud[ao]me a elegir|no tengo idea|indecis/i.test(tl) &&
+    !/turno|reserva|sacar|agendar|cancel|reprograma|c[oó]digo/i.test(tl)
+  );
+  if (esAsesoramiento) {
+    session.step = 'ASESORAMIENTO_DERIVAR';
+    return send(
+      `¡Con mucho gusto! 💛 El asesoramiento lo hacemos en persona — así las estilistas pueden ver tu pelo con la luz natural y entender bien lo que buscás.\n\n` +
+      `Lo ideal es que vengas al turno y antes de arrancar charlamos sobre opciones, qué te queda mejor y por dónde podemos ir. En 10-15 minutos ya tenés todo claro 🙌\n\n` +
+      `¿Querés que te agendemos un turno?\n\n` +
+      `1 — Sí, quiero sacar turno\n2 — Todavía no, tengo más preguntas`
+    );
+  }
+
+  // Respuesta al ofrecimiento de asesoramiento
+  if (session.step === 'ASESORAMIENTO_DERIVAR') {
+    const afirmativo = /^1$|^s[ií]\b|^dale|^bueno|^quiero|^ok|^claro/i.test(tl);
+    const negativo   = /^2$|^no\b|^todav[ií]a|^despu[eé]s|^ahora no/i.test(tl);
+    if (afirmativo) {
+      session.step = 'RESERVANDO';
+      session.data = {};
+      return send(`¡Perfecto! 💛 ¿Qué servicio tenías en mente?\n\n${MSGS.servicios()}`);
+    }
+    if (negativo) {
+      session.step = 'LIBRE';
+      return send(`Sin problema 😊 Cuando quieras, escribime y te ayudo. ¿Hay algo más en lo que te pueda ayudar? 💛`);
+    }
+    // Si escribe otra cosa (pregunta libre), Haiku responde y mantenemos el step
+  }
+
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
     // Si estamos en medio de una reserva y la pregunta es sobre horarios/disponibilidad,
     // NO interrumpir el flow — responder y seguir en RESERVANDO
