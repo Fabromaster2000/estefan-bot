@@ -238,6 +238,7 @@ async function mailTurnoModificado({ to, nombre, servicio, fechaAnterior, horaAn
 async function mailComprobante({ to, nombre, numero, servicios, productos,
   totalServicios, totalProductos, descuento, total, medioPago, pointsEarned }) {
 
+  const transporter = getTransporter();
   if (!transporter || !to) return;
 
   const srvRows = (servicios||[]).map(s =>
