@@ -9,7 +9,7 @@ const memory   = require('./memory');
 const { getPersonalizedUpsell } = require('./upsell');
 const SERVICIOS = require('../core/servicios');
 const { getSession } = require('../core/session');
-const { conversationLog, clientGet, clientUpdateProfile } = require('../core/db');
+const { conversationLog, clientGet, clientUpsert, clientUpdateProfile } = require('../core/db');
 const { syncClientesToSheet } = require('../core/sheets');
 
 const MSGS = {
@@ -255,7 +255,11 @@ async function handle({ sessionId, phone, text }) {
   // ── Email en flujo de reserva ─────────────────────────────────────────────
   if (session.step === 'PEDIR_EMAIL_RESERVA') {
     const em = t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (em) session.data.email = em[0];
+    if (em) {
+      session.data.email = em[0];
+      // Fusionar sesiones por email al vuelo
+      await clientUpsert(phone, session.data.nombre || null, em[0]).catch(() => {});
+    }
     if (/^no\b/i.test(tl)) session.data.emailSkipped = true;
     session.data.emailPreguntado = true;
     session.step = 'RESERVANDO';
@@ -267,6 +271,8 @@ async function handle({ sessionId, phone, text }) {
     const em = extractEmail(t);
     if (em) {
       session.data.email = em;
+      // Fusionar sesiones: si este email ya pertenece a otro cliente, unificar
+      await clientUpsert(phone, session.data.nombre || null, em).catch(() => {});
       const { addGuestToCalendarEvent } = require('../core/calendar');
       const { mailTurnoConfirmado } = require('./mailer');
       if (session.lastCalendarEventId) await addGuestToCalendarEvent(session.lastCalendarEventId, em).catch(() => {});
@@ -348,6 +354,7 @@ async function handle({ sessionId, phone, text }) {
     const em = extractEmail(t);
     if (em) {
       // Actualizar en DB y perfil
+      await clientUpsert(phone, null, em).catch(() => {});
       await clientUpdateProfile(phone, { email: em });
       session.profile.email = em;
       session.data.email = em;
