@@ -791,3 +791,231 @@ async function init() {
 }
 
 init().catch(console.error);
+
+// ── PAYMENTS / COBROS ─────────────────────────────────────────────────────────
+
+// Listar empleados
+app.get('/staff/empleados', staffAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(`SELECT id, nombre, activo FROM empleados WHERE activo = true ORDER BY nombre ASC`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Listar productos
+app.get('/staff/productos', staffAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(`SELECT id, nombre, precio, categoria, comision_pct FROM productos WHERE activo = true ORDER BY categoria, nombre`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Crear cobro / comprobante
+app.post('/staff/cobros', staffAuth, async (req, res) => {
+  try {
+    const { booking_id, client_phone, client_name, empleado_id, medio_pago,
+            servicios, productos, descuento, notas, email } = req.body;
+
+    const dbConn = getConn();
+
+    // Calcular totales
+    const totalServicios = (servicios||[]).reduce((s,x) => s + (x.monto||0), 0);
+    const totalProductos = (productos||[]).reduce((s,x) => s + (x.precio * x.cantidad), 0);
+    const descuentoAmt   = descuento || 0;
+    const total          = totalServicios + totalProductos - descuentoAmt;
+
+    // Insertar cobro
+    const r = await dbConn.query(`
+      INSERT INTO payments
+        (booking_id, client_phone, client_name, empleado_id, medio_pago,
+         servicios_json, productos_json, total_servicios, total_productos,
+         descuento, total, notas, email, fecha_str)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+              TO_CHAR(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires','DD/MM/YYYY'))
+      RETURNING id, numero_comprobante
+    `, [
+      booking_id||null, client_phone||null, client_name||'',
+      empleado_id||null, medio_pago||'Efectivo',
+      JSON.stringify(servicios||[]), JSON.stringify(productos||[]),
+      totalServicios, totalProductos,
+      descuentoAmt, total, notas||null, email||null
+    ]);
+
+    const cobro = r.rows[0];
+
+    // Marcar turno como Completado
+    if (booking_id) {
+      await dbConn.query(`UPDATE bookings SET status = 'Completado' WHERE id = $1`, [booking_id]).catch(()=>{});
+    }
+
+    // Actualizar total_spent del cliente
+    if (client_phone) {
+      await dbConn.query(
+        `UPDATE clients SET total_spent = COALESCE(total_spent,0) + $1 WHERE phone = $2`,
+        [total, client_phone]
+      ).catch(()=>{});
+    }
+
+    // Calcular comisiones de productos
+    if ((productos||[]).length && empleado_id) {
+      for (const p of productos) {
+        if (!p.comision_pct) continue;
+        const comision = Math.round(p.precio * p.cantidad * p.comision_pct / 100);
+        await dbConn.query(`
+          INSERT INTO comisiones (empleado_id, payment_id, producto_id, monto, descripcion, fecha_str)
+          VALUES ($1,$2,$3,$4,$5, TO_CHAR(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires','DD/MM/YYYY'))
+        `, [empleado_id, cobro.id, p.id||null, comision,
+            `${p.nombre} x${p.cantidad}`]).catch(()=>{});
+      }
+    }
+
+    // Puntos ganados (1 punto por cada $1000 gastados en servicios)
+    let pointsEarned = 0;
+    if (client_phone && totalServicios > 0) {
+      pointsEarned = Math.floor(totalServicios / 1000);
+      if (pointsEarned > 0) {
+        await dbConn.query(
+          `UPDATE clients SET points = COALESCE(points,0) + $1 WHERE phone = $2`,
+          [pointsEarned, client_phone]
+        ).catch(()=>{});
+        await dbConn.query(
+          `INSERT INTO loyalty_transactions (phone, type, points, description)
+           VALUES ($1,'earn',$2,$3)`,
+          [client_phone, pointsEarned, `Cobro #${cobro.numero_comprobante}`]
+        ).catch(()=>{});
+      }
+    }
+
+    // Email comprobante
+    if (email) {
+      try {
+        const { mailComprobante } = require('./agents/mailer');
+        await mailComprobante({
+          to: email, nombre: client_name, numero: cobro.numero_comprobante,
+          servicios: servicios||[], productos: productos||[],
+          totalServicios, totalProductos, descuento: descuentoAmt, total,
+          medioPago: medio_pago, pointsEarned
+        });
+        console.log(`[cobros] ✓ Comprobante email → ${email}`);
+      } catch(me) { console.error('[cobros] mail error:', me.message); }
+    }
+
+    console.log(`[cobros] ✓ Cobro #${cobro.numero_comprobante} | $${total} | ${medio_pago} | ${client_name}`);
+    res.json({ ok: true, id: cobro.id, numero: cobro.numero_comprobante, total, pointsEarned });
+  } catch(e) {
+    console.error('[cobros] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Historial de cobros
+app.get('/staff/cobros', staffAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(`
+      SELECT p.id, p.numero_comprobante as numero, p.client_name as nombre,
+             p.client_phone as phone, p.medio_pago, p.total, p.fecha_str as fecha,
+             p.created_at, e.nombre as empleado
+      FROM payments p
+      LEFT JOIN empleados e ON e.id = p.empleado_id
+      ORDER BY p.created_at DESC LIMIT 100
+    `);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Detalle de un cobro (para reimprimir comprobante)
+app.get('/staff/cobros/:id', staffAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(`
+      SELECT p.*, e.nombre as empleado_nombre
+      FROM payments p
+      LEFT JOIN empleados e ON e.id = p.empleado_id
+      WHERE p.id = $1
+    `, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'No encontrado' });
+    const cobro = r.rows[0];
+    cobro.servicios_json = JSON.parse(cobro.servicios_json||'[]');
+    cobro.productos_json = JSON.parse(cobro.productos_json||'[]');
+    res.json(cobro);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Historial de comisiones por empleado
+app.get('/staff/comisiones', staffAuth, async (req, res) => {
+  try {
+    const { empleado_id, desde, hasta } = req.query;
+    let q = `
+      SELECT c.id, e.nombre as empleado, c.monto, c.descripcion, c.fecha_str,
+             p.numero_comprobante as comprobante, p.client_name as cliente
+      FROM comisiones c
+      JOIN empleados e ON e.id = c.empleado_id
+      JOIN payments p ON p.id = c.payment_id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (empleado_id) { params.push(empleado_id); q += ` AND c.empleado_id = $${params.length}`; }
+    q += ` ORDER BY c.created_at DESC LIMIT 200`;
+    const r = await getConn().query(q, params);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// CRUD empleados (admin)
+app.get('/staff/empleados/todos', adminAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(`SELECT * FROM empleados ORDER BY nombre`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/staff/empleados', adminAuth, async (req, res) => {
+  try {
+    const { nombre, rol, comision_servicios_pct } = req.body;
+    const r = await getConn().query(
+      `INSERT INTO empleados (nombre, rol, comision_servicios_pct) VALUES ($1,$2,$3) RETURNING *`,
+      [nombre, rol||'Estilista', comision_servicios_pct||0]
+    );
+    res.json({ ok: true, empleado: r.rows[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/staff/empleados/:id', adminAuth, async (req, res) => {
+  try {
+    const { nombre, rol, activo, comision_servicios_pct } = req.body;
+    await getConn().query(
+      `UPDATE empleados SET nombre=$1, rol=$2, activo=$3, comision_servicios_pct=$4 WHERE id=$5`,
+      [nombre, rol, activo !== false, comision_servicios_pct||0, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// CRUD productos (admin)
+app.get('/staff/productos/todos', adminAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(`SELECT * FROM productos ORDER BY categoria, nombre`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/staff/productos', adminAuth, async (req, res) => {
+  try {
+    const { nombre, precio, categoria, comision_pct } = req.body;
+    const r = await getConn().query(
+      `INSERT INTO productos (nombre, precio, categoria, comision_pct) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [nombre, precio||0, categoria||'General', comision_pct||10]
+    );
+    res.json({ ok: true, producto: r.rows[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/staff/productos/:id', adminAuth, async (req, res) => {
+  try {
+    const { nombre, precio, categoria, comision_pct, activo } = req.body;
+    await getConn().query(
+      `UPDATE productos SET nombre=$1, precio=$2, categoria=$3, comision_pct=$4, activo=$5 WHERE id=$6`,
+      [nombre, precio||0, categoria||'General', comision_pct||10, activo !== false, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
