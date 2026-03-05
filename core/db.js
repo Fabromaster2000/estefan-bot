@@ -211,25 +211,81 @@ async function configSet(key, value) {
 }
 
 // ── CLIENTS ──────────────────────────────────────────────────────────────────
+// ── clientResolve: busca por email primero, luego por phone ──────────────────
+// Retorna el cliente existente o null. Nunca crea.
+async function clientResolve(phone, email = null) {
+  if (!db) return null;
+  // 1. Buscar por email si lo tenemos (une sesiones distintas)
+  if (email) {
+    const byEmail = await db.query(`SELECT * FROM clients WHERE email = $1`, [email]);
+    if (byEmail.rows[0]) return byEmail.rows[0];
+  }
+  // 2. Buscar por phone
+  const byPhone = await db.query(`SELECT * FROM clients WHERE phone = $1`, [phone]);
+  return byPhone.rows[0] || null;
+}
+
 async function clientGet(phone) {
   if (!db) return null;
   const r = await db.query(`SELECT * FROM clients WHERE phone = $1`, [phone]);
   return r.rows[0] || null;
 }
 
-async function clientUpsert(phone, name = null) {
+async function clientGetById(id) {
+  if (!db) return null;
+  const r = await db.query(`SELECT * FROM clients WHERE id = $1`, [id]);
+  return r.rows[0] || null;
+}
+
+async function clientGetByEmail(email) {
+  if (!db) return null;
+  const r = await db.query(`SELECT * FROM clients WHERE email = $1`, [email]);
+  return r.rows[0] || null;
+}
+
+// clientUpsert: crea o actualiza. Si el email ya existe en otro registro, lo fusiona.
+async function clientUpsert(phone, name = null, email = null) {
   if (!db) return;
+
+  // Si tenemos email, ver si ya existe un cliente con ese email
+  if (email) {
+    const existing = await db.query(`SELECT * FROM clients WHERE email = $1`, [email]);
+    if (existing.rows[0] && existing.rows[0].phone !== phone) {
+      // Fusionar: actualizar phone del cliente existente si el suyo era sintético
+      const ex = existing.rows[0];
+      const exIsSynthetic = ex.phone.startsWith('web-') || ex.phone.startsWith('manual-');
+      if (exIsSynthetic) {
+        // Migrar el phone sintético al real
+        await db.query(`UPDATE clients SET phone=$1, name=COALESCE($2,name), updated_at=NOW() WHERE id=$3`,
+          [phone, name, ex.id]);
+        await db.query(`UPDATE bookings SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+        await db.query(`UPDATE loyalty_transactions SET phone=$1 WHERE phone=$2`, [phone, ex.phone]);
+        await db.query(`UPDATE client_tokens SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+        await db.query(`UPDATE client_notes SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+        await db.query(`UPDATE client_ficha SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+        console.log(`[db] ✓ Fusión: ${ex.phone} → ${phone} (mismo email: ${email})`);
+        return;
+      } else {
+        // El cliente real ya tiene este email con otro phone — no pisamos, solo actualizamos el nuevo
+        console.log(`[db] ℹ Email ${email} ya pertenece a ${ex.phone}, no se fusiona con ${phone}`);
+      }
+    }
+  }
+
   await db.query(`
-    INSERT INTO clients (phone, name, created_at, updated_at)
-    VALUES ($1, $2, NOW(), NOW())
+    INSERT INTO clients (phone, name, email, created_at, updated_at)
+    VALUES ($1, $2, $3, NOW(), NOW())
     ON CONFLICT (phone) DO UPDATE SET
-      name = COALESCE($2, clients.name),
+      name  = COALESCE($2, clients.name),
+      email = COALESCE($3, clients.email),
       updated_at = NOW()
-  `, [phone, name]);
+  `, [phone, name, email || null]);
 }
 
 async function clientUpdateProfile(phone, { lastName, email, promoOptIn, profileComplete }) {
   if (!db) return;
+  // Si el email ya existe en otro cliente con phone sintético, fusionar primero
+  if (email) await clientUpsert(phone, null, email);
   await db.query(`
     UPDATE clients SET
       last_name        = COALESCE($2, last_name),
@@ -412,7 +468,7 @@ async function conversationGetRecent(phone, limit = 20) {
 module.exports = {
   initDB, getDB,
   configGet, configSet,
-  clientGet, clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
+  clientGet, clientGetById, clientGetByEmail, clientResolve, clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
   memoryGet, memoryUpdate,
   bookingSave, bookingFindByCode, bookingFindByName, bookingCancel, bookingGetByPhone, bookingGetActive, generateBookingCode,
   loyaltyGetBalance, loyaltyGetTransactions, loyaltyGetRewards, loyaltyRedeem,
