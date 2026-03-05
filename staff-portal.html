@@ -145,6 +145,7 @@
     <input class="form-input" type="password" id="pw-input" placeholder="Contraseña" style="margin-bottom:16px" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn-primary" onclick="doLogin()">Ingresar</button>
     <p id="login-error" style="color:var(--red);margin-top:12px;font-size:13px;display:none">Contraseña incorrecta</p>
+    <p style="color:var(--muted);font-size:12px;margin-top:16px;line-height:1.5">💡 Si el servidor está dormido, el primer intento puede tardar hasta 30 segundos.</p>
   </div>
 </div>
 
@@ -415,6 +416,9 @@
       <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px">
         <button class="chip active" id="atab-turnos" onclick="switchAdminTab('turnos')">📋 Turnos</button>
         <button class="chip" id="atab-clientes" onclick="switchAdminTab('clientes')">👤 Clientes</button>
+        <button class="chip" id="atab-empleados" onclick="switchAdminTab('empleados')">✂️ Empleados</button>
+        <button class="chip" id="atab-productos" onclick="switchAdminTab('productos')">🛍️ Productos</button>
+        <button class="chip" id="atab-reportes" onclick="switchAdminTab('reportes')">📊 Reportes</button>
         <button class="chip" id="atab-herramientas" onclick="switchAdminTab('herramientas')">🔧 DB</button>
       </div>
 
@@ -430,6 +434,79 @@
           <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">🧹 Limpiar sesiones TEST</div>
           <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Elimina todos los turnos y clientes con teléfono <code style="background:var(--bg);padding:2px 6px;border-radius:4px">web-*</code> generados desde el chat de prueba.</p>
           <button class="btn-sm red" onclick="confirmDeleteAll('test')">🗑️ Borrar todo lo TEST</button>
+        </div>
+      </div>
+
+      <!-- PANEL EMPLEADOS -->
+      <div id="admin-panel-empleados" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">✂️ Empleados</div>
+            <button class="btn-sm green" onclick="showAddEmpleadoForm()">+ Agregar</button>
+          </div>
+          <div id="admin-emp-form" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px">
+            <div class="form-grid">
+              <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="new-emp-nombre" placeholder="Ej: Fede"></div>
+              <div class="form-group"><label class="form-label">Rol</label><input class="form-input" id="new-emp-rol" value="Estilista"></div>
+            </div>
+            <div class="form-group" style="max-width:200px"><label class="form-label">% Comisión servicios</label><input class="form-input" id="new-emp-comision" type="number" placeholder="0" min="0" max="100"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-sm green" onclick="saveNewEmpleado()">Guardar</button>
+              <button class="btn-sm" onclick="document.getElementById('admin-emp-form').style.display='none'">Cancelar</button>
+            </div>
+          </div>
+          <div id="admin-empleados-list"><div style="color:var(--muted);font-size:13px">Cargando...</div></div>
+        </div>
+      </div>
+
+      <!-- PANEL PRODUCTOS -->
+      <div id="admin-panel-productos" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">🛍️ Productos</div>
+            <button class="btn-sm green" onclick="showAddProductoForm()">+ Agregar</button>
+          </div>
+          <div id="admin-prod-form" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px">
+            <div class="form-grid">
+              <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="new-prod-nombre" placeholder="Ej: Shampoo Kerastase"></div>
+              <div class="form-group"><label class="form-label">Categoría</label><input class="form-input" id="new-prod-cat" placeholder="Shampoo / Tratamiento / Otro"></div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group"><label class="form-label">Precio $</label><input class="form-input" id="new-prod-precio" type="number" placeholder="0"></div>
+              <div class="form-group"><label class="form-label">% Comisión</label><input class="form-input" id="new-prod-comision" type="number" placeholder="10" min="0" max="100"></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-sm green" onclick="saveNewProducto()">Guardar</button>
+              <button class="btn-sm" onclick="document.getElementById('admin-prod-form').style.display='none'">Cancelar</button>
+            </div>
+          </div>
+          <div id="admin-productos-list"><div style="color:var(--muted);font-size:13px">Cargando...</div></div>
+        </div>
+      </div>
+
+      <!-- PANEL REPORTES -->
+      <div id="admin-panel-reportes" style="display:none">
+        <div class="card">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px">📊 Descargar reportes Excel</div>
+          <div style="display:grid;gap:12px">
+            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
+              <div><div style="font-weight:600;margin-bottom:3px">📅 Turnos</div><div style="font-size:12px;color:var(--muted)">Todos los turnos con fecha, cliente, servicio, estado y monto</div></div>
+              <button class="btn-sm green" onclick="downloadReport('turnos')">⬇️ Descargar</button>
+            </div>
+            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
+              <div><div style="font-weight:600;margin-bottom:3px">👤 Clientes</div><div style="font-size:12px;color:var(--muted)">Base de clientes con email, teléfono, puntos y total gastado</div></div>
+              <button class="btn-sm green" onclick="downloadReport('clientes')">⬇️ Descargar</button>
+            </div>
+            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
+              <div><div style="font-weight:600;margin-bottom:3px">💳 Ventas / Cobros</div><div style="font-size:12px;color:var(--muted)">Cobros registrados con servicios, productos y medio de pago</div></div>
+              <button class="btn-sm green" onclick="downloadReport('cobros')">⬇️ Descargar</button>
+            </div>
+            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
+              <div><div style="font-weight:600;margin-bottom:3px">💰 Comisiones</div><div style="font-size:12px;color:var(--muted)">Comisiones por empleado</div></div>
+              <button class="btn-sm green" onclick="downloadReport('comisiones')">⬇️ Descargar</button>
+            </div>
+          </div>
+          <div id="report-status" style="display:none;margin-top:14px;text-align:center;padding:12px;color:var(--muted);font-size:13px;background:var(--bg);border-radius:8px">Generando reporte...</div>
         </div>
       </div>
 
@@ -630,12 +707,34 @@ let PW='',ADMIN_PW='',allAgenda=[],allClientes=[],selCl=null,mode='existente',se
 
 async function doLogin(){
   const pw=document.getElementById('pw-input').value;
-  const r=await fetch('/staff/today',{headers:{'x-staff-password':pw}});
-  if(r.status===401){document.getElementById('login-error').style.display='block';return;}
-  PW=pw;
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('app').style.display='block';
-  buildSrvGrid();loadHoy();loadColor();
+  if(!pw){document.getElementById('login-error').style.display='block';return;}
+  const btn=document.querySelector('#login-screen .btn-primary');
+  const errEl=document.getElementById('login-error');
+  btn.textContent='Conectando...';btn.disabled=true;
+  errEl.style.display='none';
+  try {
+    const r=await fetch('/staff/today',{headers:{'x-staff-password':pw}});
+    if(r.status===401){
+      errEl.textContent='Contraseña incorrecta ❌';
+      errEl.style.display='block';
+      btn.textContent='Ingresar';btn.disabled=false;
+      return;
+    }
+    if(!r.ok){
+      errEl.textContent='Error del servidor ('+r.status+'). Intentá de nuevo.';
+      errEl.style.display='block';
+      btn.textContent='Ingresar';btn.disabled=false;
+      return;
+    }
+    PW=pw;
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='block';
+    buildSrvGrid();loadHoy();loadColor();
+  } catch(e) {
+    errEl.textContent='Sin conexión — el servidor puede estar iniciando (esperá 30 seg y reintentá)';
+    errEl.style.display='block';
+    btn.textContent='Reintentar';btn.disabled=false;
+  }
 }
 function logout(){PW='';ADMIN_PW='';document.getElementById('login-screen').style.display='flex';document.getElementById('app').style.display='none';document.getElementById('pw-input').value='';}
 async function api(method,path,body){
@@ -1189,71 +1288,29 @@ function toast(msg,err){const t=document.getElementById('toast');t.textContent=m
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
-async function loadTestClients(){
-  const r=await api('GET','/admin/clients?pw='+PW);
-  const list=Array.isArray(r)?r:[];
-  const test=list.filter(c=>c.phone&&c.phone.startsWith('web-'));
-  const el=document.getElementById('test-clients-list');
-  if(!test.length){el.innerHTML='<p style="font-size:13px;color:var(--muted)">No hay clientes TEST</p>';return;}
-  el.innerHTML=test.map(c=>`
-    <div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
-      <span><strong>${c.name||'Sin nombre'}</strong> <span style="color:var(--muted)">${c.phone}</span></span>
-      <button class="btn-sm red" style="padding:4px 10px;font-size:12px" onclick="deleteSingleClient('${c.phone}')">Borrar</button>
-    </div>`).join('');
-}
 
-async function cleanupTestClients(){
-  if(!confirm('¿Borrar TODOS los clientes web-*? Esto no se puede deshacer.'))return;
-  const r=await fetch('/admin/cleanup-test-clients',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({password:ADMIN_PW})});
-  const d=await r.json();
-  const el=document.getElementById('cleanup-result');
-  el.style.display='block';el.textContent=`✅ Eliminados: ${d.deleted||0} clientes TEST`;
-  document.getElementById('test-clients-list').innerHTML='';
-  toast(`${d.deleted||0} clientes eliminados ✅`);
-}
 
-async function deleteClient(){
-  const phone=document.getElementById('del-phone').value.trim();
-  if(!phone){toast('Ingresá un teléfono',1);return;}
-  if(!confirm(`¿Borrar el cliente ${phone}?`))return;
-  const r=await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({phone,password:ADMIN_PW})});
-  const d=await r.json();
-  const el=document.getElementById('del-result');
-  el.style.display='block';
-  if(d.ok){el.style.color='var(--green)';el.textContent='✅ Cliente eliminado';document.getElementById('del-phone').value='';}
-  else{el.style.color='var(--red)';el.textContent='Error: '+(d.error||'no encontrado');}
-}
 
-async function deleteSingleClient(phone){
-  if(!confirm(`¿Borrar ${phone}?`))return;
-  await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({phone,password:ADMIN_PW})});
-  toast('Eliminado ✅');loadTestClients();
-}
 
-async function loadDBStats(){
-  const clients=await api('GET','/staff/clients');
-  const agenda=await api('GET','/staff/agenda');
-  const confirmados=agenda.filter(b=>b.estado==='Confirmado'||b.estado==='Seña pagada').length;
-  const cancelados=agenda.filter(b=>b.estado==='Cancelado').length;
-  document.getElementById('db-stats').innerHTML=`
-    <div class="stats-row" style="margin-bottom:0">
-      <div class="stat-card"><div class="stat-num">${clients.length||0}</div><div class="stat-label">Clientes totales</div></div>
-      <div class="stat-card"><div class="stat-num">${agenda.length||0}</div><div class="stat-label">Turnos totales</div></div>
-      <div class="stat-card"><div class="stat-num">${confirmados}</div><div class="stat-label">Confirmados</div></div>
-      <div class="stat-card"><div class="stat-num">${cancelados}</div><div class="stat-label">Cancelados</div></div>
-    </div>`;
-}
+
+
+
+
+
 // ── ADMIN FUNCTIONS ──────────────────────────────────────────────────────────
 let adminBookings = [], adminClients = [], pendingAdminDelete = null;
 
 function switchAdminTab(tab) {
-  document.getElementById('admin-panel-turnos').style.display      = tab==='turnos'       ? '' : 'none';
-  document.getElementById('admin-panel-clientes').style.display    = tab==='clientes'     ? '' : 'none';
-  document.getElementById('admin-panel-herramientas').style.display= tab==='herramientas' ? '' : 'none';
+  ['turnos','clientes','empleados','productos','reportes','herramientas'].forEach(t => {
+    const el = document.getElementById('admin-panel-'+t);
+    if (el) el.style.display = t===tab ? '' : 'none';
+  });
   document.querySelectorAll('#panel-admin .chip').forEach(c=>c.classList.remove('active'));
-  document.getElementById('atab-'+tab).classList.add('active');
-  if (tab==='turnos'   && !adminBookings.length)  loadAdminBookings();
-  if (tab==='clientes' && !adminClients.length)   loadAdminClients();
+  document.getElementById('atab-'+tab)?.classList.add('active');
+  if (tab==='turnos'    && !adminBookings.length) loadAdminBookings();
+  if (tab==='clientes'  && !adminClients.length)  loadAdminClients();
+  if (tab==='empleados') loadAdminEmpleados();
+  if (tab==='productos') loadAdminProductos();
 }
 
 async function syncEmails(){
@@ -1866,6 +1923,157 @@ function printComprobante() {
   setTimeout(() => win.print(), 500);
 }
 
+
+
+// ── ADMIN: EMPLEADOS ──────────────────────────────────────────────────────────
+async function loadAdminEmpleados() {
+  const el = document.getElementById('admin-empleados-list');
+  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Cargando...</div>';
+  const emps = await adminApi('GET', '/staff/empleados/todos');
+  if (!emps?.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">No hay empleados. Agregá uno arriba.</div>'; return;
+  }
+  el.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse">
+    <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+      <th style="text-align:left;padding:6px 8px">Nombre</th>
+      <th style="text-align:left;padding:6px 8px">Rol</th>
+      <th style="text-align:center;padding:6px 8px">% Com.</th>
+      <th style="text-align:center;padding:6px 8px">Activo</th>
+      <th style="padding:6px 8px"></th>
+    </tr></thead>
+    <tbody>${emps.map(e => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:8px"><input class="form-input" id="emp-n-${e.id}" value="${e.nombre}" style="height:32px;padding:4px 8px"></td>
+      <td style="padding:8px"><input class="form-input" id="emp-r-${e.id}" value="${e.rol||'Estilista'}" style="height:32px;padding:4px 8px"></td>
+      <td style="padding:8px;text-align:center"><input class="form-input" id="emp-c-${e.id}" type="number" value="${e.comision_servicios_pct||0}" style="height:32px;padding:4px 8px;width:70px;text-align:center"></td>
+      <td style="padding:8px;text-align:center"><input type="checkbox" id="emp-a-${e.id}" ${e.activo ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer"></td>
+      <td style="padding:8px"><button class="btn-sm green" style="padding:4px 10px" onclick="saveEmpleado(${e.id})">💾</button></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+function showAddEmpleadoForm() {
+  document.getElementById('admin-emp-form').style.display = 'block';
+  document.getElementById('new-emp-nombre').focus();
+}
+async function saveNewEmpleado() {
+  const nombre = document.getElementById('new-emp-nombre').value.trim();
+  const rol    = document.getElementById('new-emp-rol').value.trim() || 'Estilista';
+  const com    = parseInt(document.getElementById('new-emp-comision').value) || 0;
+  if (!nombre) { toast('Ingresá el nombre', 1); return; }
+  const r = await adminApi('POST', '/staff/empleados', { nombre, rol, comision_servicios_pct: com });
+  if (r.ok) {
+    toast('Empleado agregado ✅');
+    document.getElementById('admin-emp-form').style.display = 'none';
+    document.getElementById('new-emp-nombre').value = '';
+    document.getElementById('new-emp-comision').value = '';
+    loadAdminEmpleados();
+    allEmpleados = []; // force refresh on next cobrar open
+  } else toast('Error: '+(r.error||''), 1);
+}
+async function saveEmpleado(id) {
+  const nombre = document.getElementById('emp-n-'+id).value.trim();
+  const rol    = document.getElementById('emp-r-'+id).value.trim();
+  const com    = parseInt(document.getElementById('emp-c-'+id).value) || 0;
+  const activo = document.getElementById('emp-a-'+id).checked;
+  await adminApi('PUT', `/staff/empleados/${id}`, { nombre, rol, activo, comision_servicios_pct: com });
+  toast('Guardado ✅');
+  allEmpleados = [];
+}
+
+// ── ADMIN: PRODUCTOS ──────────────────────────────────────────────────────────
+async function loadAdminProductos() {
+  const el = document.getElementById('admin-productos-list');
+  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Cargando...</div>';
+  const prods = await adminApi('GET', '/staff/productos/todos');
+  if (!prods?.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">No hay productos. Agregá uno arriba.</div>'; return;
+  }
+  el.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse">
+    <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+      <th style="text-align:left;padding:6px 8px">Nombre</th>
+      <th style="text-align:left;padding:6px 8px">Categoría</th>
+      <th style="text-align:right;padding:6px 8px">Precio $</th>
+      <th style="text-align:center;padding:6px 8px">% Com.</th>
+      <th style="text-align:center;padding:6px 8px">Activo</th>
+      <th style="padding:6px 8px"></th>
+    </tr></thead>
+    <tbody>${prods.map(p => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:6px 4px"><input class="form-input" id="prod-n-${p.id}" value="${p.nombre}" style="height:32px;padding:4px 8px"></td>
+      <td style="padding:6px 4px"><input class="form-input" id="prod-cat-${p.id}" value="${p.categoria||'General'}" style="height:32px;padding:4px 8px"></td>
+      <td style="padding:6px 4px"><input class="form-input" id="prod-p-${p.id}" type="number" value="${p.precio||0}" style="height:32px;padding:4px 8px;width:100px;text-align:right"></td>
+      <td style="padding:6px 4px;text-align:center"><input class="form-input" id="prod-c-${p.id}" type="number" value="${p.comision_pct||10}" style="height:32px;padding:4px 8px;width:60px;text-align:center"></td>
+      <td style="padding:6px 4px;text-align:center"><input type="checkbox" id="prod-a-${p.id}" ${p.activo ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer"></td>
+      <td style="padding:6px 4px"><button class="btn-sm green" style="padding:4px 10px" onclick="saveProducto(${p.id})">💾</button></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+function showAddProductoForm() {
+  document.getElementById('admin-prod-form').style.display = 'block';
+  document.getElementById('new-prod-nombre').focus();
+}
+async function saveNewProducto() {
+  const nombre = document.getElementById('new-prod-nombre').value.trim();
+  const cat    = document.getElementById('new-prod-cat').value.trim() || 'General';
+  const precio = parseInt(document.getElementById('new-prod-precio').value) || 0;
+  const com    = parseInt(document.getElementById('new-prod-comision').value) || 10;
+  if (!nombre) { toast('Ingresá el nombre', 1); return; }
+  const r = await adminApi('POST', '/staff/productos', { nombre, precio, categoria: cat, comision_pct: com });
+  if (r.ok) {
+    toast('Producto agregado ✅');
+    document.getElementById('admin-prod-form').style.display = 'none';
+    ['new-prod-nombre','new-prod-cat','new-prod-precio','new-prod-comision'].forEach(id => document.getElementById(id).value = '');
+    loadAdminProductos();
+    allProductos = [];
+  } else toast('Error: '+(r.error||''), 1);
+}
+async function saveProducto(id) {
+  const nombre = document.getElementById('prod-n-'+id).value.trim();
+  const cat    = document.getElementById('prod-cat-'+id).value.trim();
+  const precio = parseInt(document.getElementById('prod-p-'+id).value) || 0;
+  const com    = parseInt(document.getElementById('prod-c-'+id).value) || 10;
+  const activo = document.getElementById('prod-a-'+id).checked;
+  await adminApi('PUT', `/staff/productos/${id}`, { nombre, precio, categoria: cat, comision_pct: com, activo });
+  toast('Guardado ✅');
+  allProductos = [];
+}
+
+// ── ADMIN: REPORTES ───────────────────────────────────────────────────────────
+async function downloadReport(tipo) {
+  const statusEl = document.getElementById('report-status');
+  statusEl.style.display = 'block';
+  statusEl.textContent = 'Generando reporte...';
+  try {
+    let headers, rows, filename;
+    if (tipo === 'turnos') {
+      const r = await adminApi('GET', '/admin/bookings');
+      headers  = ['ID','Código','Cliente','Teléfono','Servicio','Fecha','Hora','Estado','Monto','Email','Creado'];
+      rows     = (r.bookings||r||[]).map(b => [b.id, b.code||b.booking_code, b.nombre||b.client_name, b.phone||b.client_phone, b.servicio||b.service, b.fecha||b.date_str, b.hora||b.time_str, b.estado||b.status, b.monto, b.email||'', b.created_at ? new Date(b.created_at).toLocaleDateString('es-AR') : '']);
+      filename = `turnos_${hoy()}.csv`;
+    } else if (tipo === 'clientes') {
+      const r = await adminApi('GET', '/admin/clients');
+      headers  = ['ID','Nombre','Apellido','Teléfono','Email','Puntos','Total Gastado','Visitas','Creado'];
+      rows     = (r||[]).map(c => [c.id, c.name, c.last_name||'', c.phone, c.email||'', c.points||0, c.total_spent||0, c.visit_count||0, c.created_at ? new Date(c.created_at).toLocaleDateString('es-AR') : '']);
+      filename = `clientes_${hoy()}.csv`;
+    } else if (tipo === 'cobros') {
+      const r = await api('GET', '/staff/cobros');
+      headers  = ['N°','Comprobante','Cliente','Teléfono','Empleado','Medio de Pago','Total','Fecha'];
+      rows     = (r||[]).map(c => [c.id, '#'+c.numero, c.client_name||c.nombre||'', c.client_phone||c.phone||'', c.empleado||'', c.medio_pago, c.total, c.fecha_str||c.fecha||'']);
+      filename = `cobros_${hoy()}.csv`;
+    } else if (tipo === 'comisiones') {
+      const r = await api('GET', '/staff/comisiones');
+      headers  = ['ID','Empleado','Comprobante','Descripción','Monto','Fecha'];
+      rows     = (r||[]).map(c => [c.id, c.empleado||'', '#'+(c.payment_id||''), c.descripcion||'', c.monto, c.fecha_str||'']);
+      filename = `comisiones_${hoy()}.csv`;
+    }
+    if (!rows?.length) { statusEl.textContent = 'Sin datos para exportar.'; return; }
+    const esc = v => { const s = String(v??'').replace(/"/g,'""'); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? `"${s}"` : s; };
+    const csv = '\uFEFF' + [headers, ...rows].map(r => r.map(esc).join(',')).join('\n');
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})), download: filename });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    statusEl.textContent = `✅ ${rows.length} registros exportados`;
+    setTimeout(() => statusEl.style.display = 'none', 3000);
+  } catch(e) { statusEl.textContent = 'Error: '+e.message; }
+}
+function hoy() { return new Date().toLocaleDateString('es-AR').replace(/\//g,'-'); }
 
 </script>
 </body>
