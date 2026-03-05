@@ -159,6 +159,7 @@
     <div class="nav-tab" onclick="showPanel('color')" id="tab-color">🎨 Color <span class="dot"></span></div>
     <div class="nav-tab" onclick="showPanel('clientes')" id="tab-clientes">👤 Clientes</div>
     <div class="nav-tab" onclick="showPanel('nuevo')" id="tab-nuevo">➕ Nuevo turno</div>
+    <div class="nav-tab" onclick="showPanel('cobrar')" id="tab-cobrar">💳 Cobrar</div>
     <div class="nav-tab" onclick="showPanel('admin')" id="tab-admin">⚙️ Admin</div>
   </div>
 
@@ -312,6 +313,99 @@
       </div>
     </div>
 
+    <!-- COBRAR -->
+    <div class="panel" id="panel-cobrar">
+      <div class="section-header">
+        <div><div class="section-title">Cobrar</div><div class="section-sub" id="cobrar-sub">Registrá el pago y emití el comprobante</div></div>
+        <button class="btn-sm" onclick="resetCobrar()">✕ Limpiar</button>
+      </div>
+
+      <!-- CLIENTE -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">👤 Cliente</div>
+        <div class="ac-wrap">
+          <input class="form-input" id="cobrar-srch" placeholder="Buscar clienta por nombre, teléfono o email..." oninput="searchCobrarCl(this.value)" autocomplete="off">
+          <div class="ac-list" id="cobrar-ac-list"></div>
+        </div>
+        <div id="cobrar-cl-card" style="display:none;margin-top:10px;background:rgba(232,68,122,.08);border:1px solid rgba(232,68,122,.3);border-radius:10px;padding:12px 14px;align-items:center;justify-content:space-between;gap:12px">
+          <div><div id="cobrar-cl-name" style="font-weight:600"></div><div id="cobrar-cl-det" style="font-size:12px;color:var(--muted);margin-top:2px"></div></div>
+          <button class="btn-sm" onclick="clearCobrarCl()">✕</button>
+        </div>
+        <div style="margin-top:10px">
+          <label class="form-label">O ingresá nombre manualmente</label>
+          <input class="form-input" id="cobrar-nombre-manual" placeholder="Nombre del cliente (si no está en el sistema)">
+        </div>
+      </div>
+
+      <!-- EMPLEADO + MEDIO DE PAGO -->
+      <div class="card">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">✂️ Empleado que atendió</label>
+            <select class="form-select" id="cobrar-empleado">
+              <option value="">— Seleccioná —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">💳 Medio de pago *</label>
+            <select class="form-select" id="cobrar-medio">
+              <option value="Efectivo">💵 Efectivo</option>
+              <option value="Transferencia">🏦 Transferencia</option>
+              <option value="Mercado Pago">📱 Mercado Pago</option>
+              <option value="Débito">💳 Débito</option>
+              <option value="Crédito">💳 Crédito</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- SERVICIOS -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">✂️ Servicios</div>
+        <div class="srv-grid" id="cobrar-srv-grid"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <input class="form-input" id="cobrar-srv-custom" placeholder="O ingresá un servicio manual..." style="flex:1">
+          <input class="form-input" id="cobrar-srv-custom-price" placeholder="Precio $" type="number" style="width:120px">
+          <button class="btn-sm green" onclick="addCustomSrv()">+ Agregar</button>
+        </div>
+        <div id="cobrar-srv-list" style="margin-top:10px"></div>
+      </div>
+
+      <!-- PRODUCTOS -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">🛍️ Productos <span style="font-weight:400;font-size:11px">(opcional)</span></div>
+        <div id="cobrar-prod-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:8px"></div>
+        <div id="cobrar-prod-list" style="margin-top:10px"></div>
+      </div>
+
+      <!-- TOTALES + DESCUENTO -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:14px">💰 Total</div>
+        <div id="cobrar-resumen" style="display:grid;gap:6px;margin-bottom:14px"></div>
+        <div class="form-group">
+          <label class="form-label">Descuento ($)</label>
+          <input class="form-input" id="cobrar-descuento" type="number" placeholder="0" oninput="recalcCobrar()" style="max-width:160px">
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:15px;font-weight:600">TOTAL</span>
+          <span id="cobrar-total" style="font-size:22px;font-weight:700;color:var(--pink)">$0</span>
+        </div>
+        <div style="margin-top:12px">
+          <label class="form-label">Notas internas (opcional)</label>
+          <textarea class="form-textarea" id="cobrar-notas" placeholder="Ej: Vino con referencia, usamos técnica especial..." rows="2"></textarea>
+        </div>
+      </div>
+
+      <!-- EMAIL -->
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">✉️ Comprobante por email</div>
+        <div id="cobrar-email-block"></div>
+      </div>
+
+      <button class="btn-primary" onclick="confirmarCobro()" style="margin-top:4px">💳 Confirmar cobro y emitir comprobante</button>
+    </div>
+
+
     <!-- ADMIN -->
     <div class="panel" id="panel-admin">
       <div class="section-title" style="margin-bottom:4px">Administración</div>
@@ -321,9 +415,6 @@
       <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px">
         <button class="chip active" id="atab-turnos" onclick="switchAdminTab('turnos')">📋 Turnos</button>
         <button class="chip" id="atab-clientes" onclick="switchAdminTab('clientes')">👤 Clientes</button>
-        <button class="chip" id="atab-empleados" onclick="switchAdminTab('empleados')">✂️ Empleados</button>
-        <button class="chip" id="atab-productos" onclick="switchAdminTab('productos')">🛍️ Productos</button>
-        <button class="chip" id="atab-reportes" onclick="switchAdminTab('reportes')">📊 Reportes</button>
         <button class="chip" id="atab-herramientas" onclick="switchAdminTab('herramientas')">🔧 DB</button>
       </div>
 
@@ -340,79 +431,6 @@
           <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Elimina todos los turnos y clientes con teléfono <code style="background:var(--bg);padding:2px 6px;border-radius:4px">web-*</code> generados desde el chat de prueba.</p>
           <button class="btn-sm red" onclick="confirmDeleteAll('test')">🗑️ Borrar todo lo TEST</button>
         </div>
-      </div>
-
-      <!-- PANEL EMPLEADOS -->
-      <div id="admin-panel-empleados" style="display:none">
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">✂️ Empleados activos</div>
-            <button class="btn-sm green" onclick="showAddEmpleadoForm()">+ Agregar empleado</button>
-          </div>
-          <div id="admin-emp-form" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px">
-            <div class="form-grid">
-              <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="new-emp-nombre" placeholder="Ej: Fede"></div>
-              <div class="form-group"><label class="form-label">Rol</label><input class="form-input" id="new-emp-rol" placeholder="Estilista" value="Estilista"></div>
-            </div>
-            <div class="form-group" style="max-width:200px"><label class="form-label">% Comisión servicios</label><input class="form-input" id="new-emp-comision" type="number" placeholder="0" min="0" max="100"></div>
-            <div style="display:flex;gap:8px;margin-top:4px">
-              <button class="btn-sm green" onclick="saveNewEmpleado()">Guardar</button>
-              <button class="btn-sm" onclick="document.getElementById('admin-emp-form').style.display='none'">Cancelar</button>
-            </div>
-          </div>
-          <div id="admin-empleados-list"><div style="color:var(--muted);font-size:13px">Cargando...</div></div>
-        </div>
-      </div>
-
-      <!-- PANEL PRODUCTOS -->
-      <div id="admin-panel-productos" style="display:none">
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">🛍️ Productos</div>
-            <button class="btn-sm green" onclick="showAddProductoForm()">+ Agregar producto</button>
-          </div>
-          <div id="admin-prod-form" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px">
-            <div class="form-grid">
-              <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="new-prod-nombre" placeholder="Ej: Shampoo Kerastase"></div>
-              <div class="form-group"><label class="form-label">Categoría</label><input class="form-input" id="new-prod-cat" placeholder="Shampoo / Tratamiento / Otro"></div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group"><label class="form-label">Precio $</label><input class="form-input" id="new-prod-precio" type="number" placeholder="0"></div>
-              <div class="form-group"><label class="form-label">% Comisión</label><input class="form-input" id="new-prod-comision" type="number" placeholder="10" min="0" max="100"></div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:4px">
-              <button class="btn-sm green" onclick="saveNewProducto()">Guardar</button>
-              <button class="btn-sm" onclick="document.getElementById('admin-prod-form').style.display='none'">Cancelar</button>
-            </div>
-          </div>
-          <div id="admin-productos-list"><div style="color:var(--muted);font-size:13px">Cargando...</div></div>
-        </div>
-      </div>
-
-      <!-- PANEL REPORTES -->
-      <div id="admin-panel-reportes" style="display:none">
-        <div class="card">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px">📊 Descargar reportes Excel</div>
-          <div style="display:grid;gap:12px">
-            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
-              <div><div style="font-weight:600;margin-bottom:3px">📅 Turnos</div><div style="font-size:12px;color:var(--muted)">Todos los turnos con fecha, cliente, servicio, estado y monto</div></div>
-              <button class="btn-sm green" onclick="downloadReport('turnos')">⬇️ Descargar</button>
-            </div>
-            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
-              <div><div style="font-weight:600;margin-bottom:3px">👤 Clientes</div><div style="font-size:12px;color:var(--muted)">Base de clientes con email, teléfono, puntos y total gastado</div></div>
-              <button class="btn-sm green" onclick="downloadReport('clientes')">⬇️ Descargar</button>
-            </div>
-            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
-              <div><div style="font-weight:600;margin-bottom:3px">💳 Ventas / Cobros</div><div style="font-size:12px;color:var(--muted)">Cobros registrados con detalle de servicios, productos y medio de pago</div></div>
-              <button class="btn-sm green" onclick="downloadReport('cobros')">⬇️ Descargar</button>
-            </div>
-            <div style="background:var(--bg);border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center">
-              <div><div style="font-weight:600;margin-bottom:3px">💰 Comisiones</div><div style="font-size:12px;color:var(--muted)">Comisiones por venta de producto agrupadas por empleado</div></div>
-              <button class="btn-sm green" onclick="downloadReport('comisiones')">⬇️ Descargar</button>
-            </div>
-          </div>
-        </div>
-        <div id="report-status" style="display:none;text-align:center;padding:20px;color:var(--muted);font-size:13px">Generando reporte...</div>
       </div>
 
       <!-- PANEL TURNOS -->
@@ -575,6 +593,19 @@
   </div>
 </div>
 
+
+<!-- MODAL COMPROBANTE -->
+<div class="modal-overlay" id="modal-comprobante">
+  <div class="modal" style="max-width:500px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h3 style="margin-bottom:0">✅ Cobro registrado</h3>
+      <button class="btn-sm" onclick="cm('modal-comprobante')">✕ Cerrar</button>
+    </div>
+    <div id="comprobante-body"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:20px" id="comprobante-actions"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -626,6 +657,7 @@ async function showPanel(n){
   if(n==='agenda')loadAgenda();
   if(n==='clientes')loadClientes();
   if(n==='nuevo')resetForm();
+  if(n==='cobrar'){if(!allEmpleados.length)initCobrar();}
   if(n==='admin'){
     if(!ADMIN_PW){
       const pw=prompt('🔐 Contraseña de administrador:');
@@ -1215,16 +1247,13 @@ async function loadDBStats(){
 let adminBookings = [], adminClients = [], pendingAdminDelete = null;
 
 function switchAdminTab(tab) {
-  ['turnos','clientes','empleados','productos','reportes','herramientas'].forEach(t => {
-    const el = document.getElementById('admin-panel-'+t);
-    if (el) el.style.display = t === tab ? '' : 'none';
-  });
+  document.getElementById('admin-panel-turnos').style.display      = tab==='turnos'       ? '' : 'none';
+  document.getElementById('admin-panel-clientes').style.display    = tab==='clientes'     ? '' : 'none';
+  document.getElementById('admin-panel-herramientas').style.display= tab==='herramientas' ? '' : 'none';
   document.querySelectorAll('#panel-admin .chip').forEach(c=>c.classList.remove('active'));
-  document.getElementById('atab-'+tab)?.classList.add('active');
-  if (tab==='turnos'    && !adminBookings.length)  loadAdminBookings();
-  if (tab==='clientes'  && !adminClients.length)   loadAdminClients();
-  if (tab==='empleados') loadAdminEmpleados();
-  if (tab==='productos') loadAdminProductos();
+  document.getElementById('atab-'+tab).classList.add('active');
+  if (tab==='turnos'   && !adminBookings.length)  loadAdminBookings();
+  if (tab==='clientes' && !adminClients.length)   loadAdminClients();
 }
 
 async function syncEmails(){
@@ -1476,196 +1505,365 @@ async function loadDBStats(){
 }
 
 
-// ── ADMIN: EMPLEADOS ──────────────────────────────────────────────────────────
-async function loadAdminEmpleados() {
-  const el = document.getElementById('admin-empleados-list');
-  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Cargando...</div>';
-  const emps = await adminApi('GET', '/staff/empleados/todos');
-  if (!emps?.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No hay empleados cargados. Agregá uno con el botón de arriba.</div>'; return; }
-  el.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse">
-    <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
-      <th style="text-align:left;padding:6px 8px">Nombre</th>
-      <th style="text-align:left;padding:6px 8px">Rol</th>
-      <th style="text-align:center;padding:6px 8px">% Comisión</th>
-      <th style="text-align:center;padding:6px 8px">Activo</th>
-      <th style="padding:6px 8px"></th>
-    </tr></thead>
-    <tbody>${emps.map(e => `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:8px"><input class="form-input" id="emp-n-${e.id}" value="${e.nombre}" style="height:32px;padding:4px 8px"></td>
-      <td style="padding:8px"><input class="form-input" id="emp-r-${e.id}" value="${e.rol||'Estilista'}" style="height:32px;padding:4px 8px"></td>
-      <td style="padding:8px;text-align:center"><input class="form-input" id="emp-c-${e.id}" type="number" value="${e.comision_servicios_pct||0}" style="height:32px;padding:4px 8px;width:70px;text-align:center"></td>
-      <td style="padding:8px;text-align:center"><input type="checkbox" id="emp-a-${e.id}" ${e.activo ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer"></td>
-      <td style="padding:8px"><button class="btn-sm green" style="padding:4px 10px" onclick="saveEmpleado(${e.id})">💾</button></td>
-    </tr>`).join('')}</tbody>
-  </table>`;
+
+// ── COBRAR ────────────────────────────────────────────────────────────────────
+let cobrarCl = null, cobrarSrvs = [], cobrarProds = [], allEmpleados = [], allProductos = [];
+let cobrarSrchT = null;
+
+async function initCobrar() {
+  [allEmpleados, allProductos] = await Promise.all([
+    api('GET', '/staff/empleados'),
+    api('GET', '/staff/productos'),
+  ]);
+
+  // Populate empleados select
+  const sel = document.getElementById('cobrar-empleado');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Seleccioná —</option>' +
+      allEmpleados.map(e => `<option value="${e.id}">${e.nombre}${e.rol ? ' · ' + e.rol : ''}</option>`).join('');
+  }
+
+  // Service chips
+  const grid = document.getElementById('cobrar-srv-grid');
+  if (grid) {
+    grid.innerHTML = SRVS.map(s => `
+      <div class="srv-chip" id="csc-${s.id}" onclick="toggleCobrarSrv(${s.id})">
+        <div class="srv-chip-name">${s.n}</div>
+        <div class="srv-chip-price">$${s.p.toLocaleString('es-AR')}</div>
+      </div>`).join('');
+  }
+
+  // Product chips by category
+  const cats = [...new Set(allProductos.map(p => p.categoria))];
+  const prodGrid = document.getElementById('cobrar-prod-grid');
+  if (prodGrid) {
+    prodGrid.innerHTML = cats.length ? cats.map(cat => `
+      <div style="grid-column:1/-1;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px">${cat}</div>
+      ${allProductos.filter(p => p.categoria === cat).map(p => `
+        <div class="srv-chip" id="cpc-${p.id}" onclick="toggleCobrarProd(${p.id})">
+          <div class="srv-chip-name">${p.nombre}</div>
+          <div class="srv-chip-price">$${Number(p.precio).toLocaleString('es-AR')} · ${p.comision_pct}% com.</div>
+        </div>`).join('')}
+    `).join('') : '<div style="color:var(--muted);font-size:13px">No hay productos cargados. Agregá desde Admin → 🛍️ Productos</div>';
+  }
+
+  recalcCobrar();
 }
 
-function showAddEmpleadoForm() {
-  document.getElementById('admin-emp-form').style.display = 'block';
-  document.getElementById('new-emp-nombre').focus();
+function resetCobrar() {
+  cobrarCl = null; cobrarSrvs = []; cobrarProds = [];
+  const fields = ['cobrar-srch','cobrar-nombre-manual','cobrar-notas','cobrar-descuento'];
+  fields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const clCard = document.getElementById('cobrar-cl-card');
+  if (clCard) clCard.style.display = 'none';
+  document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
+  const srvList = document.getElementById('cobrar-srv-list');
+  if (srvList) srvList.innerHTML = '';
+  const prodList = document.getElementById('cobrar-prod-list');
+  if (prodList) prodList.innerHTML = '';
+  renderCobrarEmailBlock(null);
+  recalcCobrar();
 }
 
-async function saveNewEmpleado() {
-  const nombre = document.getElementById('new-emp-nombre').value.trim();
-  const rol = document.getElementById('new-emp-rol').value.trim() || 'Estilista';
-  const comision = parseInt(document.getElementById('new-emp-comision').value) || 0;
-  if (!nombre) { toast('Ingresá el nombre', 1); return; }
-  const r = await adminApi('POST', '/staff/empleados', { nombre, rol, comision_servicios_pct: comision });
-  if (r.ok) {
-    toast('Empleado agregado ✅');
-    document.getElementById('admin-emp-form').style.display = 'none';
-    ['new-emp-nombre','new-emp-rol','new-emp-comision'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('new-emp-rol').value = 'Estilista';
-    loadAdminEmpleados();
-    // Refresh cobrar empleados select if loaded
-    if (allEmpleados.length) initCobrar();
-  } else toast('Error: ' + (r.error||''), 1);
+// ── Client search ─────────────────────────────────────────────────────────────
+async function searchCobrarCl(q) {
+  clearTimeout(cobrarSrchT);
+  if (q.length < 2) { document.getElementById('cobrar-ac-list').classList.remove('open'); return; }
+  cobrarSrchT = setTimeout(async () => {
+    const l = await api('GET', `/staff/clients/search?q=${encodeURIComponent(q)}`);
+    const el = document.getElementById('cobrar-ac-list');
+    if (!l.length) { el.innerHTML = '<div class="ac-item" style="color:var(--muted)">Sin resultados</div>'; el.classList.add('open'); return; }
+    el.innerHTML = l.map(c => `<div class="ac-item" onclick='pickCobrarCl(${JSON.stringify(c)})'><strong>${c.name||''} ${c.last_name||''}</strong><small>${c.email||''} · ${c.phone||''} · ⭐${c.points||0} pts</small></div>`).join('');
+    el.classList.add('open');
+  }, 300);
 }
 
-async function saveEmpleado(id) {
-  const nombre = document.getElementById('emp-n-'+id).value.trim();
-  const rol = document.getElementById('emp-r-'+id).value.trim();
-  const comision = parseInt(document.getElementById('emp-c-'+id).value) || 0;
-  const activo = document.getElementById('emp-a-'+id).checked;
-  await adminApi('PUT', `/staff/empleados/${id}`, { nombre, rol, activo, comision_servicios_pct: comision });
-  toast('Guardado ✅');
-  if (allEmpleados.length) initCobrar();
+function pickCobrarCl(c) {
+  cobrarCl = c;
+  document.getElementById('cobrar-ac-list').classList.remove('open');
+  document.getElementById('cobrar-srch').value = '';
+  document.getElementById('cobrar-nombre-manual').value = '';
+  const card = document.getElementById('cobrar-cl-card');
+  document.getElementById('cobrar-cl-name').textContent = (c.name||'') + ' ' + (c.last_name||'');
+  document.getElementById('cobrar-cl-det').textContent = `${c.email||'sin email'} · ${c.phone||''} · ⭐${c.points||0} pts`;
+  card.style.display = 'flex';
+  renderCobrarEmailBlock(c);
 }
 
-// ── ADMIN: PRODUCTOS ──────────────────────────────────────────────────────────
-async function loadAdminProductos() {
-  const el = document.getElementById('admin-productos-list');
-  el.innerHTML = '<div style="color:var(--muted);font-size:13px">Cargando...</div>';
-  const prods = await adminApi('GET', '/staff/productos/todos');
-  if (!prods?.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No hay productos cargados aún.</div>'; return; }
-  el.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse">
-    <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
-      <th style="text-align:left;padding:6px 8px">Nombre</th>
-      <th style="text-align:left;padding:6px 8px">Categoría</th>
-      <th style="text-align:right;padding:6px 8px">Precio $</th>
-      <th style="text-align:center;padding:6px 8px">% Com.</th>
-      <th style="text-align:center;padding:6px 8px">Activo</th>
-      <th style="padding:6px 8px"></th>
-    </tr></thead>
-    <tbody>${prods.map(p => `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:6px 4px"><input class="form-input" id="prod-n-${p.id}" value="${p.nombre}" style="height:32px;padding:4px 8px"></td>
-      <td style="padding:6px 4px"><input class="form-input" id="prod-cat-${p.id}" value="${p.categoria||'General'}" style="height:32px;padding:4px 8px"></td>
-      <td style="padding:6px 4px"><input class="form-input" id="prod-p-${p.id}" type="number" value="${p.precio||0}" style="height:32px;padding:4px 8px;width:100px;text-align:right"></td>
-      <td style="padding:6px 4px;text-align:center"><input class="form-input" id="prod-c-${p.id}" type="number" value="${p.comision_pct||10}" style="height:32px;padding:4px 8px;width:60px;text-align:center"></td>
-      <td style="padding:6px 4px;text-align:center"><input type="checkbox" id="prod-a-${p.id}" ${p.activo ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer"></td>
-      <td style="padding:6px 4px"><button class="btn-sm green" style="padding:4px 10px" onclick="saveProducto(${p.id})">💾</button></td>
-    </tr>`).join('')}</tbody>
-  </table>`;
+function clearCobrarCl() {
+  cobrarCl = null;
+  document.getElementById('cobrar-cl-card').style.display = 'none';
+  document.getElementById('cobrar-srch').value = '';
+  renderCobrarEmailBlock(null);
 }
 
-function showAddProductoForm() {
-  document.getElementById('admin-prod-form').style.display = 'block';
-  document.getElementById('new-prod-nombre').focus();
+// ── Services ──────────────────────────────────────────────────────────────────
+function toggleCobrarSrv(id) {
+  const srv = SRVS.find(s => s.id === id);
+  if (!srv) return;
+  const idx = cobrarSrvs.findIndex(s => s.id === id);
+  if (idx >= 0) {
+    cobrarSrvs.splice(idx, 1);
+    document.getElementById('csc-' + id)?.classList.remove('sel');
+  } else {
+    cobrarSrvs.push({ id, nombre: srv.n, monto: srv.p });
+    document.getElementById('csc-' + id)?.classList.add('sel');
+  }
+  renderCobrarSrvList();
+  recalcCobrar();
 }
 
-async function saveNewProducto() {
-  const nombre = document.getElementById('new-prod-nombre').value.trim();
-  const cat = document.getElementById('new-prod-cat').value.trim() || 'General';
-  const precio = parseInt(document.getElementById('new-prod-precio').value) || 0;
-  const comision = parseInt(document.getElementById('new-prod-comision').value) || 10;
-  if (!nombre) { toast('Ingresá el nombre', 1); return; }
-  const r = await adminApi('POST', '/staff/productos', { nombre, precio, categoria: cat, comision_pct: comision });
-  if (r.ok) {
-    toast('Producto agregado ✅');
-    document.getElementById('admin-prod-form').style.display = 'none';
-    ['new-prod-nombre','new-prod-cat','new-prod-precio','new-prod-comision'].forEach(id => document.getElementById(id).value = '');
-    loadAdminProductos();
-    if (allProductos.length) initCobrar();
-  } else toast('Error: ' + (r.error||''), 1);
+function addCustomSrv() {
+  const nombre = document.getElementById('cobrar-srv-custom').value.trim();
+  const monto = parseInt(document.getElementById('cobrar-srv-custom-price').value) || 0;
+  if (!nombre) { toast('Ingresá el nombre del servicio', 1); return; }
+  cobrarSrvs.push({ id: null, nombre, monto });
+  document.getElementById('cobrar-srv-custom').value = '';
+  document.getElementById('cobrar-srv-custom-price').value = '';
+  renderCobrarSrvList();
+  recalcCobrar();
 }
 
-async function saveProducto(id) {
-  const nombre = document.getElementById('prod-n-'+id).value.trim();
-  const cat = document.getElementById('prod-cat-'+id).value.trim();
-  const precio = parseInt(document.getElementById('prod-p-'+id).value) || 0;
-  const comision = parseInt(document.getElementById('prod-c-'+id).value) || 10;
-  const activo = document.getElementById('prod-a-'+id).checked;
-  await adminApi('PUT', `/staff/productos/${id}`, { nombre, precio, categoria: cat, comision_pct: comision, activo });
-  toast('Guardado ✅');
-  if (allProductos.length) initCobrar();
+function removeCobrarSrv(idx) {
+  const srv = cobrarSrvs[idx];
+  cobrarSrvs.splice(idx, 1);
+  if (srv?.id) document.getElementById('csc-' + srv.id)?.classList.remove('sel');
+  renderCobrarSrvList();
+  recalcCobrar();
 }
 
-// ── ADMIN: REPORTES EXCEL ─────────────────────────────────────────────────────
-async function downloadReport(tipo) {
-  const statusEl = document.getElementById('report-status');
-  statusEl.style.display = 'block';
-  statusEl.textContent = 'Generando reporte...';
+function renderCobrarSrvList() {
+  document.getElementById('cobrar-srv-list').innerHTML = cobrarSrvs.map((s,i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px">
+      <span>${s.nombre}</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" value="${s.monto}" style="width:100px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px"
+          onchange="cobrarSrvs[${i}].monto=parseInt(this.value)||0;recalcCobrar()">
+        <button class="btn-sm red" style="padding:3px 8px;font-size:12px" onclick="removeCobrarSrv(${i})">✕</button>
+      </div>
+    </div>`).join('');
+}
 
-  try {
-    let data, headers, filename;
+// ── Products ──────────────────────────────────────────────────────────────────
+function toggleCobrarProd(id) {
+  const prod = allProductos.find(p => p.id === id);
+  if (!prod) return;
+  const idx = cobrarProds.findIndex(p => p.id === id);
+  if (idx >= 0) {
+    cobrarProds.splice(idx, 1);
+    document.getElementById('cpc-' + id)?.classList.remove('sel');
+  } else {
+    cobrarProds.push({ id, nombre: prod.nombre, precio: prod.precio, cantidad: 1, comision_pct: prod.comision_pct });
+    document.getElementById('cpc-' + id)?.classList.add('sel');
+  }
+  renderCobrarProdList();
+  recalcCobrar();
+}
 
-    if (tipo === 'turnos') {
-      const r = await adminApi('GET', '/admin/bookings');
-      headers = ['ID','Código','Cliente','Teléfono','Servicio','Fecha','Hora','Estado','Monto','Email','Creado'];
-      data = (r.bookings||r||[]).map(b => [
-        b.id, b.code||b.booking_code, b.nombre||b.client_name, b.phone||b.client_phone,
-        b.servicio||b.service, b.fecha||b.date_str, b.hora||b.time_str,
-        b.estado||b.status, b.monto, b.email||'', 
-        b.created_at ? new Date(b.created_at).toLocaleDateString('es-AR') : ''
-      ]);
-      filename = `turnos_${today()}.csv`;
-    }
-    else if (tipo === 'clientes') {
-      const r = await adminApi('GET', '/admin/clients');
-      headers = ['ID','Nombre','Apellido','Teléfono','Email','Puntos','Total Gastado','Visitas','Creado'];
-      data = (r||[]).map(c => [
-        c.id, c.name, c.last_name||'', c.phone, c.email||'',
-        c.points||0, c.total_spent||0, c.visit_count||0,
-        c.created_at ? new Date(c.created_at).toLocaleDateString('es-AR') : ''
-      ]);
-      filename = `clientes_${today()}.csv`;
-    }
-    else if (tipo === 'cobros') {
-      const r = await api('GET', '/staff/cobros');
-      headers = ['N°','Comprobante','Cliente','Teléfono','Empleado','Medio de Pago','Total','Fecha'];
-      data = (r||[]).map(c => [
-        c.id, '#'+c.numero, c.nombre, c.phone||'', c.empleado||'',
-        c.medio_pago, c.total, c.fecha||''
-      ]);
-      filename = `cobros_${today()}.csv`;
-    }
-    else if (tipo === 'comisiones') {
-      const r = await api('GET', '/staff/comisiones');
-      headers = ['ID','Empleado','Comprobante','Cliente','Descripción','Monto Comisión','Fecha'];
-      data = (r||[]).map(c => [
-        c.id, c.empleado, '#'+(c.comprobante||''), c.cliente||'',
-        c.descripcion||'', c.monto, c.fecha_str||''
-      ]);
-      filename = `comisiones_${today()}.csv`;
-    }
+function removeCobrarProd(idx) {
+  const prod = cobrarProds[idx];
+  cobrarProds.splice(idx, 1);
+  if (prod?.id) document.getElementById('cpc-' + prod.id)?.classList.remove('sel');
+  renderCobrarProdList();
+  recalcCobrar();
+}
 
-    if (!data?.length) { statusEl.textContent = 'Sin datos para exportar.'; return; }
+function renderCobrarProdList() {
+  document.getElementById('cobrar-prod-list').innerHTML = cobrarProds.map((p,i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px">
+      <div>
+        <span>${p.nombre}</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:6px">$${Number(p.precio).toLocaleString('es-AR')} c/u · ${p.comision_pct}% com.</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--muted);font-size:12px">Cant:</span>
+        <input type="number" min="1" value="${p.cantidad}" style="width:60px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px"
+          onchange="cobrarProds[${i}].cantidad=Math.max(1,parseInt(this.value)||1);recalcCobrar();renderCobrarProdList()">
+        <span style="color:var(--gold);font-size:12px;font-weight:600">$${(p.precio*p.cantidad).toLocaleString('es-AR')}</span>
+        <button class="btn-sm red" style="padding:3px 8px;font-size:12px" onclick="removeCobrarProd(${i})">✕</button>
+      </div>
+    </div>`).join('');
+}
 
-    // Build CSV with BOM for Excel UTF-8
-    const BOM = '\uFEFF';
-    const escape = v => {
-      const s = String(v ?? '').replace(/"/g, '""');
-      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
-    };
-    const csv = BOM + [headers, ...data].map(row => row.map(escape).join(',')).join('\n');
-    
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
+// ── Totals ────────────────────────────────────────────────────────────────────
+function recalcCobrar() {
+  const totalSrv  = cobrarSrvs.reduce((s, x) => s + (x.monto||0), 0);
+  const totalProd = cobrarProds.reduce((s, x) => s + (x.precio * x.cantidad), 0);
+  const desc      = parseInt(document.getElementById('cobrar-descuento')?.value) || 0;
+  const total     = totalSrv + totalProd - desc;
+  const pts       = Math.floor(totalSrv / 1000);
 
-    statusEl.textContent = `✅ ${data.length} registros exportados`;
-    setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
-  } catch(e) {
-    statusEl.textContent = 'Error: ' + e.message;
-    console.error(e);
+  const resumen = document.getElementById('cobrar-resumen');
+  if (resumen) {
+    let rows = '';
+    if (totalSrv)  rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted)"><span>Servicios</span><span>$${totalSrv.toLocaleString('es-AR')}</span></div>`;
+    if (totalProd) rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted)"><span>Productos</span><span>$${totalProd.toLocaleString('es-AR')}</span></div>`;
+    if (desc)      rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--red)"><span>Descuento</span><span>-$${desc.toLocaleString('es-AR')}</span></div>`;
+    if (pts > 0)   rows += `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gold)"><span>⭐ Puntos a ganar</span><span>+${pts} pts</span></div>`;
+    resumen.innerHTML = rows;
+  }
+  const totalEl = document.getElementById('cobrar-total');
+  if (totalEl) totalEl.textContent = '$' + Math.max(0, total).toLocaleString('es-AR');
+}
+
+// ── Email block ───────────────────────────────────────────────────────────────
+function renderCobrarEmailBlock(cl) {
+  const el = document.getElementById('cobrar-email-block');
+  if (!el) return;
+  if (cl?.email) {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;background:rgba(94,203,138,.08);border:1px solid rgba(94,203,138,.3);border-radius:10px;padding:10px 14px">
+        <span style="font-size:18px">✉️</span>
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:2px">Comprobante se enviará a:</div>
+          <div style="font-size:14px;font-weight:600;color:var(--green)">${cl.email}</div>
+        </div>
+        <button class="btn-sm" style="font-size:11px" onclick="document.getElementById('cobrar-email-manual').style.display='block'">✏️ Cambiar</button>
+      </div>
+      <div id="cobrar-email-manual" style="display:none;margin-top:8px">
+        <input class="form-input" id="cobrar-email-input" type="email" placeholder="nuevo@email.com" value="${cl.email}">
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div style="background:rgba(255,200,0,.06);border:1px solid rgba(255,200,0,.2);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:var(--muted)">
+        ${cl ? '⚠️ Esta clienta no tiene email — ingresalo para enviar el comprobante' : 'Ingresá el email para enviar el comprobante (opcional)'}
+      </div>
+      <input class="form-input" id="cobrar-email-input" type="email" placeholder="correo@mail.com">`;
   }
 }
 
-function today() {
-  return new Date().toLocaleDateString('es-AR').replace(/\//g,'-');
+// ── Confirm cobro ─────────────────────────────────────────────────────────────
+async function confirmarCobro() {
+  const empleadoId = document.getElementById('cobrar-empleado').value;
+  const medioPago  = document.getElementById('cobrar-medio').value;
+  const descuento  = parseInt(document.getElementById('cobrar-descuento').value) || 0;
+  const notas      = document.getElementById('cobrar-notas').value.trim();
+
+  if (!cobrarSrvs.length && !cobrarProds.length) { toast('Agregá al menos un servicio o producto', 1); return; }
+
+  const nombre = cobrarCl
+    ? ((cobrarCl.name||'') + ' ' + (cobrarCl.last_name||'')).trim()
+    : document.getElementById('cobrar-nombre-manual').value.trim() || 'Cliente';
+
+  const emailInput = document.getElementById('cobrar-email-input');
+  let email = emailInput?.value?.trim() || cobrarCl?.email || '';
+
+  // Save new email to client if changed
+  if (email && cobrarCl && email !== cobrarCl.email) {
+    const parts = nombre.trim().split(' ');
+    await api('PUT', `/staff/clients/${encodeURIComponent(cobrarCl.phone)}`, {
+      name: parts[0], lastName: parts.slice(1).join(' '), email
+    }).catch(() => {});
+    cobrarCl.email = email;
+  }
+
+  const btn = document.querySelector('#panel-cobrar .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+
+  // Snapshot before reset
+  const srvSnapshot  = [...cobrarSrvs];
+  const prodSnapshot = [...cobrarProds];
+  const descSnapshot = descuento;
+
+  const r = await api('POST', '/staff/cobros', {
+    client_phone: cobrarCl?.phone || null,
+    client_name:  nombre,
+    empleado_id:  empleadoId ? parseInt(empleadoId) : null,
+    medio_pago:   medioPago,
+    servicios:    cobrarSrvs,
+    productos:    cobrarProds,
+    descuento,
+    notas:        notas || null,
+    email:        email || null,
+  });
+
+  if (btn) { btn.disabled = false; btn.textContent = '💳 Confirmar cobro y emitir comprobante'; }
+
+  if (!r.ok) { toast('Error: ' + (r.error||''), 1); return; }
+
+  mostrarComprobante(r, nombre, medioPago, email, srvSnapshot, prodSnapshot, descSnapshot);
+  resetCobrar();
+  toast('Cobro registrado ✅');
+}
+
+// ── Comprobante modal ─────────────────────────────────────────────────────────
+function mostrarComprobante(cobro, nombre, medioPago, email, srvs, prods, desc) {
+  const totalSrv  = srvs.reduce((s, x) => s + (x.monto||0), 0);
+  const totalProd = prods.reduce((s, x) => s + (x.precio * x.cantidad), 0);
+  const total     = cobro.total || (totalSrv + totalProd - desc);
+  const pts       = cobro.pointsEarned || 0;
+  const ahora     = new Date().toLocaleString('es-AR', { dateStyle:'short', timeStyle:'short' });
+  const empSel    = document.getElementById('cobrar-empleado');
+  const empleadoNombre = empSel?.options[empSel.selectedIndex]?.text || '';
+
+  const srvRows = srvs.map(s =>
+    `<tr><td style="padding:4px 0">${s.nombre}</td><td style="text-align:right;padding:4px 0">$${(s.monto||0).toLocaleString('es-AR')}</td></tr>`
+  ).join('');
+  const prodRows = prods.map(p =>
+    `<tr><td style="padding:4px 0">${p.nombre} x${p.cantidad}</td><td style="text-align:right;padding:4px 0">$${(p.precio*p.cantidad).toLocaleString('es-AR')}</td></tr>`
+  ).join('');
+
+  const html = `
+    <div id="comprobante-print" style="font-family:'DM Sans',sans-serif">
+      <div style="text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid var(--border)">
+        <div style="width:50px;height:50px;background:linear-gradient(135deg,var(--pink),#a020a0);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 10px">✂️</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:20px">Estefan Peluquería</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:2px">Puertos, Argentina</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:13px;margin-bottom:16px">
+        <div style="color:var(--muted)">Comprobante N°</div><div style="text-align:right;font-weight:700;color:var(--pink)">#${cobro.numero}</div>
+        <div style="color:var(--muted)">Fecha</div><div style="text-align:right">${ahora}</div>
+        <div style="color:var(--muted)">Cliente</div><div style="text-align:right;font-weight:600">${nombre}</div>
+        ${empleadoNombre && empleadoNombre !== '— Seleccioná —' ? `<div style="color:var(--muted)">Atendido por</div><div style="text-align:right">${empleadoNombre.split(' · ')[0]}</div>` : ''}
+        <div style="color:var(--muted)">Medio de pago</div><div style="text-align:right">${medioPago}</div>
+      </div>
+      ${srvRows || prodRows ? `
+      <table style="width:100%;font-size:13px;margin-bottom:12px;border-top:1px solid var(--border);padding-top:12px">
+        ${srvs.length ? `<tr><td colspan="2" style="color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding-bottom:6px">Servicios</td></tr>${srvRows}` : ''}
+        ${prods.length ? `<tr><td colspan="2" style="color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:10px 0 6px">Productos</td></tr>${prodRows}` : ''}
+      </table>` : ''}
+      <div style="border-top:1px solid var(--border);padding-top:12px;display:grid;gap:4px;font-size:13px">
+        ${totalSrv ? `<div style="display:flex;justify-content:space-between;color:var(--muted)"><span>Subtotal servicios</span><span>$${totalSrv.toLocaleString('es-AR')}</span></div>` : ''}
+        ${totalProd ? `<div style="display:flex;justify-content:space-between;color:var(--muted)"><span>Subtotal productos</span><span>$${totalProd.toLocaleString('es-AR')}</span></div>` : ''}
+        ${desc ? `<div style="display:flex;justify-content:space-between;color:var(--red)"><span>Descuento</span><span>-$${desc.toLocaleString('es-AR')}</span></div>` : ''}
+        <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;margin-top:6px;padding-top:8px;border-top:1px solid var(--border)">
+          <span>TOTAL</span><span style="color:var(--pink)">$${total.toLocaleString('es-AR')}</span>
+        </div>
+        ${pts > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gold);margin-top:6px"><span>⭐ Puntos ganados</span><span>+${pts} pts</span></div>` : ''}
+      </div>
+      <div style="text-align:center;color:var(--muted);font-size:12px;margin-top:20px;padding-top:12px;border-top:1px solid var(--border)">
+        ¡Gracias por tu visita! 💛
+      </div>
+    </div>`;
+
+  document.getElementById('comprobante-body').innerHTML = html;
+
+  const waPhone = cobrarCl?.phone?.replace(/[^0-9]/g,'') || '';
+  const waMsg = encodeURIComponent(`¡Gracias por tu visita, ${nombre}! 💛
+Comprobante N° #${cobro.numero}
+Total: $${total.toLocaleString('es-AR')}${pts > 0 ? '
+⭐ Ganaste +'+pts+' puntos' : ''}`);
+  document.getElementById('comprobante-actions').innerHTML = `
+    <button class="btn-sm green" onclick="printComprobante()">🖨️ Imprimir / PDF</button>
+    ${email ? `<button class="btn-sm" style="color:var(--blue);border-color:var(--blue)">✉️ Email enviado a ${email}</button>` : ''}
+    ${waPhone ? `<a href="https://wa.me/${waPhone}?text=${waMsg}" target="_blank" class="btn-sm" style="text-decoration:none;color:var(--green);border-color:var(--green)">💬 WhatsApp</a>` : ''}
+    <button class="btn-sm" onclick="cm('modal-comprobante')">Cerrar</button>`;
+
+  om('modal-comprobante');
+}
+
+function printComprobante() {
+  const el = document.getElementById('comprobante-print');
+  if (!el) return;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Comprobante Estefan</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
+      body{font-family:'DM Sans',sans-serif;max-width:380px;margin:30px auto;padding:20px;color:#1a1618;}
+      :root{--pink:#e8447a;--muted:#8a7d82;--border:#e0d8db;--gold:#d4a754;--red:#e85c5c;}
+    </style></head><body>${el.innerHTML}</body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
 }
 
 
