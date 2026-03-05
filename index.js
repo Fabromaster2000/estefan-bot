@@ -1020,3 +1020,245 @@ app.put('/staff/productos/:id', adminAuth, async (req, res) => {
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HISTORIAL + NOTAS + FICHA + PORTAL CLIENTE
+// ══════════════════════════════════════════════════════════════════════════════
+const crypto = require('crypto');
+
+// ── Auth middleware para portal del cliente ───────────────────────────────────
+async function clientAuth(req, res, next) {
+  const token = req.headers['x-client-token'] || req.query.t;
+  if (!token) return res.status(401).json({ error: 'Token requerido' });
+  try {
+    const r = await getConn().query(
+      'SELECT client_phone FROM client_tokens WHERE token=$1 AND expires_at > NOW()',
+      [token]
+    );
+    if (!r.rows.length) return res.status(401).json({ error: 'Token invalido o expirado' });
+    req.clientPhone = r.rows[0].client_phone;
+    next();
+  } catch(e) { res.status(500).json({ error: e.message }); }
+}
+
+// ── Init nuevas tablas ────────────────────────────────────────────────────────
+async function initNewTables() {
+  const db_conn = getConn();
+  await db_conn.query(`
+    CREATE TABLE IF NOT EXISTS client_notes (
+      id           SERIAL PRIMARY KEY,
+      client_phone TEXT NOT NULL,
+      type         TEXT NOT NULL DEFAULT 'nota',
+      content      TEXT NOT NULL,
+      created_by   TEXT DEFAULT 'staff',
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await db_conn.query(`
+    CREATE TABLE IF NOT EXISTS client_ficha (
+      id               SERIAL PRIMARY KEY,
+      client_phone     TEXT UNIQUE NOT NULL,
+      color_actual     TEXT,
+      tecnica          TEXT,
+      procesos_previos TEXT,
+      ultimo_proceso   TEXT,
+      alergias         TEXT,
+      observaciones    TEXT,
+      largo            TEXT,
+      textura          TEXT,
+      updated_at       TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await db_conn.query(`
+    CREATE TABLE IF NOT EXISTS client_tokens (
+      id           SERIAL PRIMARY KEY,
+      client_phone TEXT NOT NULL,
+      token        TEXT UNIQUE NOT NULL,
+      expires_at   TIMESTAMPTZ NOT NULL,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await db_conn.query('CREATE INDEX IF NOT EXISTS idx_client_tokens_token ON client_tokens(token)');
+  await db_conn.query('CREATE INDEX IF NOT EXISTS idx_client_notes_phone  ON client_notes(client_phone)');
+  console.log('[init] Nuevas tablas OK');
+}
+initNewTables().catch(e => console.error('[init] Error nuevas tablas:', e.message));
+
+// ── STAFF: historial completo del cliente ─────────────────────────────────────
+app.get('/staff/clients/:phone/historial', staffAuth, async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const [client, bookings, cobros, notas, ficha] = await Promise.all([
+      db.clientGet(phone),
+      getConn().query(`
+        SELECT id, booking_code, service, date_str, time_str, status, monto, notas, motivo, created_at
+        FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC
+      `, [phone]),
+      getConn().query(`
+        SELECT p.id, p.numero_comprobante as numero, p.fecha_str as fecha,
+               p.medio_pago, p.total, p.total_servicios, p.total_productos,
+               p.servicios_json, p.productos_json, e.nombre as empleado
+        FROM payments p
+        LEFT JOIN empleados e ON e.id = p.empleado_id
+        WHERE p.client_phone=$1 ORDER BY p.created_at DESC
+      `, [phone]),
+      getConn().query(`
+        SELECT id, type, content, created_by, created_at
+        FROM client_notes WHERE client_phone=$1 ORDER BY created_at DESC
+      `, [phone]),
+      getConn().query('SELECT * FROM client_ficha WHERE client_phone=$1', [phone])
+    ]);
+    res.json({
+      client,
+      bookings:  bookings.rows,
+      cobros:    cobros.rows,
+      notas:     notas.rows,
+      ficha:     ficha.rows[0] || null
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── STAFF: agregar nota ───────────────────────────────────────────────────────
+app.post('/staff/clients/:phone/notas', staffAuth, async (req, res) => {
+  try {
+    const { content, type = 'nota', created_by = 'staff' } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'Contenido requerido' });
+    const r = await getConn().query(
+      'INSERT INTO client_notes (client_phone, type, content, created_by) VALUES ($1,$2,$3,$4) RETURNING *',
+      [req.params.phone, type, content.trim(), created_by]
+    );
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── STAFF: borrar nota ────────────────────────────────────────────────────────
+app.delete('/staff/clients/:phone/notas/:id', staffAuth, async (req, res) => {
+  try {
+    await getConn().query(
+      'DELETE FROM client_notes WHERE id=$1 AND client_phone=$2',
+      [req.params.id, req.params.phone]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── STAFF: guardar ficha técnica (upsert) ─────────────────────────────────────
+app.put('/staff/clients/:phone/ficha', staffAuth, async (req, res) => {
+  try {
+    const { color_actual, tecnica, procesos_previos, ultimo_proceso,
+            alergias, observaciones, largo, textura } = req.body;
+    await getConn().query(`
+      INSERT INTO client_ficha
+        (client_phone, color_actual, tecnica, procesos_previos, ultimo_proceso,
+         alergias, observaciones, largo, textura, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+      ON CONFLICT (client_phone) DO UPDATE SET
+        color_actual=$2, tecnica=$3, procesos_previos=$4, ultimo_proceso=$5,
+        alergias=$6, observaciones=$7, largo=$8, textura=$9, updated_at=NOW()
+    `, [req.params.phone, color_actual||null, tecnica||null, procesos_previos||null,
+        ultimo_proceso||null, alergias||null, observaciones||null, largo||null, textura||null]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── STAFF: generar link para cliente ──────────────────────────────────────────
+app.post('/staff/clients/:phone/token', staffAuth, async (req, res) => {
+  try {
+    const phone   = req.params.phone;
+    const token   = crypto.randomBytes(24).toString('hex');
+    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 días
+    await getConn().query(
+      'INSERT INTO client_tokens (client_phone, token, expires_at) VALUES ($1,$2,$3)',
+      [phone, token, expires]
+    );
+    const base = process.env.BASE_URL || 'https://peluqueria-bot.onrender.com';
+    res.json({ token, url: base + '/mi-cuenta?t=' + token, expires });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PORTAL CLIENTE — /mi-cuenta
+// ══════════════════════════════════════════════════════════════════════════════
+app.get('/mi-cuenta', (req, res) => {
+  res.sendFile(__dirname + '/client-portal.html');
+});
+
+// Perfil + historial del cliente autenticado
+app.get('/cliente/perfil', clientAuth, async (req, res) => {
+  try {
+    const phone = req.clientPhone;
+    const [clientRow, bookings, cobros] = await Promise.all([
+      db.clientGet(phone),
+      getConn().query(`
+        SELECT booking_code, service, date_str, time_str, status, monto, notas
+        FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC LIMIT 30
+      `, [phone]),
+      getConn().query(`
+        SELECT p.numero_comprobante as numero, p.fecha_str as fecha,
+               p.medio_pago, p.total, p.servicios_json, p.productos_json, e.nombre as empleado
+        FROM payments p LEFT JOIN empleados e ON e.id=p.empleado_id
+        WHERE p.client_phone=$1 ORDER BY p.created_at DESC LIMIT 10
+      `, [phone])
+    ]);
+    const puntos = {
+      points:      clientRow ? clientRow.points      || 0 : 0,
+      total_spent: clientRow ? clientRow.total_spent || 0 : 0,
+      visit_count: clientRow ? clientRow.visit_count || 0 : 0
+    };
+    res.json({ client: clientRow, bookings: bookings.rows, cobros: cobros.rows, puntos });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// El cliente actualiza sus propios datos
+app.put('/cliente/perfil', clientAuth, async (req, res) => {
+  try {
+    const { name, lastName, email } = req.body;
+    const phone = req.clientPhone;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    await getConn().query(
+      'UPDATE clients SET name=$1, last_name=$2, email=$3, updated_at=NOW() WHERE phone=$4',
+      [name.trim(), lastName?.trim()||null, email?.trim()||null, phone]
+    );
+    if (email?.trim()) {
+      await getConn().query(
+        'UPDATE bookings SET email=$1 WHERE client_phone=$2 AND (email IS NULL OR email='')',
+        [email.trim(), phone]
+      );
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// El cliente solicita cancelar o reprogramar un turno
+app.post('/cliente/solicitud', clientAuth, async (req, res) => {
+  try {
+    const { booking_code, tipo, mensaje } = req.body;
+    const phone = req.clientPhone;
+    const bk = await getConn().query(
+      'SELECT id, service, date_str, time_str FROM bookings WHERE booking_code=$1 AND client_phone=$2',
+      [booking_code, phone]
+    );
+    if (!bk.rows.length) return res.status(404).json({ error: 'Turno no encontrado' });
+    const b = bk.rows[0];
+    const contenido = 'SOLICITUD DE ' + (tipo||'').toUpperCase() +
+      ' — Turno #' + booking_code + ' (' + b.service + ' ' + b.date_str + ' ' + b.time_str + ')' +
+      (mensaje ? ': ' + mensaje : '');
+    await getConn().query(
+      'INSERT INTO client_notes (client_phone, type, content, created_by) VALUES ($1, 'solicitud', $2, 'cliente')',
+      [phone, contenido]
+    );
+    // Notificar al staff por WhatsApp
+    const clientData = await db.clientGet(phone);
+    const nombre = clientData ? ((clientData.name||'')+' '+(clientData.last_name||'')).trim() || phone : phone;
+    const staffPhone = process.env.STAFF_PHONE;
+    if (staffPhone) {
+      const text = '📲 Solicitud de ' + tipo + ' — ' + nombre +
+        '\nTurno: ' + b.service + ' el ' + b.date_str + ' a las ' + b.time_str +
+        (mensaje ? '\nMensaje: ' + mensaje : '') +
+        '\nResponder desde el portal Staff.';
+      sendWhatsApp(staffPhone, text).catch(()=>{});
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
