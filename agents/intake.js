@@ -3,21 +3,19 @@
 // Se activa cuando un cliente escribe por primera vez o no está identificado.
 // Devuelve { identified: bool, client: {...}, isNew: bool }
 
-const { clientGet, clientUpsert, memoryGet } = require('../core/db');
+const { clientGet, clientResolve, clientUpsert, memoryGet } = require('../core/db');
 
-async function run({ phone, name = null }) {
-  // Buscar cliente existente
-  let client = await clientGet(phone);
+async function run({ phone, name = null, email = null }) {
+  // Buscar cliente por email primero (fusiona sesiones), luego por phone
+  let client = await clientResolve(phone, email);
   const isNew = !client;
 
   if (isNew) {
-    // Crear perfil básico
-    await clientUpsert(phone, name);
+    await clientUpsert(phone, name, email);
     client = await clientGet(phone);
   } else if (name && !client.name) {
-    // Actualizar nombre si lo teníamos pendiente
-    await clientUpsert(phone, name);
-    client = await clientGet(phone);
+    await clientUpsert(client.phone, name, email);
+    client = await clientGet(client.phone);
   }
 
   // Cargar memoria si existe
