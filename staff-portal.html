@@ -942,12 +942,12 @@ function renderCl(l){
     </div>`).join(''):'<div class="empty"><div class="empty-icon">👤</div><p>Sin resultados</p></div>';
 }
 let curClPhone = null;
-async async function openCl(phone){
+async function openCl(phone){
   curClPhone = phone;
   om('modal-cl');
   document.getElementById('modal-cl-title').textContent = 'Cargando...';
   document.getElementById('modal-cl-body').innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">Cargando...</div>';
-  const d = await api('GET', '/staff/clients/' + encodeURIComponent(phone) + '/historial');
+  const d = await api('GET', '/staff/clients/'+encodeURIComponent(phone)+'/historial');
   if(!d||!d.client){toast('Error cargando cliente',1);return;}
   renderClModal(d.client, d.bookings||[], d.cobros||[], d.notas||[], d.ficha||null, false);
 }
@@ -964,39 +964,38 @@ function renderClModal(c, bks, cobros, notas, ficha, editMode){
       '<div class="form-group"><label class="form-label">Apellido</label><input class="form-input" id="cl-edit-lastname" value="'+(c.last_name||'')+'"></div>'+
       '</div>'+
       '<div class="form-group"><label class="form-label">Email</label><input class="form-input" id="cl-edit-email" type="email" value="'+(c.email||'')+'"></div>'+
-      '<div class="form-group"><label class="form-label">Teléfono</label><input class="form-input" id="cl-edit-phone" value="'+(c.phone||'')+'" placeholder="+5491155556666"></div>'+
+      '<div class="form-group"><label class="form-label">Telefono</label><input class="form-input" id="cl-edit-phone" value="'+(c.phone||'')+'" placeholder="+5491155556666"></div>'+
       '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--muted)">'+
-      '⭐ '+(c.points||0)+' pts · '+(c.visit_count||0)+' visitas · $'+Number(c.total_spent||0).toLocaleString('es-AR')+' gastados'+
+      'Puntos: '+(c.points||0)+' | Visitas: '+(c.visit_count||0)+' | Total: $'+Number(c.total_spent||0).toLocaleString('es-AR')+
       '</div></div>';
     document.getElementById('modal-cl-actions').innerHTML =
-      '<button class="btn-sm green" onclick="saveClEdit(\''+c.phone+'\')">💾 Guardar cambios</button>'+
-      '<button class="btn-sm" onclick="openCl(\''+c.phone+'\')">Cancelar</button>';
+      '<button class="btn-sm green" onclick="saveClEdit(''+c.phone+'')">Guardar cambios</button>'+
+      '<button class="btn-sm" onclick="openCl(''+c.phone+'')">Cancelar</button>';
     return;
   }
 
-  // View mode — tabs
   window._curClData = {c:c, bks:bks, cobros:cobros, notas:notas, ficha:ficha};
-  window._curClTab  = window._curClTab || 'historial';
+  if(!window._curClTab) window._curClTab = 'historial';
 
   document.getElementById('modal-cl-body').innerHTML =
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+
-    '<span class="pill">📱 '+(c.phone||'—')+'</span>'+
-    '<span class="pill">✉️ '+(c.email||'Sin email')+'</span>'+
-    '<span class="pill">⭐ '+(c.points||0)+' pts</span>'+
-    '<span class="pill">🔄 '+(c.visit_count||0)+' visitas</span>'+
-    '<span class="pill">💰 $'+Number(c.total_spent||0).toLocaleString('es-AR')+'</span>'+
+    '<span class="pill">Tel: '+(c.phone||'s/d')+'</span>'+
+    '<span class="pill">Email: '+(c.email||'Sin email')+'</span>'+
+    '<span class="pill">Puntos: '+(c.points||0)+'</span>'+
+    '<span class="pill">Visitas: '+(c.visit_count||0)+'</span>'+
+    '<span class="pill">Total: $'+Number(c.total_spent||0).toLocaleString('es-AR')+'</span>'+
     '</div>'+
-    '<div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:14px" id="cl-tabs">'+
-    '<div id="cltab-historial" onclick="switchClTab(\'historial\')" class="_cltab">📋 Historial</div>'+
-    '<div id="cltab-notas"    onclick="switchClTab(\'notas\')"    class="_cltab">📝 Notas</div>'+
-    '<div id="cltab-ficha"    onclick="switchClTab(\'ficha\')"    class="_cltab">🎨 Ficha técnica</div>'+
+    '<div id="cl-tabs" style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">'+
+    '<div id="cltab-historial" onclick="switchClTab('historial')" style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Historial</div>'+
+    '<div id="cltab-notas"    onclick="switchClTab('notas')"    style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Notas</div>'+
+    '<div id="cltab-ficha"    onclick="switchClTab('ficha')"    style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Ficha tecnica</div>'+
     '</div>'+
-    '<div id="cl-tab-content" style="max-height:340px;overflow-y:auto"></div>';
+    '<div id="cl-tab-content" style="max-height:360px;overflow-y:auto"></div>';
 
   document.getElementById('modal-cl-actions').innerHTML =
-    '<button class="btn-sm" onclick="editClMode(\''+c.phone+'\')">✏️ Editar</button>'+
-    '<button class="btn-sm gold" onclick="genClienteLink(\''+c.phone+'\',event)">🔗 Link cliente</button>'+
-    '<button class="btn-sm" onclick="cm(\'modal-cl\')">Cerrar</button>';
+    '<button class="btn-sm" onclick="editClMode(''+c.phone+'')">Editar info</button>'+
+    '<button class="btn-sm gold" onclick="genClienteLink(''+c.phone+'',event)">Link cliente</button>'+
+    '<button class="btn-sm" onclick="cm('modal-cl')">Cerrar</button>';
 
   switchClTab(window._curClTab);
 }
@@ -1004,91 +1003,88 @@ function renderClModal(c, bks, cobros, notas, ficha, editMode){
 function switchClTab(tab){
   window._curClTab = tab;
   var d = window._curClData || {};
-  ['historial','notas','ficha'].forEach(function(t){
+  var tabs = ['historial','notas','ficha'];
+  tabs.forEach(function(t){
     var el = document.getElementById('cltab-'+t);
-    if(!el) return;
-    el.style.padding        = '8px 14px';
-    el.style.fontSize       = '12px';
-    el.style.fontWeight     = '600';
-    el.style.cursor         = 'pointer';
-    el.style.borderBottom   = t===tab ? '2px solid var(--accent)' : '2px solid transparent';
-    el.style.color          = t===tab ? 'var(--accent)' : 'var(--muted)';
+    if(el){
+      el.style.color = t===tab ? 'var(--accent)' : 'var(--muted)';
+      el.style.borderBottom = t===tab ? '2px solid var(--accent)' : '2px solid transparent';
+    }
   });
   var el = document.getElementById('cl-tab-content');
   if(!el) return;
 
   if(tab==='historial'){
     var html = '';
-    var proximos = (d.bks||[]).filter(function(b){return b.status!=='Cancelado'&&b.status!=='Completado';});
-    var pasados  = (d.bks||[]).filter(function(b){return b.status==='Completado'||b.status==='Cancelado';});
+    var proximos = (d.bks||[]).filter(function(b){ return b.status!=='Cancelado'&&b.status!=='Completado'; });
+    var pasados  = (d.bks||[]).filter(function(b){ return b.status==='Completado'||b.status==='Cancelado'; });
     if(proximos.length){
-      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Próximos</div>';
-      proximos.forEach(function(b){html+=clBkRow(b);});
+      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Proximos turnos</div>';
+      proximos.forEach(function(b){ html += clBkRow(b); });
     }
     if(pasados.length){
-      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:12px 0 8px">Pasados</div>';
-      pasados.slice(0,10).forEach(function(b){html+=clBkRow(b);});
+      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:10px 0 8px">Historial</div>';
+      pasados.slice(0,12).forEach(function(b){ html += clBkRow(b); });
     }
     if((d.cobros||[]).length){
-      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:12px 0 8px">Cobros</div>';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:10px 0 8px">Cobros</div>';
       (d.cobros||[]).slice(0,6).forEach(function(c){
         var srvs=[],prods=[];
-        try{srvs=JSON.parse(c.servicios_json||'[]');}catch(e){}
-        try{prods=JSON.parse(c.productos_json||'[]');}catch(e){}
-        var items=srvs.map(function(s){return s.nombre||'';}).concat(prods.map(function(p){return p.nombre||'';})).filter(Boolean).join(', ');
-        html+='<div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center">';
-        html+='<div><span style="color:var(--muted)">#'+c.numero+' · '+(c.fecha||'')+'</span>';
-        if(items) html+='<div style="font-size:12px;color:var(--muted);margin-top:2px">'+items+'</div>';
-        html+='</div><span style="font-weight:700;color:var(--accent)">$'+Number(c.total||0).toLocaleString('es-AR')+'</span></div>';
+        try{srvs=JSON.parse(c.servicios_json||'[]');}catch(e2){}
+        try{prods=JSON.parse(c.productos_json||'[]');}catch(e2){}
+        var items = srvs.map(function(s){return s.nombre||'';}).concat(prods.map(function(p){return p.nombre||'';})).filter(Boolean).join(', ');
+        html += '<div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center">';
+        html += '<div><span style="color:var(--muted)">#'+c.numero+' - '+(c.fecha||'')+'</span>';
+        if(items) html += '<div style="font-size:12px;color:var(--muted)">'+items+'</div>';
+        html += '</div><span style="font-weight:700;color:var(--accent)">$'+Number(c.total||0).toLocaleString('es-AR')+'</span></div>';
       });
     }
-    if(!html) html='<div style="color:var(--muted);font-size:13px;padding:16px 0">Sin historial registrado.</div>';
+    if(!html) html = '<div style="color:var(--muted);font-size:13px;padding:16px 0">Sin historial registrado.</div>';
     el.innerHTML = html;
 
   } else if(tab==='notas'){
     var html =
       '<div style="margin-bottom:14px">'+
-      '<textarea class="form-input" id="nueva-nota-txt" placeholder="Observación, alerta o preferencia de la clienta..." rows="3" style="margin-bottom:8px"></textarea>'+
+      '<textarea class="form-input" id="nueva-nota-txt" placeholder="Observacion, alerta o preferencia..." rows="3" style="margin-bottom:8px"></textarea>'+
       '<div style="display:flex;gap:8px">'+
       '<select class="form-input" id="nueva-nota-tipo" style="height:34px;padding:4px 8px;width:auto">'+
-      '<option value="nota">📝 Observación</option>'+
-      '<option value="alerta">⚠️ Alerta</option>'+
-      '<option value="preferencia">💛 Preferencia</option>'+
+      '<option value="nota">Observacion</option>'+
+      '<option value="alerta">Alerta</option>'+
+      '<option value="preferencia">Preferencia</option>'+
       '</select>'+
       '<button class="btn-sm green" onclick="guardarNota()">+ Agregar</button>'+
       '</div></div>';
-    var solicitudes = (d.notas||[]).filter(function(n){return n.created_by==='cliente';});
-    var staffNotas  = (d.notas||[]).filter(function(n){return n.created_by!=='cliente';});
+    var solicitudes = (d.notas||[]).filter(function(n){ return n.created_by==='cliente'; });
+    var staffNotas  = (d.notas||[]).filter(function(n){ return n.created_by!=='cliente'; });
     if(solicitudes.length){
-      html+='<div style="font-size:11px;font-weight:600;color:var(--gold);text-transform:uppercase;margin-bottom:8px">📲 Solicitudes del cliente</div>';
-      solicitudes.forEach(function(n){html+=notaRow(n);});
+      html += '<div style="font-size:11px;font-weight:600;color:var(--gold);text-transform:uppercase;margin-bottom:8px">Solicitudes del cliente</div>';
+      solicitudes.forEach(function(n){ html += notaRow(n); });
     }
     if(staffNotas.length){
-      html+='<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:10px 0 8px">Notas del staff</div>';
-      staffNotas.forEach(function(n){html+=notaRow(n);});
+      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:10px 0 8px">Notas del staff</div>';
+      staffNotas.forEach(function(n){ html += notaRow(n); });
     }
-    if(!(d.notas||[]).length) html+='<div style="color:var(--muted);font-size:13px;padding:8px 0">Sin notas aún.</div>';
+    if(!(d.notas||[]).length) html += '<div style="color:var(--muted);font-size:13px;padding:8px 0">Sin notas aun.</div>';
     el.innerHTML = html;
 
   } else if(tab==='ficha'){
     var f = d.ficha || {};
-    var fields = [
-      ['color_actual','🎨 Color actual'],['tecnica','✂️ Técnica habitual'],
-      ['procesos_previos','🧪 Procesos químicos previos'],['ultimo_proceso','📅 Último proceso'],
-      ['largo','💇 Largo'],['textura','〰️ Textura'],
-      ['alergias','⚠️ Alergias / contraindicaciones'],['observaciones','📋 Observaciones']
+    var campos = [
+      ['color_actual','Color actual'],['tecnica','Tecnica habitual'],
+      ['procesos_previos','Procesos quimicos previos'],['ultimo_proceso','Ultimo proceso'],
+      ['largo','Largo del pelo'],['textura','Textura'],
+      ['alergias','Alergias / contraindicaciones'],['observaciones','Observaciones generales']
     ];
     var html = '<div style="display:grid;gap:10px">';
-    fields.forEach(function(pair){
+    campos.forEach(function(pair){
       var val = (f[pair[0]]||'').replace(/"/g,'&quot;');
-      html+='<div class="form-group" style="margin-bottom:0">'+
+      html += '<div class="form-group" style="margin-bottom:0">'+
         '<label class="form-label">'+pair[1]+'</label>'+
-        '<input class="form-input" id="ficha-'+pair[0]+'" value="'+val+'" placeholder="—">'+
+        '<input class="form-input" id="ficha-'+pair[0]+'" value="'+val+'" placeholder="-">'+
         '</div>';
     });
-    html+='</div><div style="margin-top:14px">'+
-      '<button class="btn-sm green" onclick="guardarFicha()">💾 Guardar ficha técnica</button></div>';
-    if(f.updated_at) html+='<div style="font-size:11px;color:var(--muted);margin-top:8px">Actualizado: '+new Date(f.updated_at).toLocaleDateString('es-AR')+'</div>';
+    html += '</div><div style="margin-top:14px"><button class="btn-sm green" onclick="guardarFicha()">Guardar ficha tecnica</button></div>';
+    if(f && f.updated_at) html += '<div style="font-size:11px;color:var(--muted);margin-top:8px">Actualizado: '+new Date(f.updated_at).toLocaleDateString('es-AR')+'</div>';
     el.innerHTML = html;
   }
 }
@@ -1097,18 +1093,17 @@ function clBkRow(b){
   var sc = 's-'+(b.status||'confirmado').toLowerCase().replace(/\s/g,'');
   return '<div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center">'+
     '<span><strong>'+(b.service||'')+'</strong> <span style="color:var(--muted)">'+(b.date_str||'')+' '+(b.time_str||'')+'</span></span>'+
-    '<span class="status '+sc+'" style="font-size:11px">'+(b.status||'—')+'</span></div>';
+    '<span class="status '+sc+'" style="font-size:11px">'+(b.status||'-')+'</span></div>';
 }
 
 function notaRow(n){
-  var icons={nota:'📝',alerta:'⚠️',preferencia:'💛',solicitud:'📲',ficha:'🎨'};
-  var icon=icons[n.type]||'📝';
-  var bg=n.created_by==='cliente'?'background:#2a2410;':'background:var(--bg);';
-  var fecha=new Date(n.created_at).toLocaleDateString('es-AR');
+  var icons = {nota:'N',alerta:'A',preferencia:'P',solicitud:'S',ficha:'F'};
+  var bg = n.created_by==='cliente' ? 'background:var(--surface2);border-left:3px solid var(--gold);' : 'background:var(--bg);';
+  var fecha = new Date(n.created_at).toLocaleDateString('es-AR');
   return '<div style="'+bg+'border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:13px">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
-    '<span style="font-size:11px;color:var(--muted)">'+icon+' '+n.type+' · '+fecha+(n.created_by==='cliente'?' · cliente':'')+'</span>'+
-    (n.created_by!=='cliente'?'<button onclick="borrarNota('+n.id+')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0">✕</button>':'')+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
+    '<span style="font-size:11px;color:var(--muted)">'+n.type+' - '+fecha+(n.created_by==='cliente'?' (cliente)':'')+'</span>'+
+    (n.created_by!=='cliente' ? '<button onclick="borrarNota('+n.id+')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0">x</button>' : '')+
     '</div>'+
     '<div style="line-height:1.5">'+n.content+'</div></div>';
 }
@@ -1117,45 +1112,49 @@ async function guardarNota(){
   var txt  = document.getElementById('nueva-nota-txt').value.trim();
   var tipo = document.getElementById('nueva-nota-tipo').value;
   if(!txt) return;
-  var r = await api('POST','/staff/clients/'+encodeURIComponent(curClPhone)+'/notas',{content:txt,type:tipo});
-  if(r&&r.id){ toast('Nota guardada ✅'); openCl(curClPhone); }
-  else toast('Error al guardar',1);
+  var r = await api('POST', '/staff/clients/'+encodeURIComponent(curClPhone)+'/notas', {content:txt, type:tipo});
+  if(r && r.id){ toast('Nota guardada'); openCl(curClPhone); }
+  else toast('Error al guardar', 1);
 }
 
 async function borrarNota(id){
-  if(!confirm('¿Borrar esta nota?')) return;
-  await api('DELETE','/staff/clients/'+encodeURIComponent(curClPhone)+'/notas/'+id);
+  if(!confirm('Borrar esta nota?')) return;
+  await api('DELETE', '/staff/clients/'+encodeURIComponent(curClPhone)+'/notas/'+id);
   openCl(curClPhone);
 }
 
 async function guardarFicha(){
-  var keys=['color_actual','tecnica','procesos_previos','ultimo_proceso','largo','textura','alergias','observaciones'];
-  var body={};
-  keys.forEach(function(k){var el=document.getElementById('ficha-'+k);body[k]=el?el.value.trim():'';});
-  var r = await api('PUT','/staff/clients/'+encodeURIComponent(curClPhone)+'/ficha',body);
-  if(r&&r.ok){ toast('Ficha técnica guardada ✅'); window._curClTab='ficha'; openCl(curClPhone); }
-  else toast('Error al guardar',1);
+  var keys = ['color_actual','tecnica','procesos_previos','ultimo_proceso','largo','textura','alergias','observaciones'];
+  var body = {};
+  keys.forEach(function(k){ var el=document.getElementById('ficha-'+k); body[k]=el?el.value.trim():''; });
+  var r = await api('PUT', '/staff/clients/'+encodeURIComponent(curClPhone)+'/ficha', body);
+  if(r && r.ok){ toast('Ficha guardada'); window._curClTab='ficha'; openCl(curClPhone); }
+  else toast('Error al guardar', 1);
 }
 
-async function genClienteLink(phone,ev){
-  var btn=ev&&ev.target;
-  if(btn){btn.textContent='Generando...';btn.disabled=true;}
-  var r = await api('POST','/staff/clients/'+encodeURIComponent(phone)+'/token');
-  if(btn){btn.textContent='🔗 Link cliente';btn.disabled=false;}
-  if(r&&r.url){
-    try{navigator.clipboard.writeText(r.url);}catch(e){}
-    var d=window._curClData&&window._curClData.c;
-    var nombre=d?((d.name||'')+' '+(d.last_name||'')).trim():'';
-    var msg='Hola '+nombre+'! Te mandamos el link para ver tu cuenta en Estefan Peluquería: '+r.url;
-    if(confirm('Link copiado!\n\n'+r.url+'\n\n¿Enviar por WhatsApp a la clienta?')){
+async function genClienteLink(phone, ev){
+  var btn = ev && ev.target;
+  if(btn){ btn.textContent='Generando...'; btn.disabled=true; }
+  var r = await api('POST', '/staff/clients/'+encodeURIComponent(phone)+'/token');
+  if(btn){ btn.textContent='Link cliente'; btn.disabled=false; }
+  if(r && r.url){
+    try{ navigator.clipboard.writeText(r.url); }catch(e2){}
+    var cd = window._curClData && window._curClData.c;
+    var nombre = cd ? ((cd.name||'')+' '+(cd.last_name||'')).trim() : '';
+    var msg = 'Hola '+nombre+'! Te mandamos el link para ver tu cuenta en Estefán Pelurería: '+r.url;
+    if(confirm('Link copiado!
+
+'+r.url+'
+
+Enviar por WhatsApp?')){
       window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(msg),'_blank');
     }
-  } else toast('Error generando link',1);
+  } else toast('Error generando link', 1);
 }
 
 async function editClMode(phone){
   window._curClTab = 'historial';
-  const d = await api('GET','/staff/clients/'+encodeURIComponent(phone)+'/historial');
+  const d = await api('GET', '/staff/clients/'+encodeURIComponent(phone)+'/historial');
   renderClModal(d.client||{}, d.bookings||[], d.cobros||[], d.notas||[], d.ficha||null, true);
 }
 
