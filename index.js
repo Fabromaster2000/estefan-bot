@@ -388,6 +388,26 @@ app.post('/staff/booking/create', staffAuth, async (req, res) => {
     });
     const { appendTurnoToSheet } = require('./core/sheets');
     await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phoneF, servicio: servicioStr, monto: montoFinal, sena: senaFinal, senaPagada: false, estado: 'Confirmado', canal: 'Staff Manual' }).catch(() => {});
+
+    // Calendar
+    try {
+      const cal = require('./core/calendar');
+      const eventId = await cal.createEvent({ nombre, servicio: servicioStr, fecha, hora, phone: phoneF, code: saved.code, monto: montoFinal });
+      if (eventId) await getConn().query('UPDATE bookings SET calendar_event_id=$1 WHERE id=$2', [eventId, saved.id]).catch(()=>{});
+    } catch(ce) { console.error('[staff] calendar error:', ce.message); }
+
+    // Email confirmación
+    const emailFinal = email || (await getConn().query('SELECT email FROM clients WHERE phone=$1',[phoneF]).then(r=>r.rows[0]?.email).catch(()=>null));
+    if (emailFinal) {
+      try {
+        const { mailTurnoConfirmado } = require('./agents/mailer');
+        await mailTurnoConfirmado({ to: emailFinal, nombre, servicio: servicioStr, fecha, hora, code: saved.code, monto: montoFinal, senaAmount: senaFinal, senaPaid: false });
+        console.log(`[staff] ✓ Mail confirmación → ${emailFinal}`);
+      } catch(me) { console.error('[staff] mail error:', me.message); }
+    } else {
+      console.log(`[staff] ⚠ Sin email para ${phoneF} — no se envió confirmación`);
+    }
+
     res.json({ ok: true, code: saved.code, id: saved.id });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
