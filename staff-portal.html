@@ -517,7 +517,7 @@ const SRVS=[
   {id:14,n:'Peinado novia',p:150000,sena:true,cat:'peinados'},
 ];
 
-let PW='',allAgenda=[],allClientes=[],selCl=null,mode='existente',selSrvs=new Set(),lastBookingId=null,lastMP='',curBkId=null,curColorId=null,srchT=null;
+let PW='',ADMIN_PW='',allAgenda=[],allClientes=[],selCl=null,mode='existente',selSrvs=new Set(),lastBookingId=null,lastMP='',curBkId=null,curColorId=null,srchT=null;
 
 async function doLogin(){
   const pw=document.getElementById('pw-input').value;
@@ -528,9 +528,13 @@ async function doLogin(){
   document.getElementById('app').style.display='block';
   buildSrvGrid();loadHoy();loadColor();
 }
-function logout(){PW='';document.getElementById('login-screen').style.display='flex';document.getElementById('app').style.display='none';document.getElementById('pw-input').value='';}
+function logout(){PW='';ADMIN_PW='';document.getElementById('login-screen').style.display='flex';document.getElementById('app').style.display='none';document.getElementById('pw-input').value='';}
 async function api(method,path,body){
   const o={method,headers:{'x-staff-password':PW,'Content-Type':'application/json'}};
+  if(body)o.body=JSON.stringify(body);
+  const r=await fetch(path,o);return r.json();
+async function adminApi(method,path,body){
+  const o={method,headers:{'x-staff-password':ADMIN_PW,'Content-Type':'application/json'}};
   if(body)o.body=JSON.stringify(body);
   const r=await fetch(path,o);return r.json();
 }
@@ -543,7 +547,17 @@ function showPanel(n){
   if(n==='agenda')loadAgenda();
   if(n==='clientes')loadClientes();
   if(n==='nuevo')resetForm();
-  if(n==='admin'){adminBookings=[];adminClients=[];loadAdminBookings();}
+  if(n==='admin'){
+    if(!ADMIN_PW){
+      const pw=prompt('🔐 Contraseña de administrador:');
+      if(!pw){showPanel('hoy');return;}
+      // Verify against a known admin endpoint
+      const test=await fetch('/admin/stats',{headers:{'x-staff-password':pw}});
+      if(test.status===401){alert('Contraseña incorrecta ❌');showPanel('hoy');return;}
+      ADMIN_PW=pw;
+    }
+    adminBookings=[];adminClients=[];loadAdminBookings();
+  }
 }
 
 async function loadHoy(){
@@ -989,7 +1003,7 @@ async function loadTestClients(){
 
 async function cleanupTestClients(){
   if(!confirm('¿Borrar TODOS los clientes web-*? Esto no se puede deshacer.'))return;
-  const r=await fetch('/admin/cleanup-test-clients',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({password:PW})});
+  const r=await fetch('/admin/cleanup-test-clients',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({password:ADMIN_PW})});
   const d=await r.json();
   const el=document.getElementById('cleanup-result');
   el.style.display='block';el.textContent=`✅ Eliminados: ${d.deleted||0} clientes TEST`;
@@ -1001,7 +1015,7 @@ async function deleteClient(){
   const phone=document.getElementById('del-phone').value.trim();
   if(!phone){toast('Ingresá un teléfono',1);return;}
   if(!confirm(`¿Borrar el cliente ${phone}?`))return;
-  const r=await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({phone,password:PW})});
+  const r=await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({phone,password:ADMIN_PW})});
   const d=await r.json();
   const el=document.getElementById('del-result');
   el.style.display='block';
@@ -1011,7 +1025,7 @@ async function deleteClient(){
 
 async function deleteSingleClient(phone){
   if(!confirm(`¿Borrar ${phone}?`))return;
-  await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({phone,password:PW})});
+  await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({phone,password:ADMIN_PW})});
   toast('Eliminado ✅');loadTestClients();
 }
 
@@ -1042,7 +1056,7 @@ function switchAdminTab(tab) {
 }
 
 async function syncEmails(){
-  const r = await api('POST','/admin/sync-emails');
+  const r = await adminApi('POST','/admin/sync-emails');
   const el = document.getElementById('sync-result');
   el.style.display = 'block';
   el.textContent = r.ok ? `✓ ${r.updated} turno${r.updated!==1?'s':''} actualizados con email` : '❌ Error: '+(r.error||'');
@@ -1051,7 +1065,7 @@ async function syncEmails(){
 
 async function loadAdminBookings() {
   document.getElementById('admin-bookings-table').innerHTML = '<div class="loading">Cargando...</div>';
-  adminBookings = await api('GET', '/admin/bookings');
+  adminBookings = await adminApi('GET', '/admin/bookings');
   renderAdminTable();
 }
 
@@ -1249,7 +1263,7 @@ async function loadTestClients(){
 
 async function cleanupTestClients(){
   if(!confirm('¿Borrar TODOS los clientes web-*? Esto no se puede deshacer.'))return;
-  const r=await fetch('/admin/cleanup-test-clients',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({password:PW})});
+  const r=await fetch('/admin/cleanup-test-clients',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({password:ADMIN_PW})});
   const d=await r.json();
   const el=document.getElementById('cleanup-result');
   el.style.display='block';el.textContent=`✅ Eliminados: ${d.deleted||0} clientes TEST`;
@@ -1261,7 +1275,7 @@ async function deleteClient(){
   const phone=document.getElementById('del-phone').value.trim();
   if(!phone){toast('Ingresá un teléfono',1);return;}
   if(!confirm(`¿Borrar el cliente ${phone}?`))return;
-  const r=await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({phone,password:PW})});
+  const r=await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({phone,password:ADMIN_PW})});
   const d=await r.json();
   const el=document.getElementById('del-result');
   el.style.display='block';
@@ -1271,7 +1285,7 @@ async function deleteClient(){
 
 async function deleteSingleClient(phone){
   if(!confirm(`¿Borrar ${phone}?`))return;
-  await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':PW},body:JSON.stringify({phone,password:PW})});
+  await fetch('/admin/delete-client',{method:'POST',headers:{'Content-Type':'application/json','x-staff-password':ADMIN_PW},body:JSON.stringify({phone,password:ADMIN_PW})});
   toast('Eliminado ✅');loadTestClients();
 }
 
