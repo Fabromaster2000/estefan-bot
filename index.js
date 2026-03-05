@@ -321,13 +321,15 @@ app.get('/staff/agenda', staffAuth, async (req, res) => {
   try {
     const { days = 7 } = req.query;
     const r = await getConn().query(`
-      SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
-             service as servicio, date_str as fecha, time_str as hora,
-             status as estado, monto, created_at
-      FROM bookings
-      WHERE created_at >= NOW() - INTERVAL '1 day'
-         OR date_str >= TO_CHAR(NOW(), 'DD/MM/YYYY')
-      ORDER BY date_str ASC, time_str ASC
+      SELECT b.id, b.booking_code as code, b.client_name as nombre, b.client_phone as phone,
+             b.service as servicio, b.date_str as fecha, b.time_str as hora,
+             b.status as estado, b.monto, b.created_at,
+             COALESCE(NULLIF(b.email,''), c.email) AS email
+      FROM bookings b
+      LEFT JOIN clients c ON c.phone = b.client_phone
+      WHERE b.created_at >= NOW() - INTERVAL '1 day'
+         OR b.date_str >= TO_CHAR(NOW(), 'DD/MM/YYYY')
+      ORDER BY b.date_str ASC, b.time_str ASC
       LIMIT 200
     `);
     res.json(r.rows);
@@ -339,11 +341,14 @@ app.get('/staff/today', staffAuth, async (req, res) => {
   try {
     const today = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day:'2-digit', month:'2-digit', year:'numeric' });
     const r = await getConn().query(`
-      SELECT id, booking_code as code, client_name as nombre, client_phone as phone,
-             service as servicio, date_str as fecha, time_str as hora,
-             status as estado, monto
-      FROM bookings WHERE date_str = $1
-      ORDER BY time_str ASC
+      SELECT b.id, b.booking_code as code, b.client_name as nombre, b.client_phone as phone,
+             b.service as servicio, b.date_str as fecha, b.time_str as hora,
+             b.status as estado, b.monto,
+             COALESCE(NULLIF(b.email,''), c.email) AS email
+      FROM bookings b
+      LEFT JOIN clients c ON c.phone = b.client_phone
+      WHERE b.date_str = $1
+      ORDER BY b.time_str ASC
     `, [today]);
     res.json({ today, bookings: r.rows });
   } catch(e) { res.status(500).json({ error: e.message }); }
