@@ -948,8 +948,9 @@ async function openCl(phone){
   document.getElementById('modal-cl-title').textContent = 'Cargando...';
   document.getElementById('modal-cl-body').innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">Cargando...</div>';
   const d = await api('GET', '/staff/clients/'+encodeURIComponent(phone)+'/historial');
-  if(!d||!d.client){toast('Error cargando cliente',1);return;}
-  renderClModal(d.client, d.bookings||[], d.cobros||[], d.notas||[], d.ficha||null, false);
+  if(!d){toast('Error cargando cliente',1);return;}
+  var clientData = d.client || {phone: phone, name:'', last_name:'', email:'', points:0, visit_count:0, total_spent:0};
+  renderClModal(clientData, d.bookings||[], d.cobros||[], d.notas||[], d.ficha||null, false);
 }
 
 function renderClModal(c, bks, cobros, notas, ficha, editMode){
@@ -1151,7 +1152,9 @@ async function genClienteLink(phone, ev){
 async function editClMode(phone){
   window._curClTab = 'historial';
   const d = await api('GET', '/staff/clients/'+encodeURIComponent(phone)+'/historial');
-  renderClModal(d.client||{}, d.bookings||[], d.cobros||[], d.notas||[], d.ficha||null, true);
+  if(!d){toast('Error cargando cliente',1);return;}
+  var cd = d.client || {phone: phone, name:'', last_name:'', email:'', points:0, visit_count:0, total_spent:0};
+  renderClModal(cd, d.bookings||[], d.cobros||[], d.notas||[], d.ficha||null, true);
 }
 
 async function saveClEdit(phone){
