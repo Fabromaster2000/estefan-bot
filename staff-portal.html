@@ -969,8 +969,8 @@ function renderClModal(c, bks, cobros, notas, ficha, editMode){
       'Puntos: '+(c.points||0)+' | Visitas: '+(c.visit_count||0)+' | Total: $'+Number(c.total_spent||0).toLocaleString('es-AR')+
       '</div></div>';
     document.getElementById('modal-cl-actions').innerHTML =
-      '<button class="btn-sm green" onclick="saveClEdit(''+c.phone+'')">Guardar cambios</button>'+
-      '<button class="btn-sm" onclick="openCl(''+c.phone+'')">Cancelar</button>';
+      '<button class="btn-sm green" onclick="saveClEdit(&quot;'+c.phone+'&quot;)">Guardar cambios</button>'+
+      '<button class="btn-sm" onclick="openCl(&quot;'+c.phone+'&quot;)">Cancelar</button>';
     return;
   }
 
@@ -986,16 +986,16 @@ function renderClModal(c, bks, cobros, notas, ficha, editMode){
     '<span class="pill">Total: $'+Number(c.total_spent||0).toLocaleString('es-AR')+'</span>'+
     '</div>'+
     '<div id="cl-tabs" style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">'+
-    '<div id="cltab-historial" onclick="switchClTab('historial')" style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Historial</div>'+
-    '<div id="cltab-notas"    onclick="switchClTab('notas')"    style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Notas</div>'+
-    '<div id="cltab-ficha"    onclick="switchClTab('ficha')"    style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Ficha tecnica</div>'+
+    '<div id="cltab-historial" onclick="switchClTab(&quot;historial&quot;)" style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Historial</div>'+
+    '<div id="cltab-notas"    onclick="switchClTab(&quot;notas&quot;)"    style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Notas</div>'+
+    '<div id="cltab-ficha"    onclick="switchClTab(&quot;ficha&quot;)"    style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">Ficha tecnica</div>'+
     '</div>'+
     '<div id="cl-tab-content" style="max-height:360px;overflow-y:auto"></div>';
 
   document.getElementById('modal-cl-actions').innerHTML =
-    '<button class="btn-sm" onclick="editClMode(''+c.phone+'')">Editar info</button>'+
-    '<button class="btn-sm gold" onclick="genClienteLink(''+c.phone+'',event)">Link cliente</button>'+
-    '<button class="btn-sm" onclick="cm('modal-cl')">Cerrar</button>';
+    '<button class="btn-sm" onclick="editClMode(&quot;'+c.phone+'&quot;)">Editar info</button>'+
+    '<button class="btn-sm gold" onclick="genClienteLink(&quot;'+c.phone+'&quot;,event)">Link cliente</button>'+
+    '<button class="btn-sm" onclick="cm(&quot;modal-cl&quot;)">Cerrar</button>';
 
   switchClTab(window._curClTab);
 }
@@ -1142,11 +1142,7 @@ async function genClienteLink(phone, ev){
     var cd = window._curClData && window._curClData.c;
     var nombre = cd ? ((cd.name||'')+' '+(cd.last_name||'')).trim() : '';
     var msg = 'Hola '+nombre+'! Te mandamos el link para ver tu cuenta en Estefán Pelurería: '+r.url;
-    if(confirm('Link copiado!
-
-'+r.url+'
-
-Enviar por WhatsApp?')){
+    if(confirm('Link copiado!\n\n' + r.url + '\n\nEnviar por WhatsApp?')){
       window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(msg),'_blank');
     }
   } else toast('Error generando link', 1);
