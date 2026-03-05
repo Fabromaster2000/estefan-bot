@@ -2052,8 +2052,24 @@ async function downloadReport(tipo) {
       filename = `clientes_${hoy()}.csv`;
     } else if (tipo === 'cobros') {
       const r = await api('GET', '/staff/cobros');
-      headers  = ['N°','Comprobante','Cliente','Teléfono','Empleado','Medio de Pago','Total','Fecha'];
-      rows     = (r||[]).map(c => [c.id, '#'+c.numero, c.client_name||c.nombre||'', c.client_phone||c.phone||'', c.empleado||'', c.medio_pago, c.total, c.fecha_str||c.fecha||'']);
+      headers = ['Comprobante','Fecha','Cliente','Teléfono','Empleado','Medio de Pago',
+                 'Tipo','Nombre del ítem','Cantidad','Precio unitario',
+                 'Subtotal servicios','Subtotal productos','Descuento','Total cobro'];
+      rows = [];
+      for (const c of (r||[])) {
+        const srvs  = (() => { try { return JSON.parse(c.servicios_json||'[]'); } catch(e) { return []; } })();
+        const prods = (() => { try { return JSON.parse(c.productos_json||'[]'); } catch(e) { return []; } })();
+        const base  = ['#'+c.numero, c.fecha||'', c.nombre||'', c.phone||'',
+                       c.empleado||'', c.medio_pago,
+                       '', '', '', '',
+                       c.total_servicios||0, c.total_productos||0, c.descuento||0, c.total];
+        if (!srvs.length && !prods.length) {
+          rows.push(base);
+        } else {
+          srvs.forEach(s => { const row=[...base]; row[6]='Servicio'; row[7]=s.nombre||''; row[8]=1; row[9]=s.monto||0; rows.push(row); });
+          prods.forEach(p => { const row=[...base]; row[6]='Producto'; row[7]=p.nombre||''; row[8]=p.cantidad||1; row[9]=p.precio||0; rows.push(row); });
+        }
+      }
       filename = `cobros_${hoy()}.csv`;
     } else if (tipo === 'comisiones') {
       const r = await api('GET', '/staff/comisiones');
