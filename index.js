@@ -188,7 +188,7 @@ app.post('/sheets/metrics', async (req, res) => {
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'estefan2024';
 
-app.get('/admin/clients', async (req, res) => {
+app.get('/admin/clients', adminAuth, async (req, res) => {
   try {
     const dbConn = db.getDB();
     const r = await dbConn.query(`SELECT phone, name, last_name, email, visit_count, points, created_at FROM clients ORDER BY created_at DESC`);
@@ -196,9 +196,9 @@ app.get('/admin/clients', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/admin/cleanup-test-clients', async (req, res) => {
+app.post('/admin/cleanup-test-clients', adminAuth, async (req, res) => {
   const pw = req.headers['x-staff-password'] || req.body?.password;
-  if (pw !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(403).json({ error: 'No autorizado' });
+  if (pw !== (process.env.ADMIN_PASSWORD || 'P@chor!23')) return res.status(403).json({ error: 'No autorizado' });
   try {
     const dbConn = db.getDB();
     const clients = await dbConn.query(`SELECT phone FROM clients WHERE phone LIKE 'web-%'`);
@@ -211,9 +211,9 @@ app.post('/admin/cleanup-test-clients', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/admin/delete-client', async (req, res) => {
+app.post('/admin/delete-client', adminAuth, async (req, res) => {
   const pw = req.headers['x-staff-password'] || req.body?.password;
-  if (pw !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(403).json({ error: 'No autorizado' });
+  if (pw !== (process.env.ADMIN_PASSWORD || 'P@chor!23')) return res.status(403).json({ error: 'No autorizado' });
   try {
     const dbConn = db.getDB();
     await dbConn.query(`DELETE FROM bookings WHERE client_phone = $1`, [req.body.phone]);
@@ -224,8 +224,8 @@ app.post('/admin/delete-client', async (req, res) => {
 });
 
 // Borrar turno individual
-app.delete('/admin/booking/:id', async (req, res) => {
-  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+app.delete('/admin/booking/:id', adminAuth, async (req, res) => {
+  // adminAuth middleware handles this
   try {
     const dbConn = db.getDB();
     const r = await dbConn.query('DELETE FROM bookings WHERE id = $1 RETURNING id', [req.params.id]);
@@ -235,8 +235,8 @@ app.delete('/admin/booking/:id', async (req, res) => {
 });
 
 // Borrar múltiples turnos
-app.post('/admin/bookings/bulk-delete', async (req, res) => {
-  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+app.post('/admin/bookings/bulk-delete', adminAuth, async (req, res) => {
+  // adminAuth middleware handles this
   try {
     const { ids } = req.body;
     if (!ids?.length) return res.json({ ok: true, deleted: 0 });
@@ -247,8 +247,8 @@ app.post('/admin/bookings/bulk-delete', async (req, res) => {
 });
 
 // Listar todos los turnos para admin (con filtros)
-app.get('/admin/bookings', async (req, res) => {
-  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+app.get('/admin/bookings', adminAuth, async (req, res) => {
+  // adminAuth middleware handles this
   try {
     const dbConn = db.getDB();
     const { filter } = req.query; // 'test' | 'all'
@@ -264,8 +264,8 @@ app.get('/admin/bookings', async (req, res) => {
 });
 
 // Stats de DB
-app.get('/admin/stats', async (req, res) => {
-  if ((req.headers['x-staff-password'] || req.query.pw) !== (process.env.STAFF_PASSWORD || 'estefan2024')) return res.status(401).json({ error: 'No autorizado' });
+app.get('/admin/stats', adminAuth, async (req, res) => {
+  // adminAuth middleware handles this
   try {
     const dbConn = db.getDB();
     const [bTotal, bTest, bReal, clients] = await Promise.all([
@@ -284,10 +284,17 @@ app.get('/admin/stats', async (req, res) => {
 // ── HEALTH & STATUS ───────────────────────────────────────────────────────────
 // ── STAFF PORTAL API ─────────────────────────────────────────────────────────
 const STAFF_PASSWORD = process.env.STAFF_PASSWORD || 'estefan2024';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'P@chor!23';
 
 function staffAuth(req, res, next) {
   const pw = req.headers['x-staff-password'] || req.query.pw;
   if (pw !== STAFF_PASSWORD) return res.status(401).json({ error: 'No autorizado' });
+  next();
+}
+
+function adminAuth(req, res, next) {
+  const pw = req.headers['x-staff-password'] || req.query.pw;
+  if (pw !== ADMIN_PASSWORD) return res.status(401).json({ error: 'No autorizado' });
   next();
 }
 
@@ -596,7 +603,7 @@ app.put('/staff/clients/:phone', staffAuth, async (req, res) => {
 });
 
 // Sync email desde clients → bookings para todos (util para datos viejos)
-app.post('/admin/sync-emails', staffAuth, async (req, res) => {
+app.post('/admin/sync-emails', adminAuth, async (req, res) => {
   try {
     const r = await getConn().query(`
       UPDATE bookings b
