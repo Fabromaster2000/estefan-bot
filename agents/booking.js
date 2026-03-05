@@ -8,7 +8,7 @@ const { addToCalendar, addGuestToCalendarEvent, generateCalendarLink } = require
 const { appendTurnoToSheet } = require('../core/sheets');
 const { mailTurnoConfirmado, mailTurnoCancelado, mailTurnoModificado } = require('./mailer');
 
-async function create({ sessionId, nombre, phone, servicio, extra, dia, hora, email }) {
+async function create({ sessionId, nombre, phone, servicio, extra, dia, hora, email, notes }) {
   const nombreSrv = extra ? `${servicio.nombre} + ${extra.nombre}` : servicio.nombre;
   const monto     = servicio.precio + (extra?.precio || 0);
 
@@ -20,7 +20,7 @@ async function create({ sessionId, nombre, phone, servicio, extra, dia, hora, em
 
   // 2. Base de datos
   await clientUpsert(phone, nombre);
-  const saved = await bookingSave({ sessionId, nombre, phone, servicio: nombreSrv, fecha: fechaReal, hora: horaReal, monto, senaPaid: false, calendarEventId: evento?.id });
+  const saved = await bookingSave({ sessionId, nombre, phone, servicio: nombreSrv, fecha: fechaReal, hora: horaReal, monto, senaPaid: false, calendarEventId: evento?.id, notes: notes || null });
   const pointsEarned = await clientRecordVisit(phone, nombreSrv, monto);
 
   // 3. Sheets
