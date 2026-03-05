@@ -161,6 +161,7 @@
     <div class="nav-tab" onclick="showPanel('clientes')" id="tab-clientes">👤 Clientes</div>
     <div class="nav-tab" onclick="showPanel('nuevo')" id="tab-nuevo">➕ Nuevo turno</div>
     <div class="nav-tab" onclick="showPanel('cobrar')" id="tab-cobrar">💳 Cobrar</div>
+    <div class="nav-tab" onclick="showPanel('ventas')" id="tab-ventas">📈 Ventas</div>
     <div class="nav-tab" onclick="showPanel('admin')" id="tab-admin">⚙️ Admin</div>
   </div>
 
@@ -406,6 +407,36 @@
       <button class="btn-primary" onclick="confirmarCobro()" style="margin-top:4px">💳 Confirmar cobro y emitir comprobante</button>
     </div>
 
+
+      <!-- PANEL VENTAS -->
+      <div class="panel" id="panel-ventas">
+        <div id="ventas-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
+        <div class="card" style="margin-bottom:12px;padding:12px 16px">
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Empleado</div>
+              <select class="form-input" id="v-fil-emp" onchange="filterVentas()" style="height:34px;padding:4px 8px;min-width:140px"><option value="">Todos</option></select></div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Periodo</div>
+              <select class="form-input" id="v-fil-period" onchange="filterVentas()" style="height:34px;padding:4px 8px">
+                <option value="7">Ultimos 7 dias</option><option value="30" selected>Ultimos 30 dias</option>
+                <option value="90">Ultimos 90 dias</option><option value="0">Todo</option></select></div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Tipo</div>
+              <select class="form-input" id="v-fil-tipo" onchange="filterVentas()" style="height:34px;padding:4px 8px">
+                <option value="">Todo</option><option value="Servicio">Servicios</option><option value="Producto">Productos</option></select></div>
+            <div style="margin-top:18px"><button class="btn-sm" onclick="loadVentas()" style="height:34px">Recargar</button></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Ranking del periodo</div>
+          <div id="ventas-ranking"></div>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Detalle de ventas</div>
+            <div id="ventas-count" style="font-size:12px;color:var(--muted)"></div>
+          </div>
+          <div id="ventas-table" style="overflow-x:auto"></div>
+        </div>
+      </div>
 
     <!-- ADMIN -->
     <div class="panel" id="panel-admin">
@@ -758,14 +789,15 @@ async function showPanel(n){
   if(n==='nuevo')resetForm();
   if(n==='cobrar'){if(!allEmpleados.length)initCobrar();}
   if(n==='ventas'){loadVentas();}
+  if(n==='ventas'){loadVentas();}
   if(n==='admin'){
     if(!ADMIN_PW){
-      const pw=prompt('🔐 Contraseña de administrador:');
-      if(!pw){showPanel('hoy');return;}
-      // Verify against a known admin endpoint
-      const test=await fetch('/admin/stats',{headers:{'x-staff-password':pw}});
-      if(test.status===401){alert('Contraseña incorrecta ❌');showPanel('hoy');return;}
-      ADMIN_PW=pw;
+      pendingAdminCallback = () => showPanel('admin');
+      document.getElementById('admin-pw-input').value='';
+      document.getElementById('admin-pw-error').style.display='none';
+      document.getElementById('modal-admin-pw').style.display='flex';
+      document.getElementById('admin-pw-input').focus();
+      return;
     }
     adminBookings=[];adminClients=[];loadAdminBookings();
   }
@@ -1916,7 +1948,21 @@ function printComprobante() {
       @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
       body{font-family:'DM Sans',sans-serif;max-width:380px;margin:30px auto;padding:20px;color:#1a1618;}
       :root{--pink:#e8447a;--muted:#8a7d82;--border:#e0d8db;--gold:#d4a754;--red:#e85c5c;}
-    </style></head><body>${el.innerHTML}</body></html>`);
+    </style></head><body>${el.innerHTML}
+  <!-- ADMIN PW MODAL -->
+  <div id="modal-admin-pw" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:16px;padding:28px 24px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px">Acceso Admin</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px">Ingresa la contrasena de administrador</div>
+      <input type="password" id="admin-pw-input" class="form-input" placeholder="Contrasena admin" style="margin-bottom:12px;width:100%" onkeydown="if(event.key==='Enter')submitAdminPw()">
+      <p id="admin-pw-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none">Contrasena incorrecta</p>
+      <div style="display:flex;gap:10px">
+        <button class="btn-primary" id="admin-pw-btn" onclick="submitAdminPw()" style="flex:1">Ingresar</button>
+        <button class="btn-sm" onclick="cancelAdminPw()" style="flex:1">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
 }
@@ -2306,5 +2352,19 @@ function renderVentasTable() {
 }
 
 </script>
+
+  <!-- ADMIN PW MODAL -->
+  <div id="modal-admin-pw" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:16px;padding:28px 24px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px">Acceso Admin</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px">Ingresa la contrasena de administrador</div>
+      <input type="password" id="admin-pw-input" class="form-input" placeholder="Contrasena admin" style="margin-bottom:12px;width:100%" onkeydown="if(event.key==='Enter')submitAdminPw()">
+      <p id="admin-pw-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none">Contrasena incorrecta</p>
+      <div style="display:flex;gap:10px">
+        <button class="btn-primary" id="admin-pw-btn" onclick="submitAdminPw()" style="flex:1">Ingresar</button>
+        <button class="btn-sm" onclick="cancelAdminPw()" style="flex:1">Cancelar</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
