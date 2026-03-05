@@ -419,6 +419,7 @@
 <div class="modal-overlay" id="modal-status">
   <div class="modal">
     <h3>Cambiar estado</h3>
+    <div id="email-block-status"></div>
     <div class="form-group">
       <label class="form-label">Nuevo estado</label>
       <select class="form-select" id="modal-status-sel" onchange="toggleMotivoStatus()">
@@ -445,6 +446,7 @@
 <div class="modal-overlay" id="modal-reprogram">
   <div class="modal">
     <h3>Reprogramar turno</h3>
+    <div id="email-block-reprogram"></div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Nueva fecha (DD/MM/YYYY)</label><input class="form-input" id="rp-fecha" placeholder="07/03/2026"></div>
       <div class="form-group"><label class="form-label">Nueva hora (HH:MM)</label><input class="form-input" id="rp-hora" placeholder="15:00"></div>
@@ -911,12 +913,85 @@ async function genMPModal(nombre,servicio){
   } else toast('Error: '+(r.error||''),1);
 }
 
+// ── EMAIL BLOCK HELPER ───────────────────────────────────────────────────────
+// Renders email status block inside a modal. context = 'status' | 'reprogram'
+function renderEmailBlock(context, bk) {
+  const el = document.getElementById(`email-block-${context}`);
+  if (!el) return;
+  if (bk?.email) {
+    // Has email — show it in green
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;background:rgba(94,203,138,.08);border:1px solid rgba(94,203,138,.3);border-radius:10px;padding:10px 14px;margin-bottom:16px">
+        <span style="font-size:18px">✉️</span>
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:2px">Notificación se enviará a:</div>
+          <div style="font-size:14px;font-weight:600;color:var(--green)">${bk.email}</div>
+        </div>
+        <button class="btn-sm" style="font-size:11px;padding:4px 8px" onclick="toggleEmailEdit('${context}','${bk.email}')">✏️ Cambiar</button>
+      </div>
+      <div id="email-block-${context}-edit" style="display:none;margin-bottom:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Nuevo email</label>
+          <input class="form-input" id="email-block-${context}-input" type="email" placeholder="nuevo@email.com" value="${bk.email}">
+        </div>
+      </div>`;
+  } else {
+    // No email — show warning and input
+    el.innerHTML = `
+      <div style="background:rgba(232,92,92,.08);border:1px solid rgba(232,92,92,.35);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:16px">⚠️</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--red)">Esta clienta no tiene email registrado</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:1px">Agregalo para enviar la notificación</div>
+          </div>
+        </div>
+        <input class="form-input" id="email-block-${context}-input" type="email" placeholder="correo@mail.com" style="border-color:rgba(232,92,92,.4)">
+      </div>`;
+  }
+}
+
+function toggleEmailEdit(context, currentEmail) {
+  const el = document.getElementById(`email-block-${context}-edit`);
+  if (!el) return;
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    const input = document.getElementById(`email-block-${context}-input`);
+    if (input) { input.value = currentEmail; input.focus(); }
+  }
+}
+
+// Saves email to client+booking if a new one was entered in the block
+async function saveEmailIfNew(context) {
+  const input = document.getElementById(`email-block-${context}-input`);
+  if (!input) return;
+  const newEmail = input.value.trim();
+  if (!newEmail) return;
+  const bk = bkMap[curBkId];
+  if (!bk) return;
+  if (newEmail === bk.email) return; // no change
+  // Save to client (which propagates to bookings)
+  if (bk.phone) {
+    const name = bk.nombre || '';
+    const parts = name.trim().split(' ');
+    const firstName = parts[0] || name;
+    const lastName = parts.slice(1).join(' ') || '';
+    await api('PUT', `/staff/clients/${encodeURIComponent(bk.phone)}`, {
+      name: firstName, lastName, email: newEmail
+    });
+  }
+  // Also update local cache so toast shows correctly
+  bkMap[curBkId].email = newEmail;
+}
+
 // ── STATUS / REPROGRAM ────────────────────────────────────────────────────────
 function openStatus(id){
   curBkId=id;
   document.getElementById('modal-status-sel').value='Confirmado';
   document.getElementById('modal-status-motivo').value='';
   document.getElementById('motivo-status-group').style.display='none';
+  renderEmailBlock('status', bkMap[id]);
   om('modal-status');
 }
 function toggleMotivoStatus(){
@@ -926,10 +1001,14 @@ function toggleMotivoStatus(){
 async function doStatus(){
   const status=document.getElementById('modal-status-sel').value;
   const motivo=document.getElementById('modal-status-motivo').value.trim();
+  // Save email if newly entered
+  await saveEmailIfNew('status');
   const r=await api('PUT',`/staff/booking/${curBkId}/status`,{status,motivo});
   cm('modal-status');
-  if(status==='Cancelado') toast('Cancelado — email enviado 📧');
-  else if(status==='Confirmado') toast('Confirmado — email enviado 📧');
+  const needsMail=['Confirmado','Cancelado'].includes(status);
+  const hasEmail=!!(bkMap[curBkId]?.email||document.getElementById('email-block-status-input')?.value?.trim());
+  if(needsMail && hasEmail) toast(status==='Cancelado'?'Cancelado — email enviado 📧':'Confirmado — email enviado 📧');
+  else if(needsMail && !hasEmail) toast('Estado actualizado (sin email — no se notificó) ⚠️');
   else toast('Estado actualizado ✅');
   loadHoy();
   if(document.getElementById('panel-agenda').classList.contains('active'))loadAgenda();
@@ -937,6 +1016,7 @@ async function doStatus(){
 function openReprogram(id){
   curBkId=id;
   ['rp-fecha','rp-hora','rp-motivo'].forEach(i=>document.getElementById(i).value='');
+  renderEmailBlock('reprogram', bkMap[id]);
   om('modal-reprogram');
 }
 async function doReprogram(){
@@ -944,15 +1024,26 @@ async function doReprogram(){
   const hora=document.getElementById('rp-hora').value;
   const motivo=document.getElementById('rp-motivo').value.trim();
   if(!fecha||!hora){toast('Ingresá fecha y hora',1);return;}
+  await saveEmailIfNew('reprogram');
+  const hasEmail=!!(bkMap[curBkId]?.email||document.getElementById('email-block-reprogram-input')?.value?.trim());
   await api('PUT',`/staff/booking/${curBkId}/reschedule`,{fecha,hora,motivo});
-  cm('modal-reprogram');toast('Reprogramado — email enviado 📧');loadHoy();
+  cm('modal-reprogram');
+  if(hasEmail) toast('Reprogramado — email enviado 📧');
+  else toast('Reprogramado (sin email — no se notificó) ⚠️');
+  loadHoy();
   if(document.getElementById('panel-agenda').classList.contains('active'))loadAgenda();
 }
 
 // ── BOOKING CARD ──────────────────────────────────────────────────────────────
 const SC={Confirmado:'confirmado',Cancelado:'cancelado',Completado:'completado','Consulta Pendiente':'pendiente',Reprogramado:'reprogramado','No asistió':'noasistio','Seña pagada':'señapagada'};
+// Store bookings by id for quick lookup in modals
+const bkMap = {};
 function bCard(b){
+  bkMap[b.id] = b; // cache for modal use
   const sc=SC[b.estado]||'confirmado';
+  const emailIcon = b.email
+    ? `<span class="pill" style="color:var(--green);border-color:var(--green)">✉️ ${b.email}</span>`
+    : `<span class="pill" style="color:var(--red);border-color:var(--red)">⚠️ Sin mail</span>`;
   return `<div class="card">
     <div class="card-header"><div><div class="card-name">${b.nombre||'Sin nombre'}</div><div class="card-sub">${b.servicio}</div></div><span class="status s-${sc}">${b.estado||'Confirmado'}</span></div>
     <div class="card-meta">
@@ -960,6 +1051,7 @@ function bCard(b){
       <span class="pill">🔖 ${b.code||''}</span>
       ${b.monto?`<span class="pill">💰 $${Number(b.monto).toLocaleString('es-AR')}</span>`:''}
       ${b.phone?`<span class="pill">📱 ${b.phone}</span>`:''}
+      ${emailIcon}
     </div>
     <div class="card-actions">
       <button class="btn-sm" onclick="openStatus(${b.id})">Estado</button>
