@@ -76,6 +76,57 @@ async function initDB() {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_link TEXT;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;
 
+
+      CREATE TABLE IF NOT EXISTS empleados (
+        id                    SERIAL PRIMARY KEY,
+        nombre                TEXT NOT NULL,
+        rol                   TEXT DEFAULT 'Estilista',
+        comision_servicios_pct INTEGER DEFAULT 0,
+        activo                BOOLEAN DEFAULT TRUE,
+        created_at            TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS productos (
+        id           SERIAL PRIMARY KEY,
+        nombre       TEXT NOT NULL,
+        precio       INTEGER DEFAULT 0,
+        categoria    TEXT DEFAULT 'General',
+        comision_pct INTEGER DEFAULT 10,
+        activo       BOOLEAN DEFAULT TRUE,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS payments (
+        id                  SERIAL PRIMARY KEY,
+        numero_comprobante  SERIAL,
+        booking_id          INTEGER,
+        client_phone        TEXT,
+        client_name         TEXT,
+        empleado_id         INTEGER,
+        medio_pago          TEXT DEFAULT 'Efectivo',
+        servicios_json      TEXT DEFAULT '[]',
+        productos_json      TEXT DEFAULT '[]',
+        total_servicios     INTEGER DEFAULT 0,
+        total_productos     INTEGER DEFAULT 0,
+        descuento           INTEGER DEFAULT 0,
+        total               INTEGER DEFAULT 0,
+        notas               TEXT,
+        email               TEXT,
+        fecha_str           TEXT,
+        created_at          TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS comisiones (
+        id           SERIAL PRIMARY KEY,
+        empleado_id  INTEGER NOT NULL,
+        payment_id   INTEGER NOT NULL,
+        producto_id  INTEGER,
+        monto        INTEGER DEFAULT 0,
+        descripcion  TEXT,
+        fecha_str    TEXT,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS loyalty_transactions (
         id          SERIAL PRIMARY KEY,
         phone       TEXT NOT NULL,
@@ -115,6 +166,10 @@ async function initDB() {
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS monto INTEGER DEFAULT 0`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'confirmed'`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS calendar_event_id TEXT`,
+
+      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS descuento INTEGER DEFAULT 0`,
+      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS email TEXT`,
+
     ];
     for (const m of migrations) {
       await db.query(m).catch(() => {});
