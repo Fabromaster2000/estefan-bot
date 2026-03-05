@@ -466,10 +466,10 @@ async function handle({ sessionId, phone, text }) {
 
   // ── Asesoramiento / indecisión — derivar a turno ─────────────────────────
   const esAsesoramiento = (
-    /asesor(amiento|arte|arme|en)|recomendar|recomend(á|a)s|recomendacion|consejo|no s[eé] qu[eé]|qu[eé] hacerme|qu[eé] me hago|no s[eé] si|ayud[ao]me a elegir|no tengo idea|indecis/i.test(tl) &&
+    /asesor(amiento|arte|arme|en)|recomendar|recomend[aá]s|recomendacion|consejo|no s[eé] qu[eé]|qu[eé] hacerme|qu[eé] me hago|no s[eé] si|ayud[ao]me a elegir|no tengo idea|indecis/i.test(tl) &&
     !/turno|reserva|sacar|agendar|cancel|reprograma|c[oó]digo/i.test(tl)
   );
-  if (esAsesoramiento) {
+  if (esAsesoramiento && session.step !== 'RESERVANDO') {
     session.step = 'ASESORAMIENTO_DERIVAR';
     return send(
       `¡Con mucho gusto! 💛 El asesoramiento lo hacemos en persona — así las estilistas pueden ver tu pelo con la luz natural y entender bien lo que buscás.\n\n` +
@@ -492,7 +492,15 @@ async function handle({ sessionId, phone, text }) {
       session.step = 'LIBRE';
       return send(`Sin problema 😊 Cuando quieras, escribime y te ayudo. ¿Hay algo más en lo que te pueda ayudar? 💛`);
     }
-    // Si escribe otra cosa (pregunta libre), Haiku responde y mantenemos el step
+  }
+
+  // ── Detectar "quiero algo más pero no sé qué" DENTRO del flow de reserva ──
+  // Si ya eligió un servicio pero menciona que quiere algo extra sin saber qué,
+  // marcamos el flag y seguimos — Fede la asesora en el local
+  if (session.step === 'RESERVANDO' && session.data.servicio &&
+      /algo m[aá]s|algo extra|algo m[aá]s.*no s[eé]|no s[eé].*algo|hacerme algo|otro servicio|mientras.*tambi[eé]n|aparte.*algo|y.*algo|tambi[eé]n.*algo|all[aá].*veo|all[aá].*decide|lo veo ah[ií]/i.test(tl)) {
+    session.data.quiereExtra = true;
+    // No interrumpir el flow — Haiku responde y seguimos reservando
   }
 
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
@@ -618,7 +626,13 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
 async function doCreateBooking(session, phone, send) {
   try {
     const d = session.data;
-    const result = await booking.create({ sessionId: session.id, nombre: d.nombre || '', phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: null });
+
+    // Armar notas — incluir aviso si quiere asesoramiento extra
+    const notasExtra = d.quiereExtra
+      ? '⭐ ATENCIÓN: La clienta viene con intención de hacerse algo más pero no sabe qué — reservarle un slot extra para asesoramiento con el estilista.'
+      : null;
+
+    const result = await booking.create({ sessionId: session.id, nombre: d.nombre || '', phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: null, notes: notasExtra });
     const { formatFecha } = require('../core/utils');
     const fechaDisplay = await formatFecha(result.fechaReal);
     const srvDisplay = d.servicio.nombre + (d.extra ? ' + ' + d.extra.nombre : '');
@@ -626,6 +640,23 @@ async function doCreateBooking(session, phone, send) {
     session.lastBooking = { nombre: d.nombre, servicio: srvDisplay, fecha: result.fechaReal, hora: result.horaReal, code: result.code, calLink: result.calLink, monto: result.monto };
     const ptsMsg = result.pointsEarned > 0 ? `\n⭐ Ganaste *+${result.pointsEarned} puntos*` : '';
     const confirmMsg = MSGS.turnoConfirmado(d.nombre, srvDisplay, fechaDisplay, result.horaReal, result.code) + ptsMsg;
+
+    // Notificar al staff si la clienta quiere asesoramiento extra
+    if (d.quiereExtra) {
+      try {
+        const STAFF_WA = process.env.STAFF_WHATSAPP_PHONE;
+        const WASS_TOKEN = process.env.WASSENGER_TOKEN;
+        if (STAFF_WA && WASS_TOKEN) {
+          const axios = require('axios');
+          const msgExtra = `⭐ *TURNO CON ASESORAMIENTO EXTRA*\n\n👤 ${d.nombre || 'Sin nombre'} · 📱 ${phone}\n✂️ ${srvDisplay}\n📅 ${fechaDisplay} · ⏰ ${result.horaReal}\n🔖 ${result.code}\n\n💬 _La clienta viene queriendo hacerse algo más pero no sabe qué todavía — reservarle un slot de asesoramiento con Fede para ese mismo día._`;
+          await axios.post('https://api.wassenger.com/v1/messages',
+            { phone: STAFF_WA, message: msgExtra },
+            { headers: { Token: WASS_TOKEN }, timeout: 8000 }
+          );
+          console.log(`[orch] ✓ Staff notificado — quiereExtra: ${d.nombre}`);
+        }
+      } catch(e) { console.error('[orch] WA notify quiereExtra error:', e.message); }
+    }
 
     // Si ya tenemos email, mandar directo sin preguntar
     if (d.email && !d.emailSkipped) {
