@@ -1896,10 +1896,7 @@ function mostrarComprobante(cobro, nombre, medioPago, email, srvs, prods, desc) 
   document.getElementById('comprobante-body').innerHTML = html;
 
   const waPhone = cobrarCl?.phone?.replace(/[^0-9]/g,'') || '';
-  const waMsg = encodeURIComponent(`¡Gracias por tu visita, ${nombre}! 💛
-Comprobante N° #${cobro.numero}
-Total: $${total.toLocaleString('es-AR')}${pts > 0 ? '
-⭐ Ganaste +'+pts+' puntos' : ''}`);
+  const waMsg = encodeURIComponent('Gracias por tu visita, '+nombre+'!\nComprobante #'+cobro.numero+'\nTotal: $'+total.toLocaleString('es-AR')+(pts > 0 ? '\n+'+pts+' puntos ganados' : ''));
   document.getElementById('comprobante-actions').innerHTML = `
     <button class="btn-sm green" onclick="printComprobante()">🖨️ Imprimir / PDF</button>
     ${email ? `<button class="btn-sm" style="color:var(--blue);border-color:var(--blue)">✉️ Email enviado a ${email}</button>` : ''}
