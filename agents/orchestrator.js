@@ -464,45 +464,6 @@ async function handle({ sessionId, phone, text }) {
     return send('¡Claro! 💛 Escribime tu email correcto y lo actualizamos ahora mismo 📧');
   }
 
-  // ── Asesoramiento / indecisión — derivar a turno ─────────────────────────
-  const esAsesoramiento = (
-    /asesor(amiento|arte|arme|en)|recomendar|recomend[aá]s|recomendacion|consejo|no s[eé] qu[eé]|qu[eé] hacerme|qu[eé] me hago|no s[eé] si|ayud[ao]me a elegir|no tengo idea|indecis/i.test(tl) &&
-    !/turno|reserva|sacar|agendar|cancel|reprograma|c[oó]digo/i.test(tl)
-  );
-  if (esAsesoramiento && session.step !== 'RESERVANDO') {
-    session.step = 'ASESORAMIENTO_DERIVAR';
-    return send(
-      `¡Con mucho gusto! 💛 El asesoramiento lo hacemos en persona — así las estilistas pueden ver tu pelo con la luz natural y entender bien lo que buscás.\n\n` +
-      `Lo ideal es que vengas al turno y antes de arrancar charlamos sobre opciones, qué te queda mejor y por dónde podemos ir. En 10-15 minutos ya tenés todo claro 🙌\n\n` +
-      `¿Querés que te agendemos un turno?\n\n` +
-      `1 — Sí, quiero sacar turno\n2 — Todavía no, tengo más preguntas`
-    );
-  }
-
-  // Respuesta al ofrecimiento de asesoramiento
-  if (session.step === 'ASESORAMIENTO_DERIVAR') {
-    const afirmativo = /^1$|^s[ií]\b|^dale|^bueno|^quiero|^ok|^claro/i.test(tl);
-    const negativo   = /^2$|^no\b|^todav[ií]a|^despu[eé]s|^ahora no/i.test(tl);
-    if (afirmativo) {
-      session.step = 'RESERVANDO';
-      session.data = {};
-      return send(`¡Perfecto! 💛 ¿Qué servicio tenías en mente?\n\n${MSGS.servicios()}`);
-    }
-    if (negativo) {
-      session.step = 'LIBRE';
-      return send(`Sin problema 😊 Cuando quieras, escribime y te ayudo. ¿Hay algo más en lo que te pueda ayudar? 💛`);
-    }
-  }
-
-  // ── Detectar "quiero algo más pero no sé qué" DENTRO del flow de reserva ──
-  // Si ya eligió un servicio pero menciona que quiere algo extra sin saber qué,
-  // marcamos el flag y seguimos — Fede la asesora en el local
-  if (session.step === 'RESERVANDO' && session.data.servicio &&
-      /algo m[aá]s|algo extra|algo m[aá]s.*no s[eé]|no s[eé].*algo|hacerme algo|otro servicio|mientras.*tambi[eé]n|aparte.*algo|y.*algo|tambi[eé]n.*algo|all[aá].*veo|all[aá].*decide|lo veo ah[ií]/i.test(tl)) {
-    session.data.quiereExtra = true;
-    // No interrumpir el flow — Haiku responde y seguimos reservando
-  }
-
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
     // Si estamos en medio de una reserva y la pregunta es sobre horarios/disponibilidad,
     // NO interrumpir el flow — responder y seguir en RESERVANDO
@@ -626,13 +587,7 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
 async function doCreateBooking(session, phone, send) {
   try {
     const d = session.data;
-
-    // Armar notas — incluir aviso si quiere asesoramiento extra
-    const notasExtra = d.quiereExtra
-      ? '⭐ ATENCIÓN: La clienta viene con intención de hacerse algo más pero no sabe qué — reservarle un slot extra para asesoramiento con el estilista.'
-      : null;
-
-    const result = await booking.create({ sessionId: session.id, nombre: d.nombre || '', phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: null, notes: notasExtra });
+    const result = await booking.create({ sessionId: session.id, nombre: d.nombre || '', phone, servicio: d.servicio, extra: d.extra, dia: d.dia, hora: d.hora, email: d.email || null });
     const { formatFecha } = require('../core/utils');
     const fechaDisplay = await formatFecha(result.fechaReal);
     const srvDisplay = d.servicio.nombre + (d.extra ? ' + ' + d.extra.nombre : '');
@@ -640,23 +595,6 @@ async function doCreateBooking(session, phone, send) {
     session.lastBooking = { nombre: d.nombre, servicio: srvDisplay, fecha: result.fechaReal, hora: result.horaReal, code: result.code, calLink: result.calLink, monto: result.monto };
     const ptsMsg = result.pointsEarned > 0 ? `\n⭐ Ganaste *+${result.pointsEarned} puntos*` : '';
     const confirmMsg = MSGS.turnoConfirmado(d.nombre, srvDisplay, fechaDisplay, result.horaReal, result.code) + ptsMsg;
-
-    // Notificar al staff si la clienta quiere asesoramiento extra
-    if (d.quiereExtra) {
-      try {
-        const STAFF_WA = process.env.STAFF_WHATSAPP_PHONE;
-        const WASS_TOKEN = process.env.WASSENGER_TOKEN;
-        if (STAFF_WA && WASS_TOKEN) {
-          const axios = require('axios');
-          const msgExtra = `⭐ *TURNO CON ASESORAMIENTO EXTRA*\n\n👤 ${d.nombre || 'Sin nombre'} · 📱 ${phone}\n✂️ ${srvDisplay}\n📅 ${fechaDisplay} · ⏰ ${result.horaReal}\n🔖 ${result.code}\n\n💬 _La clienta viene queriendo hacerse algo más pero no sabe qué todavía — reservarle un slot de asesoramiento con Fede para ese mismo día._`;
-          await axios.post('https://api.wassenger.com/v1/messages',
-            { phone: STAFF_WA, message: msgExtra },
-            { headers: { Token: WASS_TOKEN }, timeout: 8000 }
-          );
-          console.log(`[orch] ✓ Staff notificado — quiereExtra: ${d.nombre}`);
-        }
-      } catch(e) { console.error('[orch] WA notify quiereExtra error:', e.message); }
-    }
 
     // Si ya tenemos email, mandar directo sin preguntar
     if (d.email && !d.emailSkipped) {
