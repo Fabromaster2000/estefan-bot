@@ -913,8 +913,9 @@ app.get('/staff/cobros', staffAuth, async (req, res) => {
   try {
     const r = await getConn().query(`
       SELECT p.id, p.numero_comprobante as numero, p.client_name as nombre,
-             p.client_phone as phone, p.medio_pago, p.total, p.fecha_str as fecha,
-             p.created_at, e.nombre as empleado
+             p.client_phone as phone, p.medio_pago, p.total, p.descuento,
+             p.total_servicios, p.total_productos, p.fecha_str as fecha,
+             p.servicios_json, p.productos_json, p.created_at, e.nombre as empleado
       FROM payments p
       LEFT JOIN empleados e ON e.id = p.empleado_id
       ORDER BY p.created_at DESC LIMIT 100
