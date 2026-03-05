@@ -1222,7 +1222,7 @@ app.put('/cliente/perfil', clientAuth, async (req, res) => {
     );
     if (email?.trim()) {
       await getConn().query(
-        'UPDATE bookings SET email=$1 WHERE client_phone=$2 AND (email IS NULL OR email='')',
+        "UPDATE bookings SET email=$1 WHERE client_phone=$2 AND (email IS NULL OR email='')",
         [email.trim(), phone]
       );
     }
