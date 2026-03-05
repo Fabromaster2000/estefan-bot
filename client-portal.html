@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mi Cuenta — Estefan Peluquería</title>
+<style>
+  :root {
+    --bg:#0f0d0e; --surface:#1a1618; --surface2:#221f20;
+    --border:#2e2829; --text:#f0eaec; --muted:#8a7d82;
+    --accent:#E8447A; --accent-dim:#fce4ed; --green:#5ECB8A;
+    --green-dim:#e8f8ef; --blue:#5BA8F5; --gold:#D4A754;
+    --red:#e05c5c; --radius:12px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif;
+         min-height:100vh; }
+
+  /* ── Header ── */
+  .header { background:var(--surface); border-bottom:1px solid var(--border);
+            padding:0 20px; display:flex; align-items:center; justify-content:space-between;
+            height:60px; position:sticky; top:0; z-index:100; }
+  .header-logo { display:flex; align-items:center; gap:10px; }
+  .logo-circle { width:36px; height:36px; border-radius:50%;
+                 background:linear-gradient(135deg,#E8447A,#c0305e);
+                 display:flex; align-items:center; justify-content:center;
+                 font-size:16px; }
+  .header-title { font-size:16px; font-weight:700; }
+  .header-sub { font-size:11px; color:var(--muted); }
+
+  /* ── Tabs ── */
+  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border);
+          background:var(--surface); overflow-x:auto; padding:0 16px; }
+  .tab { padding:14px 16px; font-size:13px; font-weight:500; color:var(--muted);
+         cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;
+         transition:color .2s; }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab:hover:not(.active) { color:var(--text); }
+
+  /* ── Content ── */
+  .content { max-width:700px; margin:0 auto; padding:20px 16px; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  /* ── Cards ── */
+  .card { background:var(--surface); border:1px solid var(--border);
+          border-radius:var(--radius); padding:16px; margin-bottom:12px; }
+  .card-title { font-size:12px; font-weight:600; color:var(--muted);
+                text-transform:uppercase; letter-spacing:.05em; margin-bottom:12px; }
+
+  /* ── KPI strip ── */
+  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px; }
+  .kpi { background:var(--surface); border:1px solid var(--border);
+         border-radius:var(--radius); padding:14px; text-align:center; }
+  .kpi-val { font-size:24px; font-weight:800; color:var(--accent); }
+  .kpi-lbl { font-size:11px; color:var(--muted); margin-top:4px; text-transform:uppercase; }
+
+  /* ── Booking card ── */
+  .bk-card { background:var(--surface2); border:1px solid var(--border);
+             border-radius:10px; padding:14px; margin-bottom:10px; }
+  .bk-header { display:flex; justify-content:space-between; align-items:flex-start;
+               margin-bottom:8px; }
+  .bk-service { font-weight:600; font-size:15px; }
+  .bk-date { font-size:13px; color:var(--muted); margin-top:2px; }
+  .bk-code { font-size:11px; color:var(--muted); font-family:monospace; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:20px;
+           font-size:11px; font-weight:600; }
+  .badge-confirmado { background:#e8f8ef; color:var(--green); }
+  .badge-completado { background:#e8f8ef; color:var(--green); }
+  .badge-cancelado   { background:#fdeaea; color:var(--red); }
+  .badge-reprogramado{ background:#fff8e7; color:var(--gold); }
+  .badge-pendiente   { background:#eaf3ff; color:var(--blue); }
+
+  /* ── Cobro card ── */
+  .cobro-card { background:var(--surface2); border:1px solid var(--border);
+                border-radius:10px; padding:14px; margin-bottom:10px; }
+  .cobro-header { display:flex; justify-content:space-between; align-items:center; }
+  .cobro-num { font-size:12px; color:var(--muted); }
+  .cobro-total { font-weight:700; font-size:16px; color:var(--accent); }
+  .cobro-detail { font-size:12px; color:var(--muted); margin-top:6px; }
+
+  /* ── Points ── */
+  .points-hero { text-align:center; padding:24px; }
+  .points-num { font-size:56px; font-weight:900; color:var(--gold);
+                line-height:1; margin-bottom:8px; }
+  .points-lbl { font-size:14px; color:var(--muted); }
+  .points-bar-wrap { background:var(--border); border-radius:99px; height:10px;
+                     margin:16px 0; overflow:hidden; }
+  .points-bar { background:linear-gradient(90deg,var(--gold),#f5c842);
+                height:100%; border-radius:99px; transition:width .6s ease; }
+  .rewards-grid { display:grid; gap:10px; }
+  .reward-item { background:var(--surface2); border:1px solid var(--border);
+                 border-radius:10px; padding:14px;
+                 display:flex; justify-content:space-between; align-items:center; }
+  .reward-pts { font-size:13px; color:var(--gold); font-weight:700; }
+  .reward-locked { opacity:.45; }
+
+  /* ── Forms ── */
+  .form-group { margin-bottom:14px; }
+  .form-label { font-size:12px; color:var(--muted); margin-bottom:6px; display:block; }
+  .form-input { width:100%; background:var(--surface2); border:1px solid var(--border);
+                border-radius:8px; padding:10px 12px; color:var(--text); font-size:14px;
+                outline:none; transition:border .2s; }
+  .form-input:focus { border-color:var(--accent); }
+  textarea.form-input { resize:vertical; min-height:80px; }
+
+  /* ── Buttons ── */
+  .btn-primary { background:var(--accent); color:#fff; border:none; border-radius:8px;
+                 padding:11px 20px; font-size:14px; font-weight:600; cursor:pointer;
+                 width:100%; transition:opacity .2s; }
+  .btn-primary:hover { opacity:.9; }
+  .btn-primary:disabled { opacity:.5; cursor:default; }
+  .btn-sm { background:var(--surface2); color:var(--text); border:1px solid var(--border);
+            border-radius:8px; padding:7px 14px; font-size:13px; cursor:pointer; }
+  .btn-danger { background:#fdeaea; color:var(--red); border:1px solid #f5c0c0;
+                border-radius:8px; padding:7px 14px; font-size:13px; cursor:pointer; }
+
+  /* ── Solicitud modal ── */
+  .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+                    z-index:200; align-items:center; justify-content:center; }
+  .modal-backdrop.open { display:flex; }
+  .modal-box { background:var(--surface); border-radius:16px; padding:24px;
+               width:340px; max-width:92vw; }
+
+  /* ── Error/Loading ── */
+  .loading { text-align:center; padding:60px 20px; color:var(--muted); font-size:14px; }
+  .error-screen { text-align:center; padding:60px 20px; }
+  .error-screen h2 { font-size:22px; margin-bottom:10px; }
+  .error-screen p  { color:var(--muted); font-size:14px; }
+
+  /* ── Toast ── */
+  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px);
+           background:#222; color:#fff; padding:10px 20px; border-radius:99px;
+           font-size:13px; transition:transform .3s; z-index:999; white-space:nowrap; }
+  #toast.show { transform:translateX(-50%) translateY(0); }
+
+  @media(max-width:480px) {
+    .kpi-grid { grid-template-columns:repeat(3,1fr); gap:8px; }
+    .kpi-val  { font-size:18px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading-screen" class="loading">Cargando tu cuenta...</div>
+<div id="error-screen" class="error-screen" style="display:none">
+  <div style="font-size:40px;margin-bottom:12px">🔗</div>
+  <h2>Link inválido o expirado</h2>
+  <p>Este link ya no es válido. Escribinos por WhatsApp y te mandamos uno nuevo.</p>
+</div>
+
+<div id="app" style="display:none">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-circle">✂</div>
+      <div>
+        <div class="header-title">Mi Cuenta</div>
+        <div class="header-sub" id="header-name">Estefan Peluquería</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted)">✂ Estefan</div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('inicio')" id="tab-inicio">🏠 Inicio</div>
+    <div class="tab" onclick="showTab('turnos')"  id="tab-turnos">📅 Mis Turnos</div>
+    <div class="tab" onclick="showTab('puntos')"  id="tab-puntos">⭐ Puntos</div>
+    <div class="tab" onclick="showTab('datos')"   id="tab-datos">👤 Mis Datos</div>
+  </div>
+
+  <div class="content">
+
+    <!-- ── INICIO ── -->
+    <div class="panel active" id="panel-inicio">
+      <div id="kpi-strip" class="kpi-grid"></div>
+
+      <!-- Proximo turno -->
+      <div class="card" id="proximo-turno-card" style="display:none">
+        <div class="card-title">📅 Próximo turno</div>
+        <div id="proximo-turno"></div>
+      </div>
+
+      <!-- Últimas visitas -->
+      <div class="card">
+        <div class="card-title">🕐 Últimas visitas</div>
+        <div id="ultimas-visitas"></div>
+      </div>
+    </div>
+
+    <!-- ── TURNOS ── -->
+    <div class="panel" id="panel-turnos">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn-sm" id="fil-todos"    onclick="filterTurnos('todos')"    style="background:var(--accent);color:#fff">Todos</button>
+        <button class="btn-sm" id="fil-proximos" onclick="filterTurnos('proximos')">Próximos</button>
+        <button class="btn-sm" id="fil-pasados"  onclick="filterTurnos('pasados')">Historial</button>
+      </div>
+      <div id="turnos-list"></div>
+    </div>
+
+    <!-- ── PUNTOS ── -->
+    <div class="panel" id="panel-puntos">
+      <div class="card">
+        <div class="points-hero">
+          <div class="points-num" id="pts-num">0</div>
+          <div class="points-lbl">puntos acumulados</div>
+          <div class="points-bar-wrap"><div class="points-bar" id="pts-bar" style="width:0%"></div></div>
+          <div style="font-size:12px;color:var(--muted)" id="pts-next-label"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:700;color:var(--text)" id="pts-visitas">0</div>
+            <div style="font-size:11px;color:var(--muted)">VISITAS</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:700;color:var(--text)" id="pts-gastado">$0</div>
+            <div style="font-size:11px;color:var(--muted)">TOTAL GASTADO</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🎁 Cómo ganar puntos</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6">
+          Ganás <strong style="color:var(--gold)">1 punto</strong> por cada $1.000 en servicios.<br>
+          Los puntos se acumulan automáticamente en cada visita.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🏆 Beneficios</div>
+        <div class="rewards-grid" id="rewards-list"></div>
+      </div>
+    </div>
+
+    <!-- ── DATOS ── -->
+    <div class="panel" id="panel-datos">
+      <div class="card">
+        <div class="card-title">✏️ Mis datos</div>
+        <div class="form-group">
+          <label class="form-label">Nombre</label>
+          <input class="form-input" id="edit-nombre" placeholder="Tu nombre">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Apellido</label>
+          <input class="form-input" id="edit-apellido" placeholder="Tu apellido">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" id="edit-email" type="email" placeholder="tu@email.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Teléfono</label>
+          <input class="form-input" id="edit-telefono" disabled style="opacity:.5">
+        </div>
+        <p id="datos-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
+        <button class="btn-primary" id="btn-guardar" onclick="guardarDatos()">Guardar cambios</button>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<!-- Solicitud modal -->
+<div class="modal-backdrop" id="modal-solicitud">
+  <div class="modal-box">
+    <div style="font-size:16px;font-weight:700;margin-bottom:6px" id="modal-titulo">Solicitud</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px" id="modal-subtitulo"></div>
+    <div class="form-group">
+      <label class="form-label">Mensaje (opcional)</label>
+      <textarea class="form-input" id="modal-mensaje" placeholder="Contanos el motivo o tu disponibilidad..."></textarea>
+    </div>
+    <p id="modal-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
+    <div style="display:flex;gap:10px">
+      <button class="btn-primary" id="btn-confirmar-sol" onclick="confirmarSolicitud()" style="flex:1">Enviar solicitud</button>
+      <button class="btn-sm" onclick="closeSolicitud()" style="flex:1">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+var TOKEN = '';
+var perfil = null;
+var solicitudActual = null;
+var turnosFiltro = 'todos';
+
+var REWARDS = [
+  { pts:500,  label:'Descuento 10% en tu próxima visita' },
+  { pts:1000, label:'Tratamiento de regalo' },
+  { pts:2000, label:'Servicio a elección 50% off' },
+  { pts:5000, label:'Servicio gratuito a elección' }
+];
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  var params = new URLSearchParams(window.location.search);
+  TOKEN = params.get('t') || '';
+  if (!TOKEN) { showError(); return; }
+  loadPerfil();
+});
+
+async function loadPerfil() {
+  try {
+    var r = await fetch('/cliente/perfil', { headers: { 'x-client-token': TOKEN } });
+    if (r.status === 401) { showError(); return; }
+    perfil = await r.json();
+    render();
+  } catch(e) {
+    showError();
+  }
+}
+
+function showError() {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('error-screen').style.display = 'block';
+}
+
+function render() {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  var c = perfil.client || {};
+  var nombre = ((c.name || '') + ' ' + (c.last_name || '')).trim() || 'Mi cuenta';
+  document.getElementById('header-name').textContent = nombre;
+
+  renderInicio();
+  renderTurnos();
+  renderPuntos();
+  renderDatos();
+}
+
+// ── INICIO ────────────────────────────────────────────────────────────────────
+function renderInicio() {
+  var p = perfil.puntos || {};
+  var bks = perfil.bookings || [];
+
+  // KPIs
+  var proximos = bks.filter(function(b) { return isProximo(b); });
+  document.getElementById('kpi-strip').innerHTML =
+    kpiCard(p.visit_count || 0, 'Visitas', '#5BA8F5') +
+    kpiCard(p.points || 0, 'Puntos', '#D4A754') +
+    kpiCard(proximos.length, 'Próximos', '#5ECB8A');
+
+  // Próximo turno
+  if (proximos.length) {
+    var next = proximos.sort(function(a,b) { return a.date_str > b.date_str ? 1 : -1; })[0];
+    document.getElementById('proximo-turno-card').style.display = 'block';
+    document.getElementById('proximo-turno').innerHTML = bkMini(next, true);
+  }
+
+  // Últimas visitas
+  var pasados = bks.filter(function(b) { return !isProximo(b); }).slice(0, 5);
+  if (pasados.length) {
+    document.getElementById('ultimas-visitas').innerHTML = pasados.map(function(b) { return bkMini(b, false); }).join('');
+  } else {
+    document.getElementById('ultimas-visitas').innerHTML = '<div style="color:var(--muted);font-size:13px">Aún no tenés visitas registradas.</div>';
+  }
+}
+
+function kpiCard(val, lbl, color) {
+  return '<div class="kpi"><div class="kpi-val" style="color:' + color + '">' + val + '</div><div class="kpi-lbl">' + lbl + '</div></div>';
+}
+
+function isProximo(b) {
+  if (b.status === 'Cancelado' || b.status === 'Completado') return false;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var d = parseFecha(b.date_str);
+  return d && d >= today;
+}
+
+function parseFecha(str) {
+  if (!str) return null;
+  if (str.indexOf('/') !== -1) { var p = str.split('/'); return new Date(+p[2], +p[1]-1, +p[0]); }
+  return new Date(str);
+}
+
+function badgeClass(status) {
+  var map = { 'Confirmado':'confirmado','Completado':'completado','Cancelado':'cancelado',
+              'Reprogramado':'reprogramado','Seña pagada':'confirmado','Pendiente':'pendiente' };
+  return 'badge badge-' + (map[status] || 'pendiente');
+}
+
+function bkMini(b, showSolicitud) {
+  var html = '<div class="bk-card">';
+  html += '<div class="bk-header">';
+  html += '<div><div class="bk-service">' + (b.service || '') + '</div>';
+  html += '<div class="bk-date">' + (b.date_str || '') + ' · ' + (b.time_str || '') + '</div></div>';
+  html += '<span class="' + badgeClass(b.status) + '">' + (b.status || '') + '</span>';
+  html += '</div>';
+  html += '<div class="bk-code">Código: ' + (b.booking_code || '') + '</div>';
+  if (b.monto) html += '<div style="font-size:13px;color:var(--muted);margin-top:4px">$' + Number(b.monto).toLocaleString('es-AR') + '</div>';
+  if (showSolicitud && b.status !== 'Cancelado' && b.status !== 'Completado') {
+    html += '<div style="display:flex;gap:8px;margin-top:10px">';
+    html += '<button class="btn-sm" onclick="openSolicitud(\'' + b.booking_code + '\',\'reprogramar\')">Reprogramar</button>';
+    html += '<button class="btn-danger" onclick="openSolicitud(\'' + b.booking_code + '\',\'cancelar\')">Cancelar</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── TURNOS ────────────────────────────────────────────────────────────────────
+function renderTurnos() {
+  filterTurnos(turnosFiltro);
+}
+
+function filterTurnos(filtro) {
+  turnosFiltro = filtro;
+  ['todos','proximos','pasados'].forEach(function(f) {
+    var btn = document.getElementById('fil-' + f);
+    if (btn) { btn.style.background = f === filtro ? 'var(--accent)' : ''; btn.style.color = f === filtro ? '#fff' : ''; }
+  });
+  var bks = perfil.bookings || [];
+  var filtered;
+  if (filtro === 'proximos')     filtered = bks.filter(function(b) { return isProximo(b); });
+  else if (filtro === 'pasados') filtered = bks.filter(function(b) { return !isProximo(b); });
+  else                           filtered = bks;
+
+  var list = document.getElementById('turnos-list');
+  if (!filtered.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">Sin turnos en esta categoría</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(function(b) { return bkMini(b, isProximo(b)); }).join('');
+}
+
+// ── PUNTOS ────────────────────────────────────────────────────────────────────
+function renderPuntos() {
+  var p = perfil.puntos || {};
+  var pts = p.points || 0;
+  document.getElementById('pts-num').textContent = pts;
+  document.getElementById('pts-visitas').textContent = p.visit_count || 0;
+  document.getElementById('pts-gastado').textContent = '$' + Number(p.total_spent || 0).toLocaleString('es-AR');
+
+  // Progress to next reward
+  var next = REWARDS.filter(function(r) { return r.pts > pts; })[0];
+  if (next) {
+    var prev = REWARDS.filter(function(r) { return r.pts <= pts; });
+    var base = prev.length ? prev[prev.length-1].pts : 0;
+    var pct  = Math.min(100, Math.round((pts - base) / (next.pts - base) * 100));
+    document.getElementById('pts-bar').style.width = pct + '%';
+    document.getElementById('pts-next-label').textContent =
+      'Te faltan ' + (next.pts - pts) + ' puntos para: ' + next.label;
+  } else {
+    document.getElementById('pts-bar').style.width = '100%';
+    document.getElementById('pts-next-label').textContent = 'Nivel máximo alcanzado';
+  }
+
+  // Rewards list
+  document.getElementById('rewards-list').innerHTML = REWARDS.map(function(r) {
+    var unlocked = pts >= r.pts;
+    return '<div class="reward-item' + (unlocked ? '' : ' reward-locked') + '">' +
+      '<div><div style="font-size:13px;font-weight:500">' + r.label + '</div></div>' +
+      '<div class="reward-pts">' + (unlocked ? '✅' : r.pts + ' pts') + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+// ── DATOS ────────────────────────────────────────────────────────────────────
+function renderDatos() {
+  var c = perfil.client || {};
+  document.getElementById('edit-nombre').value   = c.name      || '';
+  document.getElementById('edit-apellido').value = c.last_name || '';
+  document.getElementById('edit-email').value    = c.email     || '';
+  document.getElementById('edit-telefono').value = c.phone     || '';
+}
+
+async function guardarDatos() {
+  var nombre   = document.getElementById('edit-nombre').value.trim();
+  var apellido = document.getElementById('edit-apellido').value.trim();
+  var email    = document.getElementById('edit-email').value.trim();
+  var errEl    = document.getElementById('datos-error');
+  var btn      = document.getElementById('btn-guardar');
+
+  errEl.style.display = 'none';
+  if (!nombre) { errEl.textContent = 'El nombre es obligatorio'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    var r = await fetch('/cliente/perfil', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+      body: JSON.stringify({ name: nombre, lastName: apellido, email: email })
+    });
+    if (!r.ok) throw new Error('Error al guardar');
+    // Update local
+    if (!perfil.client) perfil.client = {};
+    perfil.client.name      = nombre;
+    perfil.client.last_name = apellido;
+    perfil.client.email     = email;
+    var nom = (nombre + ' ' + apellido).trim();
+    document.getElementById('header-name').textContent = nom;
+    toast('Datos guardados');
+  } catch(e) {
+    errEl.textContent = 'Error al guardar. Reintentá.'; errEl.style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = 'Guardar cambios';
+}
+
+// ── SOLICITUD MODAL ───────────────────────────────────────────────────────────
+function openSolicitud(bookingCode, tipo) {
+  solicitudActual = { bookingCode: bookingCode, tipo: tipo };
+  document.getElementById('modal-titulo').textContent   = tipo === 'cancelar' ? 'Cancelar turno' : 'Reprogramar turno';
+  document.getElementById('modal-subtitulo').textContent = tipo === 'cancelar'
+    ? 'Enviamos tu solicitud al salón y nos comunicaremos con vos.'
+    : 'Contanos tu disponibilidad y el equipo te contacta para coordinar.';
+  document.getElementById('modal-mensaje').value = '';
+  document.getElementById('modal-error').style.display = 'none';
+  document.getElementById('modal-solicitud').classList.add('open');
+}
+
+function closeSolicitud() {
+  document.getElementById('modal-solicitud').classList.remove('open');
+  solicitudActual = null;
+}
+
+async function confirmarSolicitud() {
+  if (!solicitudActual) return;
+  var mensaje = document.getElementById('modal-mensaje').value.trim();
+  var btn     = document.getElementById('btn-confirmar-sol');
+  var errEl   = document.getElementById('modal-error');
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try {
+    var r = await fetch('/cliente/solicitud', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+      body: JSON.stringify({ booking_code: solicitudActual.bookingCode,
+                             tipo: solicitudActual.tipo, mensaje: mensaje })
+    });
+    if (!r.ok) throw new Error();
+    closeSolicitud();
+    toast('Solicitud enviada. El equipo se comunicará pronto.');
+  } catch(e) {
+    errEl.textContent = 'Error al enviar. Reintentá.'; errEl.style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = 'Enviar solicitud';
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function showTab(name) {
+  ['inicio','turnos','puntos','datos'].forEach(function(t) {
+    document.getElementById('panel-' + t).classList.remove('active');
+    var tab = document.getElementById('tab-' + t);
+    if (tab) tab.classList.remove('active');
+  });
+  document.getElementById('panel-' + name).classList.add('active');
+  var activeTab = document.getElementById('tab-' + name);
+  if (activeTab) activeTab.classList.add('active');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(function() { el.classList.remove('show'); }, 3000);
+}
+</script>
+</body>
+</html>
