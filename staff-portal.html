@@ -416,9 +416,16 @@
             <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Empleado</div>
               <select class="form-input" id="v-fil-emp" onchange="filterVentas()" style="height:34px;padding:4px 8px;min-width:140px"><option value="">Todos</option></select></div>
             <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Periodo</div>
-              <select class="form-input" id="v-fil-period" onchange="filterVentas()" style="height:34px;padding:4px 8px">
+              <select class="form-input" id="v-fil-period" onchange="onPeriodChange()" style="height:34px;padding:4px 8px">
                 <option value="7">Ultimos 7 dias</option><option value="30" selected>Ultimos 30 dias</option>
-                <option value="90">Ultimos 90 dias</option><option value="0">Todo</option></select></div>
+                <option value="90">Ultimos 90 dias</option><option value="0">Todo</option>
+                <option value="custom">Personalizado...</option></select></div>
+            <div id="v-custom-dates" style="display:none;gap:10px;align-items:flex-end">
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Desde</div>
+                <input type="date" class="form-input" id="v-fil-desde" onchange="filterVentas()" style="height:34px;padding:4px 8px"></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Hasta</div>
+                <input type="date" class="form-input" id="v-fil-hasta" onchange="filterVentas()" style="height:34px;padding:4px 8px"></div>
+            </div>
             <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Tipo</div>
               <select class="form-input" id="v-fil-tipo" onchange="filterVentas()" style="height:34px;padding:4px 8px">
                 <option value="">Todo</option><option value="Servicio">Servicios</option><option value="Producto">Productos</option></select></div>
@@ -2206,19 +2213,46 @@ function parseFechaAR(str) {
   return new Date(str);
 }
 
-function filterVentas() {
-  const empFil    = document.getElementById('v-fil-emp').value;
-  const tipoFil   = document.getElementById('v-fil-tipo').value;
-  const days      = parseInt(document.getElementById('v-fil-period').value);
+function onPeriodChange() {
+  const val = document.getElementById('v-fil-period').value;
+  const customEl = document.getElementById('v-custom-dates');
+  if (val === 'custom') {
+    customEl.style.display = 'flex';
+    // Default: current month
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    document.getElementById('v-fil-desde').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('v-fil-hasta').value = now.toISOString().split('T')[0];
+  } else {
+    customEl.style.display = 'none';
+  }
+  filterVentas();
+}
 
-  const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
+function filterVentas() {
+  const empFil  = document.getElementById('v-fil-emp').value;
+  const tipoFil = document.getElementById('v-fil-tipo').value;
+  const period  = document.getElementById('v-fil-period').value;
+
+  let dateFrom = null, dateTo = null;
+  if (period === 'custom') {
+    const desdeVal = document.getElementById('v-fil-desde').value;
+    const hastaVal = document.getElementById('v-fil-hasta').value;
+    if (desdeVal) dateFrom = new Date(desdeVal + 'T00:00:00');
+    if (hastaVal) dateTo   = new Date(hastaVal + 'T23:59:59');
+  } else {
+    const days = parseInt(period);
+    if (days > 0) dateFrom = new Date(Date.now() - days * 86400000);
+  }
 
   ventasFiltered = ventasData.filter(v => {
     if (empFil  && v.empleado !== empFil)  return false;
     if (tipoFil && v.tipo     !== tipoFil) return false;
-    if (cutoff) {
+    if (dateFrom || dateTo) {
       const d = parseFechaAR(v.fecha);
-      if (!d || d < cutoff) return false;
+      if (!d) return false;
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo   && d > dateTo)   return false;
     }
     return true;
   });
