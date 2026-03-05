@@ -1245,7 +1245,7 @@ app.post('/cliente/solicitud', clientAuth, async (req, res) => {
       ' — Turno #' + booking_code + ' (' + b.service + ' ' + b.date_str + ' ' + b.time_str + ')' +
       (mensaje ? ': ' + mensaje : '');
     await getConn().query(
-      'INSERT INTO client_notes (client_phone, type, content, created_by) VALUES ($1, 'solicitud', $2, 'cliente')',
+      "INSERT INTO client_notes (client_phone, type, content, created_by) VALUES ($1, 'solicitud', $2, 'cliente')",
       [phone, contenido]
     );
     // Notificar al staff por WhatsApp
