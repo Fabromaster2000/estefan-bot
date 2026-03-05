@@ -757,6 +757,7 @@ async function showPanel(n){
   if(n==='clientes')loadClientes();
   if(n==='nuevo')resetForm();
   if(n==='cobrar'){if(!allEmpleados.length)initCobrar();}
+  if(n==='ventas'){loadVentas();}
   if(n==='admin'){
     if(!ADMIN_PW){
       const pw=prompt('🔐 Contraseña de administrador:');
@@ -2087,6 +2088,222 @@ async function downloadReport(tipo) {
   } catch(e) { statusEl.textContent = 'Error: '+e.message; }
 }
 function hoy() { return new Date().toLocaleDateString('es-AR').replace(/\//g,'-'); }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VENTAS
+// ═══════════════════════════════════════════════════════════════════════════
+let ventasData = [];   // raw cobros from API
+let ventasFiltered = [];
+
+async function loadVentas() {
+  document.getElementById('ventas-kpis').innerHTML    = '<div style="color:var(--muted);font-size:13px">Cargando...</div>';
+  document.getElementById('ventas-ranking').innerHTML = '';
+  document.getElementById('ventas-table').innerHTML   = '';
+
+  const cobros = await api('GET', '/staff/cobros');
+  if (!Array.isArray(cobros)) {
+    document.getElementById('ventas-kpis').innerHTML = '<div style="color:var(--red);font-size:13px">Error al cargar ventas</div>';
+    return;
+  }
+
+  // Expand items: one row per servicio/producto
+  ventasData = [];
+  for (const c of cobros) {
+    const srvs  = safeJSON(c.servicios_json,  []);
+    const prods = safeJSON(c.productos_json, []);
+    const base  = {
+      id: c.id, numero: c.numero, fecha: c.fecha || '',
+      cliente: c.nombre || '', empleado: c.empleado || '(sin asignar)',
+      medio: c.medio_pago, totalCobro: c.total || 0,
+      totalServicios: c.total_servicios || 0,
+      totalProductos: c.total_productos || 0,
+      descuento: c.descuento || 0,
+    };
+    if (!srvs.length && !prods.length) {
+      ventasData.push({ ...base, tipo: '—', item: '—', cantidad: 1, precio: c.total || 0, comision: 0 });
+    } else {
+      srvs.forEach(s => ventasData.push({
+        ...base, tipo: 'Servicio', item: s.nombre || '—',
+        cantidad: 1, precio: s.monto || 0, comision: 0
+      }));
+      prods.forEach(p => ventasData.push({
+        ...base, tipo: 'Producto', item: p.nombre || '—',
+        cantidad: p.cantidad || 1,
+        precio: p.precio || 0,
+        comision: Math.round((p.precio || 0) * (p.cantidad || 1) * (p.comision_pct || 10) / 100)
+      }));
+    }
+  }
+
+  // Populate employee filter
+  const emps = [...new Set(ventasData.map(v => v.empleado))].sort();
+  const sel = document.getElementById('v-fil-emp');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Todos</option>' +
+    emps.map(e => `<option value="${e}" ${e===cur?'selected':''}>${e}</option>`).join('');
+
+  filterVentas();
+}
+
+function safeJSON(str, fallback) {
+  try { return JSON.parse(str || '[]'); } catch(e) { return fallback; }
+}
+
+function parseFechaAR(str) {
+  // DD/MM/YYYY or YYYY-MM-DD
+  if (!str) return null;
+  if (str.includes('/')) {
+    const [d,m,y] = str.split('/');
+    return new Date(+y, +m-1, +d);
+  }
+  return new Date(str);
+}
+
+function filterVentas() {
+  const empFil    = document.getElementById('v-fil-emp').value;
+  const tipoFil   = document.getElementById('v-fil-tipo').value;
+  const days      = parseInt(document.getElementById('v-fil-period').value);
+
+  const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
+
+  ventasFiltered = ventasData.filter(v => {
+    if (empFil  && v.empleado !== empFil)  return false;
+    if (tipoFil && v.tipo     !== tipoFil) return false;
+    if (cutoff) {
+      const d = parseFechaAR(v.fecha);
+      if (!d || d < cutoff) return false;
+    }
+    return true;
+  });
+
+  renderVentasKPIs();
+  renderVentasRanking();
+  renderVentasTable();
+}
+
+function renderVentasKPIs() {
+  const items     = ventasFiltered;
+  const cobrosSet = new Set(items.map(v => v.id));
+  const totalVend = items.filter(v=>v.tipo==='Servicio'||v.tipo==='Producto').reduce((s,v) => s + v.precio*v.cantidad, 0);
+  const totalCom  = items.reduce((s,v) => s + (v.comision||0), 0);
+  const totalProd = items.filter(v=>v.tipo==='Producto').reduce((s,v) => s + v.precio*v.cantidad, 0);
+  const totalSrv  = items.filter(v=>v.tipo==='Servicio').reduce((s,v) => s + v.precio*v.cantidad, 0);
+
+  const kpis = [
+    { label: 'Cobros', value: cobrosSet.size, fmt: 'num', color: 'var(--blue)', icon: '🧾' },
+    { label: 'Servicios', value: totalSrv, fmt: 'money', color: 'var(--green)', icon: '✂️' },
+    { label: 'Productos', value: totalProd, fmt: 'money', color: 'var(--accent)', icon: '🛍️' },
+    { label: 'Total vendido', value: totalVend, fmt: 'money', color: 'var(--text)', icon: '💰', big: true },
+    { label: 'Comisiones', value: totalCom, fmt: 'money', color: '#E8447A', icon: '⭐', big: true },
+  ];
+
+  document.getElementById('ventas-kpis').innerHTML = kpis.map(k => `
+    <div style="background:var(--surface);border-radius:12px;padding:14px 16px;border:1px solid var(--border)">
+      <div style="font-size:18px;margin-bottom:4px">${k.icon}</div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${k.label}</div>
+      <div style="font-size:${k.big?'22':'18'}px;font-weight:700;color:${k.color}">
+        ${k.fmt==='money' ? '$'+k.value.toLocaleString('es-AR') : k.value}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderVentasRanking() {
+  // Group by empleado
+  const byEmp = {};
+  for (const v of ventasFiltered) {
+    if (!byEmp[v.empleado]) byEmp[v.empleado] = { nombre: v.empleado, cobros: new Set(), servicios: 0, productos: 0, comision: 0 };
+    byEmp[v.empleado].cobros.add(v.id);
+    if (v.tipo === 'Servicio') byEmp[v.empleado].servicios += v.precio * v.cantidad;
+    if (v.tipo === 'Producto') byEmp[v.empleado].productos += v.precio * v.cantidad;
+    byEmp[v.empleado].comision += v.comision || 0;
+  }
+
+  const sorted = Object.values(byEmp)
+    .map(e => ({ ...e, total: e.servicios + e.productos, cobros: e.cobros.size }))
+    .sort((a,b) => b.total - a.total);
+
+  if (!sorted.length) {
+    document.getElementById('ventas-ranking').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Sin datos para el período</div>';
+    return;
+  }
+
+  const maxTotal = sorted[0].total || 1;
+  const medals   = ['🥇','🥈','🥉'];
+
+  document.getElementById('ventas-ranking').innerHTML = sorted.map((e, i) => {
+    const pct = Math.round((e.total / maxTotal) * 100);
+    return `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:20px">${medals[i] || '👤'}</span>
+          <span style="font-weight:600;font-size:14px">${e.nombre}</span>
+          <span style="font-size:12px;color:var(--muted)">${e.cobros} cobro${e.cobros!==1?'s':''}</span>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700;font-size:15px;color:var(--text)">$${e.total.toLocaleString('es-AR')}</div>
+          <div style="font-size:12px;color:#E8447A;font-weight:600">⭐ $${e.comision.toLocaleString('es-AR')} comisión</div>
+        </div>
+      </div>
+      <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden">
+        <div style="background:linear-gradient(90deg,#E8447A,#f472a8);height:100%;border-radius:4px;width:${pct}%;transition:width .4s ease"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:5px">
+        <span style="font-size:12px;color:var(--muted)">✂️ Servicios: <strong style="color:var(--text)">$${e.servicios.toLocaleString('es-AR')}</strong></span>
+        <span style="font-size:12px;color:var(--muted)">🛍️ Productos: <strong style="color:var(--text)">$${e.productos.toLocaleString('es-AR')}</strong></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderVentasTable() {
+  const rows = ventasFiltered;
+  document.getElementById('ventas-count').textContent = `${rows.length} ítem${rows.length!==1?'s':''}`;
+
+  if (!rows.length) {
+    document.getElementById('ventas-table').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Sin ventas en el período seleccionado</div>';
+    return;
+  }
+
+  const hdrs = ['Fecha','Comprobante','Cliente','Empleado','Tipo','Ítem','Cant.','Precio','Comisión','Medio de pago'];
+  const tbl = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border)">
+          ${hdrs.map(h => `<th style="text-align:left;padding:8px 10px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">${h}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((v, i) => {
+          const bg = i%2===0 ? 'transparent' : 'var(--surface)';
+          const tipoBadge = v.tipo === 'Servicio'
+            ? `<span style="background:var(--green-dim,#e8f8ef);color:var(--green);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">✂️ Srv</span>`
+            : v.tipo === 'Producto'
+            ? `<span style="background:#fce4ed;color:#E8447A;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">🛍️ Prod</span>`
+            : `<span style="color:var(--muted)">—</span>`;
+          const comBadge = v.comision > 0
+            ? `<span style="color:#E8447A;font-weight:700">$${v.comision.toLocaleString('es-AR')}</span>`
+            : `<span style="color:var(--muted)">—</span>`;
+          return `<tr style="border-bottom:1px solid var(--border);background:${bg}">
+            <td style="padding:8px 10px;white-space:nowrap">${v.fecha}</td>
+            <td style="padding:8px 10px;color:var(--muted)">#${v.numero}</td>
+            <td style="padding:8px 10px;font-weight:500">${v.cliente}</td>
+            <td style="padding:8px 10px">${v.empleado}</td>
+            <td style="padding:8px 10px">${tipoBadge}</td>
+            <td style="padding:8px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${v.item}">${v.item}</td>
+            <td style="padding:8px 10px;text-align:center">${v.cantidad}</td>
+            <td style="padding:8px 10px;text-align:right;font-weight:600">$${(v.precio*v.cantidad).toLocaleString('es-AR')}</td>
+            <td style="padding:8px 10px;text-align:right">${comBadge}</td>
+            <td style="padding:8px 10px;color:var(--muted)">${v.medio}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  document.getElementById('ventas-table').innerHTML = tbl;
+}
 
 </script>
 </body>
