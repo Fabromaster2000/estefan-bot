@@ -70,8 +70,8 @@ async function create({ sessionId, nombre, phone, servicio, extra, dia, hora, em
   const horaReal  = evento?.horaFormateada  || fechaFallback.hora;
   const calLink   = generateCalendarLink(nombre, nombreSrv, fechaReal, horaReal);
 
-  // 2. Base de datos
-  await clientUpsert(phone, nombre);
+  // 2. Base de datos — upsert con email para fusionar sesiones si corresponde
+  await clientUpsert(phone, nombre, email || null);
   const saved = await bookingSave({ sessionId, nombre, phone, servicio: nombreSrv, fecha: fechaReal, hora: horaReal, monto, senaPaid: false, calendarEventId: evento?.id, email: email || null, notes: notes || null });
   const pointsEarned = await clientRecordVisit(phone, nombreSrv, monto);
 
