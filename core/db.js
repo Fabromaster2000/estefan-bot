@@ -217,10 +217,26 @@ async function clientGet(phone) {
   return r.rows[0] || null;
 }
 
+async function clientResolve(phone, email = null) {
+  if (!db) return null;
+  if (email) {
+    const byEmail = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
+    if (byEmail.rows[0]) return byEmail.rows[0];
+  }
+  const byPhone = await db.query(`SELECT * FROM clients WHERE phone = $1`, [phone]);
+  return byPhone.rows[0] || null;
+}
+
+async function clientGetByEmail(email) {
+  if (!db) return null;
+  const r = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
+  return r.rows[0] || null;
+}
+
 async function clientUpsert(phone, name = null, email = null) {
   if (!db) return;
 
-  // Si tenemos email, ver si ya existe un cliente con ese email en otro perfil sintético
+  // Si tenemos email, buscar si ya existe un perfil sintético con ese email y fusionar
   if (email) {
     try {
       const existing = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
@@ -435,7 +451,7 @@ async function conversationGetRecent(phone, limit = 20) {
 module.exports = {
   initDB, getDB,
   configGet, configSet,
-  clientGet, clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
+  clientGet, clientGetByEmail, clientResolve, clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
   memoryGet, memoryUpdate,
   bookingSave, bookingFindByCode, bookingFindByName, bookingCancel, bookingGetByPhone, bookingGetActive, generateBookingCode,
   loyaltyGetBalance, loyaltyGetTransactions, loyaltyGetRewards, loyaltyRedeem,
