@@ -1113,7 +1113,7 @@ app.get('/staff/clients/:phone/historial', staffAuth, async (req, res) => {
     const [client, bookings, cobros, notas, ficha] = await Promise.all([
       getConn().query(`SELECT c.*, COALESCE(c.email, '') as email FROM clients c WHERE c.phone = $1`, [phone]).then(r=>r.rows[0]||null),
       getConn().query(`
-        SELECT id, booking_code, service, date_str, time_str, status, monto, notas, motivo, created_at
+        SELECT id, booking_code, service, date_str, time_str, status, monto, notes as notas, motivo, created_at
         FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC
       `, [phone]),
       getConn().query(`
@@ -1212,7 +1212,7 @@ app.get('/cliente/perfil', clientAuth, async (req, res) => {
     const [clientRow, bookings, cobros] = await Promise.all([
       db.clientGet(phone),
       getConn().query(`
-        SELECT booking_code, service, date_str, time_str, status, monto, notas
+        SELECT booking_code, service, date_str, time_str, status, monto, notes as notas
         FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC LIMIT 30
       `, [phone]),
       getConn().query(`
