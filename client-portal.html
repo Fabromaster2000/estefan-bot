@@ -264,17 +264,35 @@
 
 <!-- Solicitud modal -->
 <div class="modal-backdrop" id="modal-solicitud">
-  <div class="modal-box">
-    <div style="font-size:16px;font-weight:700;margin-bottom:6px" id="modal-titulo">Solicitud</div>
+  <div class="modal-box" style="max-width:360px;width:100%">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px" id="modal-titulo">Gestionar turno</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:16px" id="modal-subtitulo"></div>
-    <div class="form-group">
-      <label class="form-label">Mensaje (opcional)</label>
-      <textarea class="form-input" id="modal-mensaje" placeholder="Contanos el motivo o tu disponibilidad..."></textarea>
+
+    <!-- Vista cancelar -->
+    <div id="vista-cancelar" style="display:none">
+      <p style="font-size:14px;margin-bottom:16px">¿Confirmás que querés cancelar este turno?</p>
+      <p id="cancelar-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
+      <div style="display:flex;gap:10px">
+        <button class="btn-danger" id="btn-confirmar-cancelar" onclick="ejecutarCancelar()" style="flex:1">Sí, cancelar</button>
+        <button class="btn-sm" onclick="closeSolicitud()" style="flex:1">Volver</button>
+      </div>
     </div>
-    <p id="modal-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
-    <div style="display:flex;gap:10px">
-      <button class="btn-primary" id="btn-confirmar-sol" onclick="confirmarSolicitud()" style="flex:1">Enviar solicitud</button>
-      <button class="btn-sm" onclick="closeSolicitud()" style="flex:1">Cancelar</button>
+
+    <!-- Vista reprogramar -->
+    <div id="vista-reprogramar" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Elegí una fecha</label>
+        <input type="date" class="form-input" id="reprog-fecha" onchange="cargarSlots()" style="color-scheme:dark" />
+      </div>
+      <div id="slots-container" style="display:none;margin-bottom:14px">
+        <label class="form-label">Elegí un horario</label>
+        <div id="slots-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+      </div>
+      <p id="reprog-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
+      <div style="display:flex;gap:10px">
+        <button class="btn-primary" id="btn-confirmar-reprog" onclick="ejecutarReprogramar()" style="flex:1;opacity:.4;pointer-events:none" disabled>Confirmar</button>
+        <button class="btn-sm" onclick="closeSolicitud()" style="flex:1">Cancelar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -392,10 +410,16 @@ function bkMini(b, showSolicitud) {
   html += '</div>';
   html += '<div class="bk-code">Código: ' + (b.booking_code || '') + '</div>';
   if (b.monto) html += '<div style="font-size:13px;color:var(--muted);margin-top:4px">$' + Number(b.monto).toLocaleString('es-AR') + '</div>';
+  var esColor = /retoque|raíz|raiz|color|contorno|balayage|decolorac/i.test(b.service || '');
   if (showSolicitud && b.status !== 'Cancelado' && b.status !== 'Completado') {
     html += '<div style="display:flex;gap:8px;margin-top:10px">';
-    html += '<button class="btn-sm" onclick="openSolicitud(\'' + b.booking_code + '\',\'reprogramar\')">Reprogramar</button>';
-    html += '<button class="btn-danger" onclick="openSolicitud(\'' + b.booking_code + '\',\'cancelar\')">Cancelar</button>';
+    if (esColor) {
+      html += '<div style="font-size:12px;color:var(--muted);padding:6px 0">';
+      html += '✂️ Para este servicio coordiná con el salón por WhatsApp.</div>';
+    } else {
+      html += '<button class="btn-sm" onclick="openSolicitud(\'' + b.booking_code + '\',\'reprogramar\')">Reprogramar</button>';
+      html += '<button class="btn-danger" onclick="openSolicitud(\'' + b.booking_code + '\',\'cancelar\')">Cancelar</button>';
+    }
     html += '</div>';
   }
   html += '</div>';
@@ -500,44 +524,142 @@ async function guardarDatos() {
   btn.disabled = false; btn.textContent = 'Guardar cambios';
 }
 
-// ── SOLICITUD MODAL ───────────────────────────────────────────────────────────
+// ── GESTIÓN DE TURNOS ────────────────────────────────────────────────────────
+var slotSeleccionado = null;
+
 function openSolicitud(bookingCode, tipo) {
   solicitudActual = { bookingCode: bookingCode, tipo: tipo };
-  document.getElementById('modal-titulo').textContent   = tipo === 'cancelar' ? 'Cancelar turno' : 'Reprogramar turno';
+  slotSeleccionado = null;
+  document.getElementById('modal-titulo').textContent = tipo === 'cancelar' ? 'Cancelar turno' : 'Reprogramar turno';
   document.getElementById('modal-subtitulo').textContent = tipo === 'cancelar'
-    ? 'Enviamos tu solicitud al salón y nos comunicaremos con vos.'
-    : 'Contanos tu disponibilidad y el equipo te contacta para coordinar.';
-  document.getElementById('modal-mensaje').value = '';
-  document.getElementById('modal-error').style.display = 'none';
+    ? 'Esta acción no se puede deshacer.'
+    : 'Elegí la nueva fecha y horario.';
+  document.getElementById('vista-cancelar').style.display  = tipo === 'cancelar'  ? 'block' : 'none';
+  document.getElementById('vista-reprogramar').style.display = tipo === 'reprogramar' ? 'block' : 'none';
+  document.getElementById('cancelar-error').style.display = 'none';
+  document.getElementById('reprog-error').style.display   = 'none';
+  document.getElementById('slots-container').style.display = 'none';
+  // Fecha mínima = mañana
+  var hoy = new Date();
+  hoy.setDate(hoy.getDate() + 1);
+  var min = hoy.toISOString().split('T')[0];
+  var input = document.getElementById('reprog-fecha');
+  if (input) { input.value = ''; input.min = min; }
+  var btnR = document.getElementById('btn-confirmar-reprog');
+  if (btnR) { btnR.disabled = true; btnR.style.opacity = '.4'; btnR.style.pointerEvents = 'none'; }
   document.getElementById('modal-solicitud').classList.add('open');
 }
 
 function closeSolicitud() {
   document.getElementById('modal-solicitud').classList.remove('open');
   solicitudActual = null;
+  slotSeleccionado = null;
 }
 
-async function confirmarSolicitud() {
-  if (!solicitudActual) return;
-  var mensaje = document.getElementById('modal-mensaje').value.trim();
-  var btn     = document.getElementById('btn-confirmar-sol');
-  var errEl   = document.getElementById('modal-error');
-  errEl.style.display = 'none';
-  btn.disabled = true; btn.textContent = 'Enviando...';
+async function cargarSlots() {
+  var inputFecha = document.getElementById('reprog-fecha').value; // YYYY-MM-DD
+  if (!inputFecha) return;
+  // Convertir a DD/MM/YYYY
+  var parts = inputFecha.split('-');
+  var fecha = parts[2] + '/' + parts[1] + '/' + parts[0];
+
+  document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">Cargando...</div>';
+  document.getElementById('slots-container').style.display = 'block';
+  slotSeleccionado = null;
+  var btnR = document.getElementById('btn-confirmar-reprog');
+  btnR.disabled = true; btnR.style.opacity = '.4'; btnR.style.pointerEvents = 'none';
+
   try {
-    var r = await fetch('/cliente/solicitud', {
+    var r = await fetch('/cliente/slots?fecha=' + encodeURIComponent(fecha), {
+      headers: { 'x-client-token': TOKEN }
+    });
+    var data = await r.json();
+    if (data.motivo) {
+      document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">' + data.motivo + '</div>';
+      return;
+    }
+    var disponibles = data.slots.filter(function(s) { return s.disponible; });
+    if (!disponibles.length) {
+      document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">Sin horarios disponibles ese día.</div>';
+      return;
+    }
+    document.getElementById('slots-grid').innerHTML = disponibles.map(function(s) {
+      return '<button onclick="selectSlot(this,\'' + fecha + '\',\'' + s.hora + '\')" ' +
+        'style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);' +
+        'color:var(--text);font-size:13px;cursor:pointer">' + s.hora + '</button>';
+    }).join('');
+  } catch(e) {
+    document.getElementById('slots-grid').innerHTML = '<div style="color:var(--red);font-size:13px">Error cargando horarios.</div>';
+  }
+}
+
+function selectSlot(btn, fecha, hora) {
+  // Deseleccionar anterior
+  document.querySelectorAll('#slots-grid button').forEach(function(b) {
+    b.style.background = 'var(--surface)';
+    b.style.borderColor = 'var(--border)';
+    b.style.color = 'var(--text)';
+  });
+  btn.style.background = 'var(--accent)';
+  btn.style.borderColor = 'var(--accent)';
+  btn.style.color = '#fff';
+  slotSeleccionado = { fecha: fecha, hora: hora };
+  var btnR = document.getElementById('btn-confirmar-reprog');
+  btnR.disabled = false; btnR.style.opacity = '1'; btnR.style.pointerEvents = 'auto';
+}
+
+async function ejecutarCancelar() {
+  if (!solicitudActual) return;
+  var btn   = document.getElementById('btn-confirmar-cancelar');
+  var errEl = document.getElementById('cancelar-error');
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Cancelando...';
+  try {
+    var r = await fetch('/cliente/cancelar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
-      body: JSON.stringify({ booking_code: solicitudActual.bookingCode,
-                             tipo: solicitudActual.tipo, mensaje: mensaje })
+      body: JSON.stringify({ booking_code: solicitudActual.bookingCode })
     });
-    if (!r.ok) throw new Error();
+    var data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Error');
     closeSolicitud();
-    toast('Solicitud enviada. El equipo se comunicará pronto.');
+    toast('Turno cancelado. Recibís un email de confirmación.');
+    // Recargar perfil
+    setTimeout(function() { location.reload(); }, 1500);
   } catch(e) {
-    errEl.textContent = 'Error al enviar. Reintentá.'; errEl.style.display = 'block';
+    errEl.textContent = e.message || 'Error al cancelar. Reintentá.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Sí, cancelar';
   }
-  btn.disabled = false; btn.textContent = 'Enviar solicitud';
+}
+
+async function ejecutarReprogramar() {
+  if (!solicitudActual || !slotSeleccionado) return;
+  var btn   = document.getElementById('btn-confirmar-reprog');
+  var errEl = document.getElementById('reprog-error');
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Confirmando...';
+  try {
+    var r = await fetch('/cliente/reprogramar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+      body: JSON.stringify({
+        booking_code: solicitudActual.bookingCode,
+        fecha_nueva:  slotSeleccionado.fecha,
+        hora_nueva:   slotSeleccionado.hora
+      })
+    });
+    var data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Error');
+    closeSolicitud();
+    toast('¡Turno reprogramado! Recibís un email de confirmación.');
+    setTimeout(function() { location.reload(); }, 1500);
+  } catch(e) {
+    errEl.textContent = e.message || 'Error al reprogramar. Reintentá.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Confirmar';
+    btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
+  }
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
