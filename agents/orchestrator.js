@@ -480,6 +480,45 @@ async function handle({ sessionId, phone, text }) {
     return send('¡Claro! 💛 Escribime tu email correcto y lo actualizamos ahora mismo 📧');
   }
 
+  // ── Consulta historial / puntos / próximos turnos ───────────────────────────
+  const esConsultaHistorial =
+    /mis turnos|mis citas|cuando tengo|cuándo tengo|proximo turno|próximo turno|mi historial|que me hice|qué me hice|cuantas visitas|cuántas visitas|mis puntos|cuántos puntos|cuantos puntos|mis reservas/i.test(tl);
+
+  if (esConsultaHistorial && session.step !== 'RESERVANDO') {
+    const client = clientCtx && clientCtx.client;
+    if (!client) {
+      return send('No encontré tu cuenta 😅 ¿Podés pasarme tu nombre o teléfono?');
+    }
+    const nombre = client.name || 'Hola';
+    const proximos = (clientCtx.recentBookings || []).filter(function(b) {
+      return !['Cancelado','Completado','No asistió'].includes(b.status);
+    });
+    const pasados = (clientCtx.recentBookings || []).filter(function(b) {
+      return b.status === 'Completado';
+    }).slice(0, 5);
+
+    let msg = '¡Hola ' + nombre + '! 💛 Acá va tu resumen:\n\n';
+    if (proximos.length) {
+      msg += '📅 *Tus próximos turnos:*\n';
+      proximos.forEach(function(b) {
+        msg += '• ' + b.service + ' — ' + b.date_str + ' a las ' + b.time_str + ' (' + b.status + ')\n';
+      });
+      msg += '\n';
+    } else {
+      msg += '📅 No tenés turnos próximos agendados.\n\n';
+    }
+    if (pasados.length) {
+      msg += '✨ *Últimas visitas:*\n';
+      pasados.forEach(function(b) { msg += '• ' + b.service + ' — ' + b.date_str + '\n'; });
+      msg += '\n';
+    }
+    const pts = client.points || 0;
+    msg += '⭐ *Puntos:* ' + pts + ' pts';
+    if (pts >= 500) msg += ' (¡Tenés beneficios! Escribí *mis puntos* para canjear)';
+    msg += '\n👣 *Visitas:* ' + (client.visit_count || 0) + '\n';
+    return send(msg);
+  }
+
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
     // Si estamos en medio de una reserva y la pregunta es sobre horarios/disponibilidad,
     // NO interrumpir el flow — responder y seguir en RESERVANDO
