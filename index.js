@@ -1113,7 +1113,7 @@ app.get('/staff/clients/:phone/historial', staffAuth, async (req, res) => {
     const [client, bookings, cobros, notas, ficha] = await Promise.all([
       getConn().query(`SELECT c.*, COALESCE(c.email, '') as email FROM clients c WHERE c.phone = $1`, [phone]).then(r=>r.rows[0]||null),
       getConn().query(`
-        SELECT id, booking_code, service, date_str, time_str, status, monto, notes as notas, motivo, created_at
+        SELECT id, booking_code, service, date_str, time_str, status, monto, notas, motivo, created_at
         FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC
       `, [phone]),
       getConn().query(`
@@ -1212,7 +1212,7 @@ app.get('/cliente/perfil', clientAuth, async (req, res) => {
     const [clientRow, bookings, cobros] = await Promise.all([
       db.clientGet(phone),
       getConn().query(`
-        SELECT booking_code, service, date_str, time_str, status, monto, notes as notas
+        SELECT booking_code, service, date_str, time_str, status, monto, notas
         FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC LIMIT 30
       `, [phone]),
       getConn().query(`
@@ -1252,34 +1252,150 @@ app.put('/cliente/perfil', clientAuth, async (req, res) => {
 });
 
 // El cliente solicita cancelar o reprogramar un turno
-app.post('/cliente/solicitud', clientAuth, async (req, res) => {
+// ── CLIENTE: slots disponibles para una fecha ────────────────────────────────
+app.get('/cliente/slots', clientAuth, async (req, res) => {
   try {
-    const { booking_code, tipo, mensaje } = req.body;
+    const { fecha } = req.query; // DD/MM/YYYY
+    if (!fecha) return res.status(400).json({ error: 'Falta fecha' });
+
+    // Parsear fecha
+    const parts = fecha.split('/');
+    if (parts.length !== 3) return res.status(400).json({ error: 'Formato inválido' });
+    const [d, m, y] = parts.map(Number);
+    const date = new Date(y, m - 1, d);
+    const dow = date.getDay(); // 0=dom, 6=sab
+    if (dow === 0) return res.json({ slots: [], motivo: 'Domingo cerrado' });
+
+    // Turnos ya ocupados ese día
+    const ocupados = await getConn().query(
+      "SELECT time_str FROM bookings WHERE date_str=$1 AND status NOT IN ('Cancelado','Reprogramado','cancelled')",
+      [fecha]
+    );
+    const horasOcupadas = new Set(ocupados.rows.map(r => r.time_str));
+
+    // Generar slots 10:00–19:30 cada 30 min
+    const slots = [];
+    for (let h = 10; h < 20; h++) {
+      for (let min of [0, 30]) {
+        const slot = String(h).padStart(2,'0') + ':' + String(min).padStart(2,'0');
+        slots.push({ hora: slot, disponible: !horasOcupadas.has(slot) });
+      }
+    }
+    res.json({ slots });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CLIENTE: cancelar turno directo ──────────────────────────────────────────
+app.post('/cliente/cancelar', clientAuth, async (req, res) => {
+  try {
+    const { booking_code } = req.body;
     const phone = req.clientPhone;
+
     const bk = await getConn().query(
-      'SELECT id, service, date_str, time_str FROM bookings WHERE booking_code=$1 AND client_phone=$2',
+      'SELECT id, service, date_str, time_str, email, client_name FROM bookings WHERE booking_code=$1 AND client_phone=$2',
       [booking_code, phone]
     );
     if (!bk.rows.length) return res.status(404).json({ error: 'Turno no encontrado' });
     const b = bk.rows[0];
-    const contenido = 'SOLICITUD DE ' + (tipo||'').toUpperCase() +
-      ' — Turno #' + booking_code + ' (' + b.service + ' ' + b.date_str + ' ' + b.time_str + ')' +
-      (mensaje ? ': ' + mensaje : '');
+
+    // Cancelar en DB
     await getConn().query(
-      "INSERT INTO client_notes (client_phone, type, content, created_by) VALUES ($1, 'solicitud', $2, 'cliente')",
-      [phone, contenido]
+      "UPDATE bookings SET status='Cancelado' WHERE id=$1",
+      [b.id]
     );
-    // Notificar al staff por WhatsApp
+
+    // Actualizar Sheets
+    const { updateTurnoStatus } = require('./core/sheets');
+    updateTurnoStatus(booking_code, b.service, 'Cancelado').catch(() => {});
+
+    // Email al cliente
     const clientData = await db.clientGet(phone);
-    const nombre = clientData ? ((clientData.name||'')+' '+(clientData.last_name||'')).trim() || phone : phone;
+    const emailTo = b.email || clientData?.email;
+    const nombre = clientData ? ((clientData.name||'')+' '+(clientData.last_name||'')).trim() || b.client_name : b.client_name;
+    if (emailTo) {
+      const { mailTurnoCancelado } = require('./agents/mailer');
+      mailTurnoCancelado({ to: emailTo, nombre, servicio: b.service, fecha: b.date_str, hora: b.time_str, code: booking_code }).catch(() => {});
+    }
+
+    // WhatsApp al staff
     const staffPhone = process.env.STAFF_PHONE;
     if (staffPhone) {
-      const text = '📲 Solicitud de ' + tipo + ' — ' + nombre +
-        '\nTurno: ' + b.service + ' el ' + b.date_str + ' a las ' + b.time_str +
-        (mensaje ? '\nMensaje: ' + mensaje : '') +
-        '\nResponder desde el portal Staff.';
-      sendWhatsApp(staffPhone, text).catch(()=>{});
+      sendWhatsApp(staffPhone,
+        '❌ Turno cancelado por el cliente\n' +
+        '👤 ' + nombre + '\n' +
+        '✂️ ' + b.service + ' — ' + b.date_str + ' ' + b.time_str + '\n' +
+        '🔖 #' + booking_code
+      ).catch(() => {});
     }
+
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CLIENTE: reprogramar turno directo ───────────────────────────────────────
+app.post('/cliente/reprogramar', clientAuth, async (req, res) => {
+  try {
+    const { booking_code, fecha_nueva, hora_nueva } = req.body;
+    const phone = req.clientPhone;
+
+    if (!fecha_nueva || !hora_nueva) return res.status(400).json({ error: 'Faltan datos' });
+
+    const bk = await getConn().query(
+      'SELECT id, service, date_str, time_str, email, client_name, monto, calendar_event_id FROM bookings WHERE booking_code=$1 AND client_phone=$2',
+      [booking_code, phone]
+    );
+    if (!bk.rows.length) return res.status(404).json({ error: 'Turno no encontrado' });
+    const b = bk.rows[0];
+
+    // Verificar que el slot esté libre
+    const conflicto = await getConn().query(
+      "SELECT id FROM bookings WHERE date_str=$1 AND time_str=$2 AND status NOT IN ('Cancelado','Reprogramado','cancelled') AND id!=$3",
+      [fecha_nueva, hora_nueva, b.id]
+    );
+    if (conflicto.rows.length) return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
+
+    const fechaAnterior = b.date_str;
+    const horaAnterior = b.time_str;
+
+    // Actualizar booking
+    await getConn().query(
+      "UPDATE bookings SET date_str=$1, time_str=$2, status='Reprogramado' WHERE id=$3",
+      [fecha_nueva, hora_nueva, b.id]
+    );
+
+    // Actualizar Sheets
+    const { updateTurnoStatus } = require('./core/sheets');
+    updateTurnoStatus(booking_code, b.service, 'Reprogramado').catch(() => {});
+
+    // Email al cliente
+    const clientData = await db.clientGet(phone);
+    const emailTo = b.email || clientData?.email;
+    const nombre = clientData ? ((clientData.name||'')+' '+(clientData.last_name||'')).trim() || b.client_name : b.client_name;
+    const { generateCalendarLink } = require('./core/calendar');
+    const calLink = generateCalendarLink(nombre, b.service, fecha_nueva, hora_nueva);
+
+    if (emailTo) {
+      const { mailTurnoModificado } = require('./agents/mailer');
+      mailTurnoModificado({
+        to: emailTo, nombre, servicio: b.service,
+        fechaAnterior, horaAnterior, fechaNueva: fecha_nueva, horaNueva: hora_nueva,
+        code: booking_code, calendarLink: calLink, monto: b.monto
+      }).catch(() => {});
+    }
+
+    // WhatsApp al staff
+    const staffPhone = process.env.STAFF_PHONE;
+    if (staffPhone) {
+      sendWhatsApp(staffPhone,
+        '📅 Turno reprogramado por el cliente\n' +
+        '👤 ' + nombre + '\n' +
+        '✂️ ' + b.service + '\n' +
+        '📆 Antes: ' + fechaAnterior + ' ' + horaAnterior + '\n' +
+        '📆 Nuevo: ' + fecha_nueva + ' ' + hora_nueva + '\n' +
+        '🔖 #' + booking_code
+      ).catch(() => {});
+    }
+
+    res.json({ ok: true, fecha_nueva, hora_nueva });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
