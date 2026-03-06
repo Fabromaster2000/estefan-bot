@@ -1252,28 +1252,21 @@ app.put('/cliente/perfil', clientAuth, async (req, res) => {
 });
 
 // El cliente solicita cancelar o reprogramar un turno
-// ── CLIENTE: slots disponibles para una fecha ────────────────────────────────
+// ── CLIENTE: slots disponibles ───────────────────────────────────────────────
 app.get('/cliente/slots', clientAuth, async (req, res) => {
   try {
-    const { fecha } = req.query; // DD/MM/YYYY
+    const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ error: 'Falta fecha' });
-
-    // Parsear fecha
     const parts = fecha.split('/');
     if (parts.length !== 3) return res.status(400).json({ error: 'Formato inválido' });
     const [d, m, y] = parts.map(Number);
     const date = new Date(y, m - 1, d);
-    const dow = date.getDay(); // 0=dom, 6=sab
-    if (dow === 0) return res.json({ slots: [], motivo: 'Domingo cerrado' });
-
-    // Turnos ya ocupados ese día
+    if (date.getDay() === 0) return res.json({ slots: [], motivo: 'Domingo cerrado' });
     const ocupados = await getConn().query(
       "SELECT time_str FROM bookings WHERE date_str=$1 AND status NOT IN ('Cancelado','Reprogramado','cancelled')",
       [fecha]
     );
     const horasOcupadas = new Set(ocupados.rows.map(r => r.time_str));
-
-    // Generar slots 10:00–19:30 cada 30 min
     const slots = [];
     for (let h = 10; h < 20; h++) {
       for (let min of [0, 30]) {
@@ -1285,117 +1278,81 @@ app.get('/cliente/slots', clientAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── CLIENTE: cancelar turno directo ──────────────────────────────────────────
+// ── CLIENTE: cancelar turno ───────────────────────────────────────────────────
 app.post('/cliente/cancelar', clientAuth, async (req, res) => {
   try {
     const { booking_code } = req.body;
     const phone = req.clientPhone;
-
     const bk = await getConn().query(
       'SELECT id, service, date_str, time_str, email, client_name FROM bookings WHERE booking_code=$1 AND client_phone=$2',
       [booking_code, phone]
     );
     if (!bk.rows.length) return res.status(404).json({ error: 'Turno no encontrado' });
     const b = bk.rows[0];
-
-    // Cancelar en DB
-    await getConn().query(
-      "UPDATE bookings SET status='Cancelado' WHERE id=$1",
-      [b.id]
-    );
-
-    // Actualizar Sheets
+    await getConn().query("UPDATE bookings SET status='Cancelado' WHERE id=$1", [b.id]);
     const { updateTurnoStatus } = require('./core/sheets');
     updateTurnoStatus(booking_code, b.service, 'Cancelado').catch(() => {});
-
-    // Email al cliente
     const clientData = await db.clientGet(phone);
-    const emailTo = b.email || clientData?.email;
     const nombre = clientData ? ((clientData.name||'')+' '+(clientData.last_name||'')).trim() || b.client_name : b.client_name;
+    const emailTo = b.email || clientData?.email;
     if (emailTo) {
       const { mailTurnoCancelado } = require('./agents/mailer');
       mailTurnoCancelado({ to: emailTo, nombre, servicio: b.service, fecha: b.date_str, hora: b.time_str, code: booking_code }).catch(() => {});
     }
-
-    // WhatsApp al staff
-    const staffPhone = process.env.STAFF_PHONE;
-    if (staffPhone) {
-      sendWhatsApp(staffPhone,
-        '❌ Turno cancelado por el cliente\n' +
-        '👤 ' + nombre + '\n' +
-        '✂️ ' + b.service + ' — ' + b.date_str + ' ' + b.time_str + '\n' +
-        '🔖 #' + booking_code
-      ).catch(() => {});
+    const adminEmail = process.env.GMAIL_USER;
+    if (adminEmail) {
+      const { mailNotifAdmin } = require('./agents/mailer');
+      mailNotifAdmin({
+        asunto: '❌ Turno cancelado por cliente',
+        html: `<p><b>Cliente:</b> ${nombre}</p><p><b>Servicio:</b> ${b.service}</p><p><b>Fecha:</b> ${b.date_str} ${b.time_str}</p><p><b>Código:</b> #${booking_code}</p>`
+      }).catch(() => {});
     }
-
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── CLIENTE: reprogramar turno directo ───────────────────────────────────────
+// ── CLIENTE: reprogramar turno ────────────────────────────────────────────────
 app.post('/cliente/reprogramar', clientAuth, async (req, res) => {
   try {
     const { booking_code, fecha_nueva, hora_nueva } = req.body;
     const phone = req.clientPhone;
-
     if (!fecha_nueva || !hora_nueva) return res.status(400).json({ error: 'Faltan datos' });
-
     const bk = await getConn().query(
-      'SELECT id, service, date_str, time_str, email, client_name, monto, calendar_event_id FROM bookings WHERE booking_code=$1 AND client_phone=$2',
+      'SELECT id, service, date_str, time_str, email, client_name, monto FROM bookings WHERE booking_code=$1 AND client_phone=$2',
       [booking_code, phone]
     );
     if (!bk.rows.length) return res.status(404).json({ error: 'Turno no encontrado' });
     const b = bk.rows[0];
-
-    // Verificar que el slot esté libre
     const conflicto = await getConn().query(
       "SELECT id FROM bookings WHERE date_str=$1 AND time_str=$2 AND status NOT IN ('Cancelado','Reprogramado','cancelled') AND id!=$3",
       [fecha_nueva, hora_nueva, b.id]
     );
     if (conflicto.rows.length) return res.status(409).json({ error: 'Ese horario ya no está disponible. Elegí otro.' });
-
     const fechaAnterior = b.date_str;
     const horaAnterior = b.time_str;
-
-    // Actualizar booking
     await getConn().query(
-      "UPDATE bookings SET date_str=$1, time_str=$2, status='Reprogramado' WHERE id=$3",
+      "UPDATE bookings SET date_str=$1, time_str=$2, status='confirmed' WHERE id=$3",
       [fecha_nueva, hora_nueva, b.id]
     );
-
-    // Actualizar Sheets
     const { updateTurnoStatus } = require('./core/sheets');
     updateTurnoStatus(booking_code, b.service, 'Reprogramado').catch(() => {});
-
-    // Email al cliente
     const clientData = await db.clientGet(phone);
-    const emailTo = b.email || clientData?.email;
     const nombre = clientData ? ((clientData.name||'')+' '+(clientData.last_name||'')).trim() || b.client_name : b.client_name;
+    const emailTo = b.email || clientData?.email;
     const { generateCalendarLink } = require('./core/calendar');
     const calLink = generateCalendarLink(nombre, b.service, fecha_nueva, hora_nueva);
-
     if (emailTo) {
       const { mailTurnoModificado } = require('./agents/mailer');
-      mailTurnoModificado({
-        to: emailTo, nombre, servicio: b.service,
-        fechaAnterior, horaAnterior, fechaNueva: fecha_nueva, horaNueva: hora_nueva,
-        code: booking_code, calendarLink: calLink, monto: b.monto
+      mailTurnoModificado({ to: emailTo, nombre, servicio: b.service, fechaAnterior, horaAnterior, fechaNueva: fecha_nueva, horaNueva: hora_nueva, code: booking_code, calendarLink: calLink, monto: b.monto }).catch(() => {});
+    }
+    const adminEmail = process.env.GMAIL_USER;
+    if (adminEmail) {
+      const { mailNotifAdmin } = require('./agents/mailer');
+      mailNotifAdmin({
+        asunto: '📅 Turno reprogramado por cliente',
+        html: `<p><b>Cliente:</b> ${nombre}</p><p><b>Servicio:</b> ${b.service}</p><p><b>Antes:</b> ${fechaAnterior} ${horaAnterior}</p><p><b>Nuevo:</b> ${fecha_nueva} ${hora_nueva}</p><p><b>Código:</b> #${booking_code}</p>`
       }).catch(() => {});
     }
-
-    // WhatsApp al staff
-    const staffPhone = process.env.STAFF_PHONE;
-    if (staffPhone) {
-      sendWhatsApp(staffPhone,
-        '📅 Turno reprogramado por el cliente\n' +
-        '👤 ' + nombre + '\n' +
-        '✂️ ' + b.service + '\n' +
-        '📆 Antes: ' + fechaAnterior + ' ' + horaAnterior + '\n' +
-        '📆 Nuevo: ' + fecha_nueva + ' ' + hora_nueva + '\n' +
-        '🔖 #' + booking_code
-      ).catch(() => {});
-    }
-
     res.json({ ok: true, fecha_nueva, hora_nueva });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
