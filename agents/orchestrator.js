@@ -270,7 +270,13 @@ async function handle({ sessionId, phone, text }) {
     const em = extractEmail(t);
     if (em) {
       session.data.email = em;
+      // Guardar email en clients inmediatamente y actualizar booking
       await clientUpsert(phone, session.data.nombre || null, em).catch(() => {});
+      const { getDB } = require('../core/db');
+      const dbConn = getDB();
+      if (dbConn && session.lastBooking?.code) {
+        await dbConn.query("UPDATE bookings SET email=$1 WHERE booking_code=$2", [em, session.lastBooking.code]).catch(() => {});
+      }
       const { addGuestToCalendarEvent } = require('../core/calendar');
       const { mailTurnoConfirmado } = require('./mailer');
       if (session.lastCalendarEventId) await addGuestToCalendarEvent(session.lastCalendarEventId, em).catch(() => {});
@@ -287,8 +293,14 @@ async function handle({ sessionId, phone, text }) {
   if (session.step === 'PEDIR_APELLIDO') {
     if (/^no\b/i.test(tl)) { session.step = 'LIBRE'; session.data = {}; return send('¡Todo listo! Te esperamos 💛'); }
     if (t.length > 1 && t.length < 60) {
-      const m = t.match(/(?:apellido es|llamo|soy)\s+([A-Za-záéíóúÁÉÍÓÚñÑ]+)/i);
-      session.data.apellido = m ? m[1].trim() : t.trim();
+      // Extraer apellido de frases como "mi apellido es X", "me llamo X Y", "nombre completo es X Y"
+      const mApellido = t.match(/apellido(?:\s+es)?\s+([A-Za-záéíóúÁÉÍÓÚñÑ]+)/i);
+      const mNombreCompleto = t.match(/(?:nombre(?:\s+completo)?(?:\s+es)?|llamo|soy)\s+[A-Za-záéíóúÁÉÍÓÚñÑ]+\s+([A-Za-záéíóúÁÉÍÓÚñÑ]+)/i);
+      const mSimple = t.match(/^([A-Za-záéíóúÁÉÍÓÚñÑ]+)$/i);
+      session.data.apellido = mApellido ? mApellido[1].trim()
+                            : mNombreCompleto ? mNombreCompleto[1].trim()
+                            : mSimple ? mSimple[1].trim()
+                            : t.trim();
       session.profile.apellido = session.data.apellido;
       session.step = 'PEDIR_PROMO';
       return send(`¿Querés que te avisemos de descuentos y sorteos? 🎁\n\n1 — Sí, me interesa\n2 — No, gracias`);
@@ -554,12 +566,8 @@ async function avanzarReserva(session, phone, parsed, send, clientCtx) {
 
   // Nombre — justo antes de confirmar
   if (!d.nombre) {
-    if (d.nombrePreguntado) {
-      d.nombre = '';
-    } else {
-      d.nombrePreguntado = true;
-      return send((haiku ? haiku + '\n\n' : '') + '¿Me decís tu nombre para anotar el turno? 😊');
-    }
+    d.nombrePreguntado = true;
+    return send((haiku ? haiku + '\n\n' : '') + '¿Me decís tu nombre para anotar el turno? 😊');
   }
 
   // Email
