@@ -298,4 +298,26 @@ async function mailComprobante({ to, nombre, numero, servicios, productos,
   }
 }
 
-module.exports = { mailTurnoConfirmado, mailTurnoCancelado, mailTurnoModificado, mailComprobante };
+
+async function mailNotifAdmin({ asunto, html }) {
+  const t = getTransporter();
+  if (!t) return;
+  const adminEmail = process.env.GMAIL_USER;
+  if (!adminEmail) return;
+  try {
+    await t.sendMail({
+      from: `"Estefan Peluquería Bot" <${adminEmail}>`,
+      to: adminEmail,
+      subject: asunto,
+      html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px">
+        <h2 style="color:#e91e8c">${asunto}</h2>
+        ${html}
+        <hr style="margin-top:30px;border:none;border-top:1px solid #eee">
+        <p style="color:#999;font-size:12px">Notificación automática — Estefan Peluquería</p>
+      </div>`
+    });
+    console.log('[mailer] ✓ Notif admin enviada:', asunto);
+  } catch(e) { console.error('[mailer] Error notif admin:', e.message); }
+}
+
+module.exports = { mailTurnoConfirmado, mailTurnoCancelado, mailTurnoModificado, mailComprobante, mailNotifAdmin };
