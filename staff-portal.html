@@ -49,6 +49,7 @@
   .s-reprogramado{background:rgba(240,146,74,.15);color:var(--orange);}
   .s-noasistio{background:rgba(138,125,130,.15);color:var(--muted);}
   .s-señapagada{background:rgba(212,167,84,.15);color:var(--gold);}
+  .s-señapendiente{background:rgba(240,146,74,.15);color:var(--orange);}
   .btn-primary{background:var(--pink);border:none;border-radius:10px;padding:12px 20px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;width:100%;}
   .btn-primary:hover{background:var(--pink-soft);}
   .btn-sm{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 14px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;font-weight:500;}
@@ -634,6 +635,7 @@
       <select class="form-select" id="modal-status-sel" onchange="toggleMotivoStatus()">
         <option value="Confirmado">✅ Confirmado</option>
         <option value="Seña pagada">💛 Seña pagada</option>
+        <option value="Seña pendiente">⏳ Seña pendiente</option>
         <option value="Completado">✨ Completado</option>
         <option value="No asistió">👻 No asistió</option>
         <option value="Cancelado">❌ Cancelado</option>
@@ -1442,7 +1444,7 @@ async function doReprogram(){
 }
 
 // ── BOOKING CARD ──────────────────────────────────────────────────────────────
-const SC={Confirmado:'confirmado',Cancelado:'cancelado',Completado:'completado','Consulta Pendiente':'pendiente',Reprogramado:'reprogramado','No asistió':'noasistio','Seña pagada':'señapagada'};
+const SC={Confirmado:'confirmado',Cancelado:'cancelado',Completado:'completado','Consulta Pendiente':'pendiente',Reprogramado:'reprogramado','No asistió':'noasistio','Seña pagada':'señapagada','Seña pendiente':'señapendiente','Solicitud cliente':'pendiente'};
 // Store bookings by id for quick lookup in modals
 const bkMap = {};
 function bCard(b){
