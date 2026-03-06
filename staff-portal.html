@@ -2412,7 +2412,7 @@ function hoy() { return new Date().toLocaleDateString('es-AR').replace(/\//g,'-'
 
 // ADMIN PW MODAL
 let pendingAdminCallback = null;
-async async function submitAdminPw() {
+async function submitAdminPw() {
   var pw  = document.getElementById('admin-pw-input').value;
   var btn = document.getElementById('admin-pw-btn');
   var err = document.getElementById('admin-pw-error');
