@@ -5,200 +5,154 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mi Cuenta — Estefan Peluquería</title>
 <style>
-  :root {
-    --bg:#0f0d0e; --surface:#1a1618; --surface2:#221f20;
-    --border:#2e2829; --text:#f0eaec; --muted:#8a7d82;
-    --accent:#E8447A; --accent-dim:#fce4ed; --green:#5ECB8A;
-    --green-dim:#e8f8ef; --blue:#5BA8F5; --gold:#D4A754;
-    --red:#e05c5c; --radius:12px;
-  }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif;
-         min-height:100vh; }
-
-  /* ── Header ── */
-  .header { background:var(--surface); border-bottom:1px solid var(--border);
-            padding:0 20px; display:flex; align-items:center; justify-content:space-between;
-            height:60px; position:sticky; top:0; z-index:100; }
-  .header-logo { display:flex; align-items:center; gap:10px; }
-  .logo-circle { width:36px; height:36px; border-radius:50%;
-                 background:linear-gradient(135deg,#E8447A,#c0305e);
-                 display:flex; align-items:center; justify-content:center;
-                 font-size:16px; }
-  .header-title { font-size:16px; font-weight:700; }
-  .header-sub { font-size:11px; color:var(--muted); }
-
-  /* ── Tabs ── */
-  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border);
-          background:var(--surface); overflow-x:auto; padding:0 16px; }
-  .tab { padding:14px 16px; font-size:13px; font-weight:500; color:var(--muted);
-         cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;
-         transition:color .2s; }
-  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
-  .tab:hover:not(.active) { color:var(--text); }
-
-  /* ── Content ── */
-  .content { max-width:700px; margin:0 auto; padding:20px 16px; }
-  .panel { display:none; }
-  .panel.active { display:block; }
-
-  /* ── Cards ── */
-  .card { background:var(--surface); border:1px solid var(--border);
-          border-radius:var(--radius); padding:16px; margin-bottom:12px; }
-  .card-title { font-size:12px; font-weight:600; color:var(--muted);
-                text-transform:uppercase; letter-spacing:.05em; margin-bottom:12px; }
-
-  /* ── KPI strip ── */
-  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px; }
-  .kpi { background:var(--surface); border:1px solid var(--border);
-         border-radius:var(--radius); padding:14px; text-align:center; }
-  .kpi-val { font-size:24px; font-weight:800; color:var(--accent); }
-  .kpi-lbl { font-size:11px; color:var(--muted); margin-top:4px; text-transform:uppercase; }
-
-  /* ── Booking card ── */
-  .bk-card { background:var(--surface2); border:1px solid var(--border);
-             border-radius:10px; padding:14px; margin-bottom:10px; }
-  .bk-header { display:flex; justify-content:space-between; align-items:flex-start;
-               margin-bottom:8px; }
-  .bk-service { font-weight:600; font-size:15px; }
-  .bk-date { font-size:13px; color:var(--muted); margin-top:2px; }
-  .bk-code { font-size:11px; color:var(--muted); font-family:monospace; }
-  .badge { display:inline-block; padding:3px 10px; border-radius:20px;
-           font-size:11px; font-weight:600; }
-  .badge-confirmado { background:#e8f8ef; color:var(--green); }
-  .badge-completado { background:#e8f8ef; color:var(--green); }
-  .badge-cancelado   { background:#fdeaea; color:var(--red); }
-  .badge-reprogramado{ background:#fff8e7; color:var(--gold); }
-  .badge-pendiente   { background:#eaf3ff; color:var(--blue); }
-
-  /* ── Cobro card ── */
-  .cobro-card { background:var(--surface2); border:1px solid var(--border);
-                border-radius:10px; padding:14px; margin-bottom:10px; }
-  .cobro-header { display:flex; justify-content:space-between; align-items:center; }
-  .cobro-num { font-size:12px; color:var(--muted); }
-  .cobro-total { font-weight:700; font-size:16px; color:var(--accent); }
-  .cobro-detail { font-size:12px; color:var(--muted); margin-top:6px; }
-
-  /* ── Points ── */
-  .points-hero { text-align:center; padding:24px; }
-  .points-num { font-size:56px; font-weight:900; color:var(--gold);
-                line-height:1; margin-bottom:8px; }
-  .points-lbl { font-size:14px; color:var(--muted); }
-  .points-bar-wrap { background:var(--border); border-radius:99px; height:10px;
-                     margin:16px 0; overflow:hidden; }
-  .points-bar { background:linear-gradient(90deg,var(--gold),#f5c842);
-                height:100%; border-radius:99px; transition:width .6s ease; }
-  .rewards-grid { display:grid; gap:10px; }
-  .reward-item { background:var(--surface2); border:1px solid var(--border);
-                 border-radius:10px; padding:14px;
-                 display:flex; justify-content:space-between; align-items:center; }
-  .reward-pts { font-size:13px; color:var(--gold); font-weight:700; }
-  .reward-locked { opacity:.45; }
-
-  /* ── Forms ── */
-  .form-group { margin-bottom:14px; }
-  .form-label { font-size:12px; color:var(--muted); margin-bottom:6px; display:block; }
-  .form-input { width:100%; background:var(--surface2); border:1px solid var(--border);
-                border-radius:8px; padding:10px 12px; color:var(--text); font-size:14px;
-                outline:none; transition:border .2s; }
-  .form-input:focus { border-color:var(--accent); }
-  textarea.form-input { resize:vertical; min-height:80px; }
-
-  /* ── Buttons ── */
-  .btn-primary { background:var(--accent); color:#fff; border:none; border-radius:8px;
-                 padding:11px 20px; font-size:14px; font-weight:600; cursor:pointer;
-                 width:100%; transition:opacity .2s; }
-  .btn-primary:hover { opacity:.9; }
-  .btn-primary:disabled { opacity:.5; cursor:default; }
-  .btn-sm { background:var(--surface2); color:var(--text); border:1px solid var(--border);
-            border-radius:8px; padding:7px 14px; font-size:13px; cursor:pointer; }
-  .btn-danger { background:#fdeaea; color:var(--red); border:1px solid #f5c0c0;
-                border-radius:8px; padding:7px 14px; font-size:13px; cursor:pointer; }
-
-  /* ── Solicitud modal ── */
-  .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
-                    z-index:200; align-items:center; justify-content:center; }
-  .modal-backdrop.open { display:flex; }
-  .modal-box { background:var(--surface); border-radius:16px; padding:24px;
-               width:340px; max-width:92vw; }
-
-  /* ── Error/Loading ── */
-  .loading { text-align:center; padding:60px 20px; color:var(--muted); font-size:14px; }
-  .error-screen { text-align:center; padding:60px 20px; }
-  .error-screen h2 { font-size:22px; margin-bottom:10px; }
-  .error-screen p  { color:var(--muted); font-size:14px; }
-
-  /* ── Toast ── */
-  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px);
-           background:#222; color:#fff; padding:10px 20px; border-radius:99px;
-           font-size:13px; transition:transform .3s; z-index:999; white-space:nowrap; }
-  #toast.show { transform:translateX(-50%) translateY(0); }
-
-  @media(max-width:480px) {
-    .kpi-grid { grid-template-columns:repeat(3,1fr); gap:8px; }
-    .kpi-val  { font-size:18px; }
-  }
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500;600&display=swap');
+:root {
+  /* Estefan — Paleta boutique */
+  --bg:#080706; --surface:#111009; --surface2:#181512; --border:#2a2622;
+  --border-gold:#3a3228;
+  --text:#f0e8dc; --muted:#8a7a6a;
+  --accent:#c9a96e; --accent-dim:rgba(201,169,110,.15);
+  --gold:#c9a96e; --gold-light:#e2c98a; --gold-dim:#7a6340;
+  --cream:#f0e8dc; --stone:#8a7a6a; --stone-light:#b5a898;
+  --green:#7aac8e; --green-dim:rgba(122,172,142,.1);
+  --blue:#7a9ab5; --red:#c4685a;
+  --radius:2px;
+  --font-serif:'Cormorant Garamond', Georgia, serif;
+  --font-sans:'Jost', system-ui, sans-serif;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font-family:'Jost',system-ui,sans-serif; min-height:100vh; }
+/* ── Header ── */
+.header { background:rgba(8,7,6,.95); backdrop-filter:blur(20px); border-bottom:1px solid var(--border-gold); padding:0 20px; display:flex; align-items:center; justify-content:space-between; height:60px; position:sticky; top:0; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-circle { width:36px; height:36px; border-radius:2px; background:transparent; border:1px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--gold); }
+.header-title { font-size:16px; font-weight:300; font-family:var(--font-serif); letter-spacing:.08em; color:var(--cream); }
+.header-sub { font-size:11px; color:var(--muted); }
+/* ── Tabs ── */
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border-gold); background:rgba(8,7,6,.9); backdrop-filter:blur(10px); overflow-x:auto; padding:0 16px; }
+.tab { padding:14px 16px; font-family:var(--font-sans); font-size:11px; font-weight:400; letter-spacing:.12em; text-transform:uppercase; color:var(--stone); cursor:pointer; border-bottom:1px solid transparent; white-space:nowrap; transition:all .2s; }
+.tab.active { color:var(--gold); border-bottom-color:var(--gold); }
+.tab:hover:not(.active) { color:var(--cream); }
+/* ── Content ── */
+.content { max-width:700px; margin:0 auto; padding:20px 16px; }
+.panel { display:none; } .panel.active { display:block; }
+/* ── Cards ── */
+.card { background:var(--surface); border:1px solid var(--border-gold); border-radius:var(--radius); padding:16px; margin-bottom:12px; transition:border-color .2s; }
+.card-title { font-family:var(--font-sans); font-size:10px; font-weight:500; color:var(--stone); text-transform:uppercase; letter-spacing:.16em; margin-bottom:12px; }
+/* ── KPI strip ── */
+.kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px; }
+.kpi { background:var(--surface); border:1px solid var(--border-gold); border-radius:var(--radius); padding:14px; text-align:center; }
+.kpi-val { font-family:var(--font-serif); font-size:28px; font-weight:300; color:var(--gold); letter-spacing:.02em; }
+.kpi-lbl { font-family:var(--font-sans); font-size:10px; color:var(--stone); margin-top:4px; text-transform:uppercase; letter-spacing:.12em; }
+/* ── Booking card ── */
+.bk-card { background:var(--surface2); border:1px solid var(--border-gold); border-radius:var(--radius); padding:14px; margin-bottom:10px; transition:border-color .2s; }
+.bk-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
+.bk-service { font-family:var(--font-serif); font-weight:400; font-size:16px; letter-spacing:.02em; color:var(--cream); }
+.bk-date { font-size:13px; color:var(--muted); margin-top:2px; }
+.bk-code { font-size:11px; color:var(--muted); font-family:monospace; }
+.badge { display:inline-block; padding:3px 10px; border-radius:2px; font-family:var(--font-sans); font-size:10px; font-weight:400; letter-spacing:.06em; }
+.badge-confirmado { background:rgba(122,172,142,.1); color:#7aac8e; }
+.badge-completado { background:rgba(122,172,142,.1); color:#7aac8e; }
+.badge-cancelado { background:rgba(196,104,90,.12); color:#c4685a; }
+.badge-reprogramado{ background:rgba(201,169,110,.1); color:var(--gold); }
+.badge-pendiente { background:rgba(122,154,181,.12); color:#7a9ab5; }
+/* ── Cobro card ── */
+.cobro-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:10px; }
+.cobro-header { display:flex; justify-content:space-between; align-items:center; }
+.cobro-num { font-size:12px; color:var(--muted); }
+.cobro-total { font-weight:700; font-size:16px; color:var(--accent); }
+.cobro-detail { font-size:12px; color:var(--muted); margin-top:6px; }
+/* ── Points ── */
+.points-hero { text-align:center; padding:24px; }
+.points-num { font-family:var(--font-serif); font-size:64px; font-weight:300; color:var(--gold); line-height:1; margin-bottom:8px; letter-spacing:.02em; }
+.points-lbl { font-size:14px; color:var(--muted); }
+.points-bar-wrap { background:var(--border-gold); border-radius:0; height:2px; margin:16px 0; overflow:hidden; }
+.points-bar { background:linear-gradient(90deg,var(--gold-dim),var(--gold)); height:100%; transition:width .8s cubic-bezier(.4,0,.2,1); }
+.rewards-grid { display:grid; gap:10px; }
+.reward-item { background:var(--surface2); border:1px solid var(--border-gold); border-radius:var(--radius); padding:14px; display:flex; justify-content:space-between; align-items:center; transition:border-color .2s; }
+.reward-pts { font-family:var(--font-serif); font-size:14px; color:var(--gold); font-weight:400; letter-spacing:.04em; }
+.reward-locked { opacity:.45; }
+/* ── Forms ── */
+.form-group { margin-bottom:14px; }
+.form-label { font-family:var(--font-sans); font-size:10px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--stone); margin-bottom:6px; display:block; }
+.form-input { width:100%; background:var(--surface2); border:1px solid var(--border-gold); border-radius:var(--radius); padding:10px 12px; color:var(--cream); font-family:var(--font-sans); font-size:13px; font-weight:300; outline:none; transition:border-color .2s, box-shadow .2s; }
+.form-input:focus { border-color:var(--gold); box-shadow:0 0 0 3px rgba(201,169,110,.08); }
+textarea.form-input { resize:vertical; min-height:80px; }
+/* ── Buttons ── */
+.btn-primary { background:linear-gradient(135deg,var(--gold) 0%,var(--gold-dim) 100%); color:#080706; border:none; border-radius:var(--radius); padding:12px 20px; font-family:var(--font-sans); font-size:11px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; cursor:pointer; width:100%; transition:all .25s; box-shadow:0 2px 20px rgba(201,169,110,.2); }
+.btn-primary:hover { background:linear-gradient(135deg,var(--gold-light) 0%,var(--gold) 100%); box-shadow:0 4px 30px rgba(201,169,110,.35); transform:translateY(-1px); }
+.btn-primary:disabled { opacity:.5; cursor:default; }
+.btn-sm { background:transparent; color:var(--stone-light); border:1px solid var(--border-gold); border-radius:var(--radius); padding:7px 14px; font-family:var(--font-sans); font-size:11px; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; transition:all .2s; }
+.btn-danger { background:rgba(196,104,90,.08); color:#c4685a; border:1px solid rgba(196,104,90,.3); border-radius:var(--radius); padding:7px 14px; font-family:var(--font-sans); font-size:11px; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; transition:all .2s; }
+/* ── Solicitud modal ── */
+.modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.82); backdrop-filter:blur(8px); z-index:200; align-items:center; justify-content:center; }
+.modal-backdrop.open { display:flex; }
+.modal-box { background:var(--surface); border:1px solid var(--border-gold); border-radius:var(--radius); padding:28px; width:340px; max-width:92vw; box-shadow:0 0 80px rgba(0,0,0,.8),0 0 40px rgba(201,169,110,.04); position:relative; }
+/* ── Error/Loading ── */
+.loading { text-align:center; padding:60px 20px; color:var(--stone); font-family:var(--font-sans); font-size:11px; letter-spacing:.18em; text-transform:uppercase; }
+.error-screen { text-align:center; padding:60px 20px; }
+.error-screen h2 { font-size:22px; margin-bottom:10px; }
+.error-screen p { color:var(--muted); font-size:14px; }
+/* ── Toast ── */
+#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--surface2); border:1px solid var(--border-gold); border-left:2px solid var(--gold); color:var(--cream); padding:12px 20px; border-radius:var(--radius); font-family:var(--font-sans); font-size:12px; font-weight:300; letter-spacing:.06em; transition:transform .3s cubic-bezier(.4,0,.2,1); z-index:999; white-space:nowrap; box-shadow:0 8px 32px rgba(0,0,0,.5); }
+#toast.show { transform:translateX(-50%) translateY(0); }
+@media(max-width:480px) { .kpi-grid { grid-template-columns:repeat(3,1fr); gap:8px; } .kpi-val { font-size:22px; } }
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border-gold);}
+*{scrollbar-width:thin;scrollbar-color:var(--border-gold) transparent;}
+.cobro-card{background:var(--surface2);border:1px solid var(--border-gold);border-radius:var(--radius);padding:14px;margin-bottom:10px;}
+.cobro-total{font-family:var(--font-serif);font-weight:400;font-size:18px;color:var(--gold);letter-spacing:.02em;}
 </style>
 </head>
 <body>
-
 <div id="loading-screen" class="loading">Cargando tu cuenta...</div>
 <div id="error-screen" class="error-screen" style="display:none">
   <div style="font-size:40px;margin-bottom:12px">🔗</div>
   <h2>Link inválido o expirado</h2>
   <p>Este link ya no es válido. Escribinos por WhatsApp y te mandamos uno nuevo.</p>
 </div>
-
 <div id="app" style="display:none">
   <!-- Header -->
   <div class="header">
     <div class="header-logo">
-      <div class="logo-circle">✂</div>
+      <div class="logo-circle">E</div>
       <div>
         <div class="header-title">Mi Cuenta</div>
         <div class="header-sub" id="header-name">Estefan Peluquería</div>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--muted)">✂ Estefan</div>
+    <div style="font-family:var(--font-sans);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--stone)">Estefan Peluquería</div>
   </div>
-
   <!-- Tabs -->
   <div class="tabs">
     <div class="tab active" onclick="showTab('inicio')" id="tab-inicio">🏠 Inicio</div>
-    <div class="tab" onclick="showTab('turnos')"  id="tab-turnos">📅 Mis Turnos</div>
-    <div class="tab" onclick="showTab('puntos')"  id="tab-puntos">⭐ Puntos</div>
-    <div class="tab" onclick="showTab('datos')"   id="tab-datos">👤 Mis Datos</div>
+    <div class="tab" onclick="showTab('turnos')" id="tab-turnos">📅 Mis Turnos</div>
+    <div class="tab" onclick="showTab('puntos')" id="tab-puntos">⭐ Puntos</div>
+    <div class="tab" onclick="showTab('datos')" id="tab-datos">👤 Mis Datos</div>
   </div>
-
   <div class="content">
-
     <!-- ── INICIO ── -->
     <div class="panel active" id="panel-inicio">
       <div id="kpi-strip" class="kpi-grid"></div>
-
-      <!-- Proximo turno -->
       <div class="card" id="proximo-turno-card" style="display:none">
         <div class="card-title">📅 Próximo turno</div>
         <div id="proximo-turno"></div>
       </div>
-
-      <!-- Últimas visitas -->
       <div class="card">
         <div class="card-title">🕐 Últimas visitas</div>
         <div id="ultimas-visitas"></div>
       </div>
     </div>
-
     <!-- ── TURNOS ── -->
     <div class="panel" id="panel-turnos">
       <div style="display:flex;gap:8px;margin-bottom:14px">
-        <button class="btn-sm" id="fil-todos"    onclick="filterTurnos('todos')"    style="background:var(--accent);color:#fff">Todos</button>
+        <button class="btn-sm" id="fil-todos" onclick="filterTurnos('todos')" style="background:var(--accent);color:#fff">Todos</button>
         <button class="btn-sm" id="fil-proximos" onclick="filterTurnos('proximos')">Próximos</button>
-        <button class="btn-sm" id="fil-pasados"  onclick="filterTurnos('pasados')">Historial</button>
+        <button class="btn-sm" id="fil-pasados" onclick="filterTurnos('pasados')">Historial</button>
       </div>
       <div id="turnos-list"></div>
     </div>
-
     <!-- ── PUNTOS ── -->
     <div class="panel" id="panel-puntos">
       <div class="card">
@@ -219,7 +173,6 @@
           </div>
         </div>
       </div>
-
       <div class="card">
         <div class="card-title">🎁 Cómo ganar puntos</div>
         <div style="font-size:13px;color:var(--muted);line-height:1.6">
@@ -227,13 +180,11 @@
           Los puntos se acumulan automáticamente en cada visita.
         </div>
       </div>
-
       <div class="card">
         <div class="card-title">🏆 Beneficios</div>
         <div class="rewards-grid" id="rewards-list"></div>
       </div>
     </div>
-
     <!-- ── DATOS ── -->
     <div class="panel" id="panel-datos">
       <div class="card">
@@ -258,17 +209,13 @@
         <button class="btn-primary" id="btn-guardar" onclick="guardarDatos()">Guardar cambios</button>
       </div>
     </div>
-
   </div><!-- /content -->
 </div><!-- /app -->
-
 <!-- Solicitud modal -->
 <div class="modal-backdrop" id="modal-solicitud">
   <div class="modal-box" style="max-width:360px;width:100%">
     <div style="font-size:16px;font-weight:700;margin-bottom:4px" id="modal-titulo">Gestionar turno</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:16px" id="modal-subtitulo"></div>
-
-    <!-- Vista cancelar -->
     <div id="vista-cancelar" style="display:none">
       <p style="font-size:14px;margin-bottom:16px">¿Confirmás que querés cancelar este turno?</p>
       <p id="cancelar-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
@@ -277,8 +224,6 @@
         <button class="btn-sm" onclick="closeSolicitud()" style="flex:1">Volver</button>
       </div>
     </div>
-
-    <!-- Vista reprogramar -->
     <div id="vista-reprogramar" style="display:none">
       <div class="form-group">
         <label class="form-label">Elegí una fecha</label>
@@ -296,80 +241,57 @@
     </div>
   </div>
 </div>
-
 <div id="toast"></div>
-
 <script>
 var TOKEN = '';
 var perfil = null;
 var solicitudActual = null;
 var turnosFiltro = 'todos';
-
 var REWARDS = [
   { pts:500,  label:'Descuento 10% en tu próxima visita' },
   { pts:1000, label:'Tratamiento de regalo' },
   { pts:2000, label:'Servicio a elección 50% off' },
   { pts:5000, label:'Servicio gratuito a elección' }
 ];
-
-// ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
   var params = new URLSearchParams(window.location.search);
   TOKEN = params.get('t') || '';
   if (!TOKEN) { showError(); return; }
   loadPerfil();
 });
-
 async function loadPerfil() {
   try {
     var r = await fetch('/cliente/perfil', { headers: { 'x-client-token': TOKEN } });
     if (r.status === 401) { showError(); return; }
     perfil = await r.json();
     render();
-  } catch(e) {
-    showError();
-  }
+  } catch(e) { showError(); }
 }
-
 function showError() {
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('error-screen').style.display = 'block';
 }
-
 function render() {
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-
   var c = perfil.client || {};
   var nombre = ((c.name || '') + ' ' + (c.last_name || '')).trim() || 'Mi cuenta';
   document.getElementById('header-name').textContent = nombre;
-
-  renderInicio();
-  renderTurnos();
-  renderPuntos();
-  renderDatos();
+  renderInicio(); renderTurnos(); renderPuntos(); renderDatos();
 }
-
-// ── INICIO ────────────────────────────────────────────────────────────────────
 function renderInicio() {
   var p = perfil.puntos || {};
   var bks = perfil.bookings || [];
-
-  // KPIs
   var proximos = bks.filter(function(b) { return isProximo(b); });
   document.getElementById('kpi-strip').innerHTML =
-    kpiCard(p.visit_count || 0, 'Visitas', '#5BA8F5') +
-    kpiCard(p.points || 0, 'Puntos', '#D4A754') +
-    kpiCard(proximos.length, 'Próximos', '#5ECB8A');
-
-  // Próximo turno
+    kpiCard(p.visit_count || 0, 'Visitas', '#7a9ab5') +
+    kpiCard(p.points || 0, 'Puntos', '#c9a96e') +
+    kpiCard(proximos.length, 'Próximos', '#7aac8e');
   if (proximos.length) {
     var next = proximos.sort(function(a,b) { return a.date_str > b.date_str ? 1 : -1; })[0];
     document.getElementById('proximo-turno-card').style.display = 'block';
     document.getElementById('proximo-turno').innerHTML = bkMini(next, true);
   }
-
-  // Últimas visitas
   var pasados = bks.filter(function(b) { return !isProximo(b); }).slice(0, 5);
   if (pasados.length) {
     document.getElementById('ultimas-visitas').innerHTML = pasados.map(function(b) { return bkMini(b, false); }).join('');
@@ -377,30 +299,24 @@ function renderInicio() {
     document.getElementById('ultimas-visitas').innerHTML = '<div style="color:var(--muted);font-size:13px">Aún no tenés visitas registradas.</div>';
   }
 }
-
 function kpiCard(val, lbl, color) {
   return '<div class="kpi"><div class="kpi-val" style="color:' + color + '">' + val + '</div><div class="kpi-lbl">' + lbl + '</div></div>';
 }
-
 function isProximo(b) {
   if (b.status === 'Cancelado' || b.status === 'Completado') return false;
   var today = new Date(); today.setHours(0,0,0,0);
   var d = parseFecha(b.date_str);
   return d && d >= today;
 }
-
 function parseFecha(str) {
   if (!str) return null;
   if (str.indexOf('/') !== -1) { var p = str.split('/'); return new Date(+p[2], +p[1]-1, +p[0]); }
   return new Date(str);
 }
-
 function badgeClass(status) {
-  var map = { 'Confirmado':'confirmado','Completado':'completado','Cancelado':'cancelado',
-              'Reprogramado':'reprogramado','Seña pagada':'confirmado','Pendiente':'pendiente' };
+  var map = { 'Confirmado':'confirmado','Completado':'completado','Cancelado':'cancelado','Reprogramado':'reprogramado','Seña pagada':'confirmado','Pendiente':'pendiente' };
   return 'badge badge-' + (map[status] || 'pendiente');
 }
-
 function bkMini(b, showSolicitud) {
   var html = '<div class="bk-card">';
   html += '<div class="bk-header">';
@@ -414,8 +330,7 @@ function bkMini(b, showSolicitud) {
   if (showSolicitud && b.status !== 'Cancelado' && b.status !== 'Completado') {
     html += '<div style="display:flex;gap:8px;margin-top:10px">';
     if (esColor) {
-      html += '<div style="font-size:12px;color:var(--muted);padding:6px 0">';
-      html += '✂️ Para este servicio coordiná con el salón por WhatsApp.</div>';
+      html += '<div style="font-size:12px;color:var(--muted);padding:6px 0">✂️ Para este servicio coordiná con el salón por WhatsApp.</div>';
     } else {
       html += '<button class="btn-sm" onclick="openSolicitud(\'' + b.booking_code + '\',\'reprogramar\')">Reprogramar</button>';
       html += '<button class="btn-danger" onclick="openSolicitud(\'' + b.booking_code + '\',\'cancelar\')">Cancelar</button>';
@@ -425,12 +340,7 @@ function bkMini(b, showSolicitud) {
   html += '</div>';
   return html;
 }
-
-// ── TURNOS ────────────────────────────────────────────────────────────────────
-function renderTurnos() {
-  filterTurnos(turnosFiltro);
-}
-
+function renderTurnos() { filterTurnos(turnosFiltro); }
 function filterTurnos(filtro) {
   turnosFiltro = filtro;
   ['todos','proximos','pasados'].forEach(function(f) {
@@ -439,41 +349,30 @@ function filterTurnos(filtro) {
   });
   var bks = perfil.bookings || [];
   var filtered;
-  if (filtro === 'proximos')     filtered = bks.filter(function(b) { return isProximo(b); });
+  if (filtro === 'proximos') filtered = bks.filter(function(b) { return isProximo(b); });
   else if (filtro === 'pasados') filtered = bks.filter(function(b) { return !isProximo(b); });
-  else                           filtered = bks;
-
+  else filtered = bks;
   var list = document.getElementById('turnos-list');
-  if (!filtered.length) {
-    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">Sin turnos en esta categoría</div>';
-    return;
-  }
+  if (!filtered.length) { list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px">Sin turnos en esta categoría</div>'; return; }
   list.innerHTML = filtered.map(function(b) { return bkMini(b, isProximo(b)); }).join('');
 }
-
-// ── PUNTOS ────────────────────────────────────────────────────────────────────
 function renderPuntos() {
   var p = perfil.puntos || {};
   var pts = p.points || 0;
   document.getElementById('pts-num').textContent = pts;
   document.getElementById('pts-visitas').textContent = p.visit_count || 0;
   document.getElementById('pts-gastado').textContent = '$' + Number(p.total_spent || 0).toLocaleString('es-AR');
-
-  // Progress to next reward
   var next = REWARDS.filter(function(r) { return r.pts > pts; })[0];
   if (next) {
     var prev = REWARDS.filter(function(r) { return r.pts <= pts; });
     var base = prev.length ? prev[prev.length-1].pts : 0;
-    var pct  = Math.min(100, Math.round((pts - base) / (next.pts - base) * 100));
+    var pct = Math.min(100, Math.round((pts - base) / (next.pts - base) * 100));
     document.getElementById('pts-bar').style.width = pct + '%';
-    document.getElementById('pts-next-label').textContent =
-      'Te faltan ' + (next.pts - pts) + ' puntos para: ' + next.label;
+    document.getElementById('pts-next-label').textContent = 'Te faltan ' + (next.pts - pts) + ' puntos para: ' + next.label;
   } else {
     document.getElementById('pts-bar').style.width = '100%';
     document.getElementById('pts-next-label').textContent = 'Nivel máximo alcanzado';
   }
-
-  // Rewards list
   document.getElementById('rewards-list').innerHTML = REWARDS.map(function(r) {
     var unlocked = pts >= r.pts;
     return '<div class="reward-item' + (unlocked ? '' : ' reward-locked') + '">' +
@@ -482,66 +381,45 @@ function renderPuntos() {
       '</div>';
   }).join('');
 }
-
-// ── DATOS ────────────────────────────────────────────────────────────────────
 function renderDatos() {
   var c = perfil.client || {};
-  document.getElementById('edit-nombre').value   = c.name      || '';
+  document.getElementById('edit-nombre').value = c.name || '';
   document.getElementById('edit-apellido').value = c.last_name || '';
-  document.getElementById('edit-email').value    = c.email     || '';
-  document.getElementById('edit-telefono').value = c.phone     || '';
+  document.getElementById('edit-email').value = c.email || '';
+  document.getElementById('edit-telefono').value = c.phone || '';
 }
-
 async function guardarDatos() {
-  var nombre   = document.getElementById('edit-nombre').value.trim();
+  var nombre = document.getElementById('edit-nombre').value.trim();
   var apellido = document.getElementById('edit-apellido').value.trim();
-  var email    = document.getElementById('edit-email').value.trim();
-  var errEl    = document.getElementById('datos-error');
-  var btn      = document.getElementById('btn-guardar');
-
+  var email = document.getElementById('edit-email').value.trim();
+  var errEl = document.getElementById('datos-error');
+  var btn = document.getElementById('btn-guardar');
   errEl.style.display = 'none';
   if (!nombre) { errEl.textContent = 'El nombre es obligatorio'; errEl.style.display = 'block'; return; }
-
   btn.disabled = true; btn.textContent = 'Guardando...';
   try {
-    var r = await fetch('/cliente/perfil', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
-      body: JSON.stringify({ name: nombre, lastName: apellido, email: email })
-    });
+    var r = await fetch('/cliente/perfil', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN }, body: JSON.stringify({ name: nombre, lastName: apellido, email: email }) });
     if (!r.ok) throw new Error('Error al guardar');
-    // Update local
     if (!perfil.client) perfil.client = {};
-    perfil.client.name      = nombre;
-    perfil.client.last_name = apellido;
-    perfil.client.email     = email;
+    perfil.client.name = nombre; perfil.client.last_name = apellido; perfil.client.email = email;
     var nom = (nombre + ' ' + apellido).trim();
     document.getElementById('header-name').textContent = nom;
     toast('Datos guardados');
-  } catch(e) {
-    errEl.textContent = 'Error al guardar. Reintentá.'; errEl.style.display = 'block';
-  }
+  } catch(e) { errEl.textContent = 'Error al guardar. Reintentá.'; errEl.style.display = 'block'; }
   btn.disabled = false; btn.textContent = 'Guardar cambios';
 }
-
-// ── GESTIÓN DE TURNOS ────────────────────────────────────────────────────────
 var slotSeleccionado = null;
-
 function openSolicitud(bookingCode, tipo) {
   solicitudActual = { bookingCode: bookingCode, tipo: tipo };
   slotSeleccionado = null;
   document.getElementById('modal-titulo').textContent = tipo === 'cancelar' ? 'Cancelar turno' : 'Reprogramar turno';
-  document.getElementById('modal-subtitulo').textContent = tipo === 'cancelar'
-    ? 'Esta acción no se puede deshacer.'
-    : 'Elegí la nueva fecha y horario.';
-  document.getElementById('vista-cancelar').style.display  = tipo === 'cancelar'  ? 'block' : 'none';
+  document.getElementById('modal-subtitulo').textContent = tipo === 'cancelar' ? 'Esta acción no se puede deshacer.' : 'Elegí la nueva fecha y horario.';
+  document.getElementById('vista-cancelar').style.display = tipo === 'cancelar' ? 'block' : 'none';
   document.getElementById('vista-reprogramar').style.display = tipo === 'reprogramar' ? 'block' : 'none';
   document.getElementById('cancelar-error').style.display = 'none';
-  document.getElementById('reprog-error').style.display   = 'none';
+  document.getElementById('reprog-error').style.display = 'none';
   document.getElementById('slots-container').style.display = 'none';
-  // Fecha mínima = mañana
-  var hoy = new Date();
-  hoy.setDate(hoy.getDate() + 1);
+  var hoy = new Date(); hoy.setDate(hoy.getDate() + 1);
   var min = hoy.toISOString().split('T')[0];
   var input = document.getElementById('reprog-fecha');
   if (input) { input.value = ''; input.min = min; }
@@ -549,136 +427,72 @@ function openSolicitud(bookingCode, tipo) {
   if (btnR) { btnR.disabled = true; btnR.style.opacity = '.4'; btnR.style.pointerEvents = 'none'; }
   document.getElementById('modal-solicitud').classList.add('open');
 }
-
-function closeSolicitud() {
-  document.getElementById('modal-solicitud').classList.remove('open');
-  solicitudActual = null;
-  slotSeleccionado = null;
-}
-
+function closeSolicitud() { document.getElementById('modal-solicitud').classList.remove('open'); solicitudActual = null; slotSeleccionado = null; }
 async function cargarSlots() {
-  var inputFecha = document.getElementById('reprog-fecha').value; // YYYY-MM-DD
+  var inputFecha = document.getElementById('reprog-fecha').value;
   if (!inputFecha) return;
-  // Convertir a DD/MM/YYYY
   var parts = inputFecha.split('-');
   var fecha = parts[2] + '/' + parts[1] + '/' + parts[0];
-
   document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">Cargando...</div>';
   document.getElementById('slots-container').style.display = 'block';
   slotSeleccionado = null;
   var btnR = document.getElementById('btn-confirmar-reprog');
   btnR.disabled = true; btnR.style.opacity = '.4'; btnR.style.pointerEvents = 'none';
-
   try {
-    var r = await fetch('/cliente/slots?fecha=' + encodeURIComponent(fecha), {
-      headers: { 'x-client-token': TOKEN }
-    });
+    var r = await fetch('/cliente/slots?fecha=' + encodeURIComponent(fecha), { headers: { 'x-client-token': TOKEN } });
     var data = await r.json();
-    if (data.motivo) {
-      document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">' + data.motivo + '</div>';
-      return;
-    }
+    if (data.motivo) { document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">' + data.motivo + '</div>'; return; }
     var disponibles = data.slots.filter(function(s) { return s.disponible; });
-    if (!disponibles.length) {
-      document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">Sin horarios disponibles ese día.</div>';
-      return;
-    }
+    if (!disponibles.length) { document.getElementById('slots-grid').innerHTML = '<div style="color:var(--muted);font-size:13px">Sin horarios disponibles ese día.</div>'; return; }
     document.getElementById('slots-grid').innerHTML = disponibles.map(function(s) {
-      return '<button onclick="selectSlot(this,\'' + fecha + '\',\'' + s.hora + '\')" ' +
-        'style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);' +
-        'color:var(--text);font-size:13px;cursor:pointer">' + s.hora + '</button>';
+      return '<button onclick="selectSlot(this,\'' + fecha + '\',\'' + s.hora + '\')" style="padding:7px 12px;border-radius:2px;border:1px solid var(--border-gold);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer">' + s.hora + '</button>';
     }).join('');
-  } catch(e) {
-    document.getElementById('slots-grid').innerHTML = '<div style="color:var(--red);font-size:13px">Error cargando horarios.</div>';
-  }
+  } catch(e) { document.getElementById('slots-grid').innerHTML = '<div style="color:var(--red);font-size:13px">Error cargando horarios.</div>'; }
 }
-
 function selectSlot(btn, fecha, hora) {
-  // Deseleccionar anterior
-  document.querySelectorAll('#slots-grid button').forEach(function(b) {
-    b.style.background = 'var(--surface)';
-    b.style.borderColor = 'var(--border)';
-    b.style.color = 'var(--text)';
-  });
-  btn.style.background = 'var(--accent)';
-  btn.style.borderColor = 'var(--accent)';
-  btn.style.color = '#fff';
+  document.querySelectorAll('#slots-grid button').forEach(function(b) { b.style.background = 'var(--surface)'; b.style.borderColor = 'var(--border-gold)'; b.style.color = 'var(--text)'; });
+  btn.style.background = 'var(--gold)'; btn.style.borderColor = 'var(--gold)'; btn.style.color = '#080706';
   slotSeleccionado = { fecha: fecha, hora: hora };
   var btnR = document.getElementById('btn-confirmar-reprog');
   btnR.disabled = false; btnR.style.opacity = '1'; btnR.style.pointerEvents = 'auto';
 }
-
 async function ejecutarCancelar() {
   if (!solicitudActual) return;
-  var btn   = document.getElementById('btn-confirmar-cancelar');
+  var btn = document.getElementById('btn-confirmar-cancelar');
   var errEl = document.getElementById('cancelar-error');
-  errEl.style.display = 'none';
-  btn.disabled = true; btn.textContent = 'Cancelando...';
+  errEl.style.display = 'none'; btn.disabled = true; btn.textContent = 'Cancelando...';
   try {
-    var r = await fetch('/cliente/cancelar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
-      body: JSON.stringify({ booking_code: solicitudActual.bookingCode })
-    });
+    var r = await fetch('/cliente/cancelar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN }, body: JSON.stringify({ booking_code: solicitudActual.bookingCode }) });
     var data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Error');
-    closeSolicitud();
-    toast('Turno cancelado. Recibís un email de confirmación.');
-    // Recargar perfil
+    closeSolicitud(); toast('Turno cancelado. Recibís un email de confirmación.');
     setTimeout(function() { location.reload(); }, 1500);
-  } catch(e) {
-    errEl.textContent = e.message || 'Error al cancelar. Reintentá.';
-    errEl.style.display = 'block';
-    btn.disabled = false; btn.textContent = 'Sí, cancelar';
-  }
+  } catch(e) { errEl.textContent = e.message || 'Error al cancelar. Reintentá.'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sí, cancelar'; }
 }
-
 async function ejecutarReprogramar() {
   if (!solicitudActual || !slotSeleccionado) return;
-  var btn   = document.getElementById('btn-confirmar-reprog');
+  var btn = document.getElementById('btn-confirmar-reprog');
   var errEl = document.getElementById('reprog-error');
-  errEl.style.display = 'none';
-  btn.disabled = true; btn.textContent = 'Confirmando...';
+  errEl.style.display = 'none'; btn.disabled = true; btn.textContent = 'Confirmando...';
   try {
-    var r = await fetch('/cliente/reprogramar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
-      body: JSON.stringify({
-        booking_code: solicitudActual.bookingCode,
-        fecha_nueva:  slotSeleccionado.fecha,
-        hora_nueva:   slotSeleccionado.hora
-      })
-    });
+    var r = await fetch('/cliente/reprogramar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN }, body: JSON.stringify({ booking_code: solicitudActual.bookingCode, fecha_nueva: slotSeleccionado.fecha, hora_nueva: slotSeleccionado.hora }) });
     var data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Error');
-    closeSolicitud();
-    toast('¡Turno reprogramado! Recibís un email de confirmación.');
+    closeSolicitud(); toast('¡Turno reprogramado! Recibís un email de confirmación.');
     setTimeout(function() { location.reload(); }, 1500);
-  } catch(e) {
-    errEl.textContent = e.message || 'Error al reprogramar. Reintentá.';
-    errEl.style.display = 'block';
-    btn.disabled = false; btn.textContent = 'Confirmar';
-    btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
-  }
+  } catch(e) { errEl.textContent = e.message || 'Error al reprogramar. Reintentá.'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Confirmar'; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
 }
-
-// ── Tabs ──────────────────────────────────────────────────────────────────────
 function showTab(name) {
   ['inicio','turnos','puntos','datos'].forEach(function(t) {
     document.getElementById('panel-' + t).classList.remove('active');
-    var tab = document.getElementById('tab-' + t);
-    if (tab) tab.classList.remove('active');
+    var tab = document.getElementById('tab-' + t); if (tab) tab.classList.remove('active');
   });
   document.getElementById('panel-' + name).classList.add('active');
-  var activeTab = document.getElementById('tab-' + name);
-  if (activeTab) activeTab.classList.add('active');
+  var activeTab = document.getElementById('tab-' + name); if (activeTab) activeTab.classList.add('active');
 }
-
-// ── Toast ─────────────────────────────────────────────────────────────────────
 function toast(msg) {
   var el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
+  el.textContent = msg; el.classList.add('show');
   setTimeout(function() { el.classList.remove('show'); }, 3000);
 }
 </script>
