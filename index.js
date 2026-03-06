@@ -378,15 +378,18 @@ app.post('/staff/booking/create', staffAuth, async (req, res) => {
     const montoFinal = monto || 0;
     const senaFinal = senaAmount || 0;
     await db.clientUpsert(phoneF, nombre, email || null);
+    // Si tiene seña → queda pendiente hasta que pague
+    const statusInicial = senaFinal > 0 ? 'Seña pendiente' : 'Confirmado';
     const saved = await db.bookingSave({
       sessionId: 'staff-manual',
       nombre, phone: phoneF,
       servicio: servicioStr, fecha, hora,
       monto: montoFinal, senaAmount: senaFinal, senaPaid: false,
-      calendarEventId: null, email: email || null, notes: notas || null
+      calendarEventId: null, email: email || null, notes: notas || null,
+      status: statusInicial,
     });
     const { appendTurnoToSheet } = require('./core/sheets');
-    await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phoneF, servicio: servicioStr, monto: montoFinal, sena: senaFinal, senaPagada: false, estado: 'Confirmado', canal: 'Staff Manual' }).catch(() => {});
+    await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phoneF, servicio: servicioStr, monto: montoFinal, sena: senaFinal, senaPagada: false, estado: statusInicial, canal: 'Staff Manual' }).catch(() => {});
 
     // Calendar
     try {
@@ -508,7 +511,7 @@ app.get('/mp/failure', (req, res) => res.send('<h2 style="font-family:sans-serif
 app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
   try {
     const { status, motivo } = req.body;
-    const validStatuses = ['Confirmado','Cancelado','Completado','Consulta Pendiente','Reprogramado','No asistió'];
+    const validStatuses = ['Confirmado','Seña pagada','Seña pendiente','Cancelado','Completado','Consulta Pendiente','Reprogramado','No asistió','Solicitud cliente'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
     await getConn().query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
 
@@ -774,6 +777,93 @@ init();
 </html>`);
 });
 
+
+// ── PORTAL CLIENTE: SOLICITAR TURNO ──────────────────────────────────────────
+const SERVICIOS_CON_APROBACION = ['color','balayage','decoloración','mechas','keratina','alisado','quimico','química','permanente','ondas'];
+
+app.post('/cliente/solicitar-turno', clientAuth, async (req, res) => {
+  try {
+    const phone = req.clientPhone;
+    const { servicio, fecha_tentativa, hora_tentativa, notas, fotos_urls } = req.body;
+    if (!servicio) return res.status(400).json({ error: 'Servicio requerido' });
+
+    const dbConn = db.getDB();
+    const clientR = await dbConn.query(`SELECT name, last_name, email FROM clients WHERE phone=$1`, [phone]);
+    const client = clientR.rows[0] || {};
+    const nombre = ((client.name||'') + ' ' + (client.last_name||'')).trim() || phone;
+
+    const necesitaAprobacion = SERVICIOS_CON_APROBACION.some(s => servicio.toLowerCase().includes(s));
+    const statusInicial = necesitaAprobacion ? 'Consulta Pendiente' : 'Solicitud cliente';
+
+    let notaCompleta = `[Solicitud portal cliente]`;
+    if (notas) notaCompleta += `
+Nota: ${notas}`;
+    if (fecha_tentativa) notaCompleta += `
+Fecha tentativa: ${fecha_tentativa}`;
+    if (hora_tentativa) notaCompleta += `
+Horario preferido: ${hora_tentativa}`;
+    if (fotos_urls && fotos_urls.length) notaCompleta += `
+Fotos: ${fotos_urls.join(', ')}`;
+
+    const saved = await db.bookingSave({
+      sessionId: 'portal-cliente',
+      nombre, phone,
+      servicio, fecha: fecha_tentativa || 'A confirmar',
+      hora: hora_tentativa || 'A confirmar',
+      monto: 0, senaAmount: 0, senaPaid: false,
+      calendarEventId: null, email: client.email || null,
+      notes: notaCompleta,
+      status: statusInicial,
+    });
+
+    await dbConn.query(
+      `INSERT INTO client_notes (client_phone, type, content, created_by) VALUES ($1,'solicitud',$2,'cliente')`,
+      [phone, `Solicitud turno: ${servicio}${fecha_tentativa ? ' — '+fecha_tentativa : ''}${hora_tentativa ? ' '+hora_tentativa : ''}.${notas ? ' '+notas : ''}`]
+    );
+
+    const staffPhone = process.env.STAFF_WHATSAPP_PHONE;
+    if (staffPhone && WASSENGER_KEY) {
+      const msg = `📲 *Nueva solicitud portal*\n\n*Cliente:* ${nombre}\n*Servicio:* ${servicio}\n*Fecha:* ${fecha_tentativa || 'No especificó'}\n*Horario:* ${hora_tentativa || 'No especificó'}${notas ? '\n*Nota:* '+notas : ''}${necesitaAprobacion ? '\n⚠️ Requiere evaluación' : ''}`;
+      sendWhatsApp(staffPhone, msg).catch(() => {});
+    }
+
+    res.json({
+      ok: true, code: saved.code, status: statusInicial, necesitaAprobacion,
+      message: necesitaAprobacion
+        ? 'Tu solicitud fue recibida. Te contactaremos para confirmar el turno.'
+        : 'Tu solicitud fue recibida. El staff la confirmará pronto.',
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── BOT: CONTEXTO ENRIQUECIDO ─────────────────────────────────────────────────
+app.get('/staff/clients/:phone/contexto-bot', staffAuth, async (req, res) => {
+  try {
+    const phone = decodeURIComponent(req.params.phone);
+    const dbConn = db.getDB();
+    const [clientR, bookingsR, cobrosR, fichaR] = await Promise.all([
+      dbConn.query(`SELECT phone, name, last_name, email, visit_count, points, total_spent FROM clients WHERE phone=$1`, [phone]),
+      dbConn.query(`SELECT service, date_str, time_str, status, monto FROM bookings WHERE client_phone=$1 ORDER BY created_at DESC LIMIT 5`, [phone]),
+      dbConn.query(`SELECT fecha, total, servicios_json FROM payments WHERE client_phone=$1 ORDER BY created_at DESC LIMIT 3`, [phone]),
+      dbConn.query(`SELECT color_actual, tecnica, alergias, observaciones FROM client_ficha WHERE client_phone=$1`, [phone]),
+    ]);
+    const client = clientR.rows[0];
+    if (!client) return res.json({ found: false });
+    const proximos = bookingsR.rows.filter(b => !['Cancelado','Completado'].includes(b.status));
+    const pasados  = bookingsR.rows.filter(b => b.status === 'Completado');
+    res.json({
+      found: true,
+      nombre: ((client.name||'') + ' ' + (client.last_name||'')).trim(),
+      visitas: client.visit_count || 0,
+      puntos: client.points || 0,
+      totalGastado: client.total_spent || 0,
+      proximosTurnos: proximos.map(b => `${b.service} el ${b.date_str} a las ${b.time_str} (${b.status})`),
+      historial: pasados.map(b => `${b.service} el ${b.date_str}`),
+      ficha: fichaR.rows[0] || null,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
   console.log('\n✂️  Estefan Peluquería Bot v4');
@@ -890,20 +980,28 @@ app.post('/staff/cobros', staffAuth, async (req, res) => {
       }
     }
 
-    // Puntos ganados (1 punto por cada $1000 gastados en servicios)
+    // Puntos ganados + visit_count (solo al cobrar)
     let pointsEarned = 0;
-    if (client_phone && totalServicios > 0) {
-      pointsEarned = Math.floor(totalServicios / 1000);
-      if (pointsEarned > 0) {
-        await dbConn.query(
-          `UPDATE clients SET points = COALESCE(points,0) + $1 WHERE phone = $2`,
-          [pointsEarned, client_phone]
-        ).catch(()=>{});
-        await dbConn.query(
-          `INSERT INTO loyalty_transactions (phone, type, points, description)
-           VALUES ($1,'earn',$2,$3)`,
-          [client_phone, pointsEarned, `Cobro #${cobro.numero_comprobante}`]
-        ).catch(()=>{});
+    if (client_phone) {
+      // Incrementar visitas al momento de cobrar
+      await dbConn.query(
+        `UPDATE clients SET visit_count = COALESCE(visit_count,0) + 1, last_visit = NOW() WHERE phone = $1`,
+        [client_phone]
+      ).catch(() => {});
+
+      if (totalServicios > 0) {
+        pointsEarned = Math.floor(totalServicios / 1000);
+        if (pointsEarned > 0) {
+          await dbConn.query(
+            `UPDATE clients SET points = COALESCE(points,0) + $1 WHERE phone = $2`,
+            [pointsEarned, client_phone]
+          ).catch(() => {});
+          await dbConn.query(
+            `INSERT INTO loyalty_transactions (phone, type, points, description)
+             VALUES ($1,'earn',$2,$3)`,
+            [client_phone, pointsEarned, `Cobro #${cobro.numero_comprobante}`]
+          ).catch(() => {});
+        }
       }
     }
 
