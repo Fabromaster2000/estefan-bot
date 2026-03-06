@@ -217,34 +217,28 @@ async function clientGet(phone) {
   return r.rows[0] || null;
 }
 
-async function clientGetByEmail(email) {
-  if (!db) return null;
-  const r = await db.query(`SELECT * FROM clients WHERE email = $1`, [email]);
-  return r.rows[0] || null;
-}
-
-// clientUpsert: crea o actualiza. Si el email ya existe en otro perfil sintético, fusiona.
 async function clientUpsert(phone, name = null, email = null) {
   if (!db) return;
 
-  // Si tenemos email, ver si ya existe un cliente con ese email
+  // Si tenemos email, ver si ya existe un cliente con ese email en otro perfil sintético
   if (email) {
-    const existing = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
-    if (existing.rows[0] && existing.rows[0].phone !== phone) {
-      const ex = existing.rows[0];
-      const exIsSynthetic = ex.phone.startsWith('web-') || ex.phone.startsWith('manual-');
-      if (exIsSynthetic) {
-        // Migrar todo del perfil sintético al phone real
-        await db.query(`UPDATE clients SET phone=$1, name=COALESCE($2,name), updated_at=NOW() WHERE id=$3`, [phone, name, ex.id]);
-        await db.query(`UPDATE bookings SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-        await db.query(`UPDATE loyalty_transactions SET phone=$1 WHERE phone=$2`, [phone, ex.phone]);
-        await db.query(`UPDATE client_tokens SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-        await db.query(`UPDATE client_notes SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-        await db.query(`UPDATE client_ficha SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-        console.log(`[db] ✓ Fusión: ${ex.phone} → ${phone} (email: ${email})`);
-        return;
+    try {
+      const existing = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
+      if (existing.rows[0] && existing.rows[0].phone !== phone) {
+        const ex = existing.rows[0];
+        const exIsSynthetic = ex.phone.startsWith('web-') || ex.phone.startsWith('manual-');
+        if (exIsSynthetic) {
+          await db.query(`UPDATE clients SET phone=$1, name=COALESCE($2,name), updated_at=NOW() WHERE id=$3`, [phone, name, ex.id]);
+          await db.query(`UPDATE bookings SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+          await db.query(`UPDATE loyalty_transactions SET phone=$1 WHERE phone=$2`, [phone, ex.phone]);
+          await db.query(`UPDATE client_tokens SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+          await db.query(`UPDATE client_notes SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+          await db.query(`UPDATE client_ficha SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
+          console.log(`[db] ✓ Fusión: ${ex.phone} → ${phone} (email: ${email})`);
+          return;
+        }
       }
-    }
+    } catch(e) { console.error('[db] fusión error:', e.message); }
   }
 
   await db.query(`
@@ -259,8 +253,6 @@ async function clientUpsert(phone, name = null, email = null) {
 
 async function clientUpdateProfile(phone, { lastName, email, promoOptIn, profileComplete }) {
   if (!db) return;
-  // Si hay email nuevo, correr fusión antes de actualizar
-  if (email) await clientUpsert(phone, null, email).catch(() => {});
   await db.query(`
     UPDATE clients SET
       last_name        = COALESCE($2, last_name),
@@ -443,7 +435,7 @@ async function conversationGetRecent(phone, limit = 20) {
 module.exports = {
   initDB, getDB,
   configGet, configSet,
-  clientGet, clientGetByEmail, clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
+  clientGet, clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
   memoryGet, memoryUpdate,
   bookingSave, bookingFindByCode, bookingFindByName, bookingCancel, bookingGetByPhone, bookingGetActive, generateBookingCode,
   loyaltyGetBalance, loyaltyGetTransactions, loyaltyGetRewards, loyaltyRedeem,

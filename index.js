@@ -383,10 +383,30 @@ app.post('/staff/booking/create', staffAuth, async (req, res) => {
       nombre, phone: phoneF,
       servicio: servicioStr, fecha, hora,
       monto: montoFinal, senaAmount: senaFinal, senaPaid: false,
-      calendarEventId: null, email, notes: notas || null
+      calendarEventId: null, email: email || null, notes: notas || null
     });
     const { appendTurnoToSheet } = require('./core/sheets');
     await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phoneF, servicio: servicioStr, monto: montoFinal, sena: senaFinal, senaPagada: false, estado: 'Confirmado', canal: 'Staff Manual' }).catch(() => {});
+
+    // Calendar
+    try {
+      const cal = require('./core/calendar');
+      const eventId = await cal.createEvent({ nombre, servicio: servicioStr, fecha, hora, phone: phoneF, code: saved.code, monto: montoFinal });
+      if (eventId) await getConn().query('UPDATE bookings SET calendar_event_id=$1 WHERE id=$2', [eventId, saved.id]).catch(()=>{});
+    } catch(ce) { console.error('[staff] calendar error:', ce.message); }
+
+    // Email confirmación
+    const emailFinal = email || await getConn().query('SELECT email FROM clients WHERE phone=$1',[phoneF]).then(r=>r.rows[0]?.email).catch(()=>null);
+    if (emailFinal) {
+      try {
+        const { mailTurnoConfirmado } = require('./agents/mailer');
+        await mailTurnoConfirmado({ to: emailFinal, nombre, servicio: servicioStr, fecha, hora, code: saved.code, monto: montoFinal, senaAmount: senaFinal, senaPaid: false });
+        console.log(`[staff] ✓ Mail confirmación → ${emailFinal}`);
+      } catch(me) { console.error('[staff] mail error:', me.message); }
+    } else {
+      console.log(`[staff] ⚠ Sin email para ${phoneF} — no se envió confirmación`);
+    }
+
     res.json({ ok: true, code: saved.code, id: saved.id });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -541,7 +561,9 @@ app.put('/staff/booking/:id/reschedule', staffAuth, async (req, res) => {
         try {
           await mailTurnoModificado({
             to: bk.email, nombre: bk.client_name, servicio: bk.service,
-            fecha, hora, code: bk.booking_code, monto: bk.monto, motivo: motivo || ''
+            fechaAnterior: bk.date_str, horaAnterior: bk.time_str,
+            fechaNueva: fecha, horaNueva: hora,
+            code: bk.booking_code, monto: bk.monto, motivo: motivo || ''
           });
           console.log(`[staff] ✓ Mail reprogramación → ${bk.email}`);
         } catch(mailErr) {
@@ -1089,7 +1111,7 @@ app.get('/staff/clients/:phone/historial', staffAuth, async (req, res) => {
   try {
     const phone = req.params.phone;
     const [client, bookings, cobros, notas, ficha] = await Promise.all([
-      db.clientGet(phone),
+      getConn().query(`SELECT c.*, COALESCE(c.email, '') as email FROM clients c WHERE c.phone = $1`, [phone]).then(r=>r.rows[0]||null),
       getConn().query(`
         SELECT id, booking_code, service, date_str, time_str, status, monto, notas, motivo, created_at
         FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC
