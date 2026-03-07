@@ -216,7 +216,7 @@ async function mailTurnoModificado({ to, nombre, servicio, fechaAnterior, horaAn
 }
 // ── COMPROBANTE DE PAGO ───────────────────────────────────────────────────────
 async function mailComprobante({ to, nombre, numero, servicios, productos,
-  totalServicios, totalProductos, descuento, total, medioPago, pointsEarned }) {
+  totalServicios, totalProductos, descuento, total, medioPago, pointsEarned, senaPagada = 0 }) {
   const transporter = getTransporter();
   if (!transporter || !to) return;
   const srvRows = (servicios||[]).map(s =>

@@ -447,7 +447,15 @@
         <div id="cobrar-email-block"></div>
       </div>
 
-      <button class="btn-primary" onclick="confirmarCobro()" style="margin-top:4px">💳 Confirmar cobro y emitir comprobante</button>
+            <!-- MP link box — aparece después de generar el link -->
+      <div id="cobrar-mp-box" style="display:none;margin-bottom:12px;padding:16px;border:1px solid var(--gold);border-radius:6px;background:rgba(201,169,110,.07)">
+        <div style="font-size:12px;font-weight:600;color:var(--gold);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">💳 Link de pago generado</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Compartí este link con la clienta. El comprobante se emitirá automáticamente al recibir el pago.</div>
+        <a id="cobrar-mp-link" href="#" target="_blank" style="display:block;word-break:break-all;font-size:12px;color:var(--gold);margin-bottom:10px"></a>
+        <button id="cobrar-mp-copy" class="btn-sm" style="background:var(--gold);color:#111;border:none">📋 Copiar link</button>
+      </div>
+
+      <button class="btn-primary" style="width:100%;padding:14px;font-size:15px" onclick="confirmarCobro()" style="margin-top:4px">💳 Confirmar cobro y emitir comprobante</button>
     </div>
 
 
@@ -1858,8 +1866,15 @@ function pickCobrarTurno(b) {
   document.getElementById('cobrar-turno-ac-list').classList.remove('open');
   document.getElementById('cobrar-turno-srch').value = '';
 
-  // Fill client info
-  cobrarCl = { phone: b.client_phone, name: b.client_name, email: b.email, points: 0 };
+  // Fill client info — split client_name into name/last_name for confirmarCobro
+  const _parts = (b.client_name || '').trim().split(/\s+/);
+  cobrarCl = {
+    phone: b.client_phone,
+    name: _parts[0] || b.client_name,
+    last_name: _parts.slice(1).join(' ') || '',
+    email: b.email || '',
+    points: 0
+  };
 
   const senaAmt  = b.sena_amount || 0;
   const senaPaid = b.sena_paid ? senaAmt : 0;
@@ -1951,6 +1966,8 @@ function resetCobrar() {
   if (clCard) clCard.style.display = 'none';
   const turnoCard = document.getElementById('cobrar-turno-card');
   if (turnoCard) turnoCard.style.display = 'none';
+  const mpBox = document.getElementById('cobrar-mp-box');
+  if (mpBox) mpBox.style.display = 'none';
   document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
   const srvList = document.getElementById('cobrar-srv-list');
   if (srvList) srvList.innerHTML = '';
@@ -2153,12 +2170,58 @@ async function confirmarCobro() {
   }
 
   const btn = document.querySelector('#panel-cobrar .btn-primary');
-  if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
 
   // Snapshot before reset
   const srvSnapshot  = [...cobrarSrvs];
   const prodSnapshot = [...cobrarProds];
   const descSnapshot = descuento;
+
+  // ── MERCADO PAGO: generar link y esperar pago ──────────────────────────────
+  if (medioPago === 'Mercado Pago') {
+    if (btn) { btn.disabled = true; btn.textContent = 'Generando link MP...'; }
+
+    // Calcular total a cobrar
+    const totalSrv  = cobrarSrvs.reduce((s,x) => s+(x.monto||0), 0);
+    const totalProd = cobrarProds.reduce((s,x) => s+(x.precio*x.cantidad), 0);
+    const totalFinal = totalSrv + totalProd - descuento;
+
+    const mpR = await api('POST', '/staff/cobros/mp-link', {
+      booking_id:   cobrarTurno?.id || null,
+      client_phone: cobrarCl?.phone || null,
+      client_name:  nombre,
+      empleado_id:  empleadoId ? parseInt(empleadoId) : null,
+      servicios:    cobrarSrvs,
+      productos:    cobrarProds,
+      descuento,
+      notas:        notas || null,
+      email:        email || null,
+      sena_pagada:  cobrarTurno?.sena_paid ? (cobrarTurno?.sena_amount || 0) : 0,
+      monto:        totalFinal,
+    });
+
+    if (btn) { btn.disabled = false; btn.textContent = '💳 Confirmar cobro y emitir comprobante'; }
+
+    if (!mpR.ok) { toast('Error generando link MP: ' + (mpR.error||''), 1); return; }
+
+    // Mostrar el link de MP para que el staff se lo pase a la cliente
+    const mpBox = document.getElementById('cobrar-mp-box');
+    const mpLinkEl = document.getElementById('cobrar-mp-link');
+    const mpCopyBtn = document.getElementById('cobrar-mp-copy');
+    if (mpBox && mpLinkEl) {
+      mpLinkEl.href = mpR.url;
+      mpLinkEl.textContent = mpR.url;
+      mpBox.style.display = '';
+      mpCopyBtn?.addEventListener('click', () => {
+        navigator.clipboard.writeText(mpR.url).then(() => toast('Link copiado ✅'));
+      }, { once: true });
+    }
+    toast('Link de MercadoPago generado — compartilo con la clienta 💳');
+    resetCobrar();
+    return;
+  }
+
+  // ── EFECTIVO / TRANSFERENCIA / DÉBITO / CRÉDITO ───────────────────────────
+  if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
 
   const r = await api('POST', '/staff/cobros', {
     booking_id:   cobrarTurno?.id || null,
@@ -2203,8 +2266,8 @@ function mostrarComprobante(cobro, nombre, medioPago, email, srvs, prods, desc) 
   const html = `
     <div id="comprobante-print" style="font-family:'DM Sans',sans-serif">
       <div style="text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid var(--border)">
-        <div style="width:50px;height:50px;background:linear-gradient(135deg,var(--pink),#a020a0);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 10px">✂️</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:20px">Estefan Peluquería</div>
+        <img src="https://peluqueria-bot.onrender.com/assets/logo.jpg" alt="Estefan" style="width:70px;height:70px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 10px" onerror="this.style.display='none'">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:20px;letter-spacing:.04em">ESTEFAN</div>
         <div style="color:var(--muted);font-size:12px;margin-top:2px">Puertos, Argentina</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:13px;margin-bottom:16px">

@@ -542,6 +542,69 @@ app.post('/mp/webhook', async (req, res) => {
       const p = payment.data;
       if (p.status === 'approved') {
         const bookingId = p.external_reference;
+        // ── Cobro de caja pendiente (external_reference = "cobro:ID") ─────────
+        if (typeof bookingId === 'string' && bookingId.startsWith('cobro:')) {
+          const cobroId = bookingId.replace('cobro:', '');
+          const dbConn = getConn();
+
+          // Marcar cobro como pagado
+          await dbConn.query(
+            `UPDATE payments SET status='paid', medio_pago='Mercado Pago' WHERE id=$1`,
+            [cobroId]
+          ).catch(()=>{});
+
+          // Marcar turno como Completado si había booking_id
+          const cobroR = await dbConn.query(
+            `SELECT p.*, b.date_str, b.time_str, b.service
+             FROM payments p
+             LEFT JOIN bookings b ON b.id = p.booking_id
+             WHERE p.id = $1`, [cobroId]
+          );
+          const cobro = cobroR.rows[0];
+          if (cobro) {
+            if (cobro.booking_id) {
+              await dbConn.query(`UPDATE bookings SET status='Completado' WHERE id=$1`, [cobro.booking_id]).catch(()=>{});
+            }
+            // Actualizar total_spent
+            if (cobro.client_phone) {
+              await dbConn.query(
+                `UPDATE clients SET total_spent=COALESCE(total_spent,0)+$1, visit_count=COALESCE(visit_count,0)+1, last_visit=NOW() WHERE phone=$2`,
+                [cobro.total, cobro.client_phone]
+              ).catch(()=>{});
+            }
+            // Puntos
+            const pointsEarned = cobro.total_servicios > 0 ? Math.floor(cobro.total_servicios / 1000) : 0;
+            if (pointsEarned > 0 && cobro.client_phone) {
+              await dbConn.query(
+                `UPDATE clients SET points=COALESCE(points,0)+$1 WHERE phone=$2`,
+                [pointsEarned, cobro.client_phone]
+              ).catch(()=>{});
+            }
+            // Emitir comprobante por mail
+            if (cobro.email) {
+              try {
+                const { mailComprobante } = require('./agents/mailer');
+                const servicios = JSON.parse(cobro.servicios_json || '[]');
+                const productos = JSON.parse(cobro.productos_json || '[]');
+                await mailComprobante({
+                  to: cobro.email, nombre: cobro.client_name,
+                  numero: cobro.numero_comprobante,
+                  servicios, productos,
+                  totalServicios: cobro.total_servicios,
+                  totalProductos: cobro.total_productos,
+                  descuento: cobro.descuento, total: cobro.total,
+                  medioPago: 'Mercado Pago', pointsEarned,
+                  senaPagada: 0,
+                });
+                console.log(`[mp] ✓ Comprobante cobro enviado a ${cobro.email}`);
+              } catch(me) { console.error('[mp] comprobante mail error:', me.message); }
+            }
+            console.log(`[mp] ✓ Cobro caja ${cobroId} pagado vía MP`);
+          }
+          res.sendStatus(200); return;
+        }
+
+        // ── Seña de turno (external_reference = bookingId numérico) ──────────
         if (bookingId) {
           await getConn().query('UPDATE bookings SET sena_paid = true, status = $1 WHERE id = $2', ['Seña pagada', bookingId]).catch(() => {});
           const { updateTurnoStatus } = require('./core/sheets');
@@ -959,6 +1022,17 @@ async function init() {
   // 1. DB
   const dbConn = await db.initDB();
 
+  // Migraciones — columnas opcionales que pueden no existir en instancias antiguas
+  if (dbConn) {
+    const migrations = [
+      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'paid'`,
+      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS mp_payment_link TEXT`,
+    ];
+    for (const m of migrations) {
+      await dbConn.query(m).catch(e => console.log('[migration] skipped:', e.message));
+    }
+  }
+
   // 2. Google tokens desde DB
   if (dbConn) {
     const tokens = await db.configGet('google_tokens');
@@ -1010,6 +1084,66 @@ app.get('/staff/productos', staffAuth, async (req, res) => {
 });
 
 // Crear cobro / comprobante
+// Generar link MP para cobro en caja — comprobante se emite al recibir el pago
+app.post('/staff/cobros/mp-link', staffAuth, async (req, res) => {
+  try {
+    const { booking_id, client_phone, client_name, empleado_id, servicios,
+            productos, descuento, notas, email, sena_pagada, monto } = req.body;
+    const axios = require('axios');
+    const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+    if (!MP_ACCESS_TOKEN) return res.status(500).json({ error: 'MP_ACCESS_TOKEN no configurado' });
+
+    // Guardar datos del cobro pendiente en DB para emitirlo al recibir el pago
+    const dbConn = getConn();
+    const totalServicios = (servicios||[]).reduce((s,x) => s+(x.monto||0), 0);
+    const totalProductos = (productos||[]).reduce((s,x) => s+(x.precio*x.cantidad), 0);
+    const descuentoAmt   = descuento || 0;
+    const total          = monto || (totalServicios + totalProductos - descuentoAmt);
+
+    // Guardar cobro_pendiente en tabla payments con status='mp_pending'
+    const r = await dbConn.query(`
+      INSERT INTO payments
+        (booking_id, client_phone, client_name, empleado_id, medio_pago,
+         servicios_json, productos_json, total_servicios, total_productos,
+         descuento, total, notas, email, fecha_str, status)
+      VALUES ($1,$2,$3,$4,'Mercado Pago',$5,$6,$7,$8,$9,$10,$11,$12,
+              TO_CHAR(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires','DD/MM/YYYY'),
+              'mp_pending')
+      RETURNING id, numero_comprobante
+    `, [
+      booking_id||null, client_phone||null, client_name||'',
+      empleado_id||null,
+      JSON.stringify(servicios||[]), JSON.stringify(productos||[]),
+      totalServicios, totalProductos, descuentoAmt, total, notas||null, email||null
+    ]);
+    const cobro = r.rows[0];
+
+    // Generar preferencia MP
+    const payload = {
+      items: [{ title: `Pago en salón — Estefan Peluquería`, quantity: 1, unit_price: total, currency_id: 'ARS' }],
+      payer: { name: client_name },
+      external_reference: `cobro:${cobro.id}`,
+      back_urls: {
+        success: 'https://peluqueria-bot.onrender.com/mp/success',
+        failure: 'https://peluqueria-bot.onrender.com/mp/failure',
+      },
+      auto_return: 'approved',
+      notification_url: 'https://peluqueria-bot.onrender.com/mp/webhook',
+    };
+    const mpRes = await axios.post('https://api.mercadopago.com/checkout/preferences', payload, {
+      headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }
+    });
+    const mpUrl = mpRes.data?.init_point;
+    if (!mpUrl) return res.status(500).json({ error: 'MP no devolvió URL' });
+
+    // Guardar el link en el cobro
+    await dbConn.query('UPDATE payments SET mp_payment_link=$1 WHERE id=$2', [mpUrl, cobro.id]).catch(()=>{});
+
+    console.log(`[cobros-mp] ✓ Link generado cobro_id=${cobro.id} → ${mpUrl}`);
+    res.json({ ok: true, url: mpUrl, cobro_id: cobro.id });
+  } catch(e) { console.error('[cobros-mp] error:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 app.post('/staff/cobros', staffAuth, async (req, res) => {
   try {
     const { booking_id, client_phone, client_name, empleado_id, medio_pago,
