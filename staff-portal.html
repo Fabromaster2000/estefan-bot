@@ -328,20 +328,57 @@
         <button class="btn-sm" onclick="resetCobrar()">✕ Limpiar</button>
       </div>
 
-      <!-- CLIENTE -->
+      <!-- TURNO / CLIENTE -->
       <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">👤 Cliente</div>
-        <div class="ac-wrap">
-          <input class="form-input" id="cobrar-srch" placeholder="Buscar clienta por nombre, teléfono o email..." oninput="searchCobrarCl(this.value)" autocomplete="off">
-          <div class="ac-list" id="cobrar-ac-list"></div>
+        <!-- Modo tabs: buscar turno o buscar cliente directo -->
+        <div style="display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+          <button id="cobrar-tab-turno" onclick="setCobrarMode('turno')"
+            style="flex:1;padding:8px 0;font-size:12px;font-weight:600;letter-spacing:.04em;border:none;cursor:pointer;transition:all .2s;background:var(--gold);color:#111">
+            🔖 BUSCAR POR TURNO
+          </button>
+          <button id="cobrar-tab-cliente" onclick="setCobrarMode('cliente')"
+            style="flex:1;padding:8px 0;font-size:12px;font-weight:600;letter-spacing:.04em;border:none;cursor:pointer;transition:all .2s;background:var(--surface2);color:var(--muted)">
+            👤 CLIENTE DIRECTO
+          </button>
         </div>
-        <div id="cobrar-cl-card" style="display:none;margin-top:10px;background:rgba(232,68,122,.08);border:1px solid rgba(232,68,122,.3);border-radius:10px;padding:12px 14px;align-items:center;justify-content:space-between;gap:12px">
-          <div><div id="cobrar-cl-name" style="font-weight:600"></div><div id="cobrar-cl-det" style="font-size:12px;color:var(--muted);margin-top:2px"></div></div>
-          <button class="btn-sm" onclick="clearCobrarCl()">✕</button>
+
+        <!-- Panel: buscar turno -->
+        <div id="cobrar-panel-turno">
+          <div class="ac-wrap">
+            <input class="form-input" id="cobrar-turno-srch"
+              placeholder="Buscar turno por código (#WRSJ), nombre o teléfono..."
+              oninput="searchCobrarTurno(this.value)" autocomplete="off">
+            <div class="ac-list" id="cobrar-turno-ac-list"></div>
+          </div>
+          <!-- Turno seleccionado -->
+          <div id="cobrar-turno-card" style="display:none;margin-top:10px;border:1px solid var(--gold-dim);border-radius:6px;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+              <div>
+                <div id="cobrar-turno-nombre" style="font-weight:600;font-size:15px"></div>
+                <div id="cobrar-turno-det" style="font-size:12px;color:var(--muted);margin-top:3px"></div>
+                <div id="cobrar-turno-saldo" style="margin-top:8px;font-size:13px"></div>
+              </div>
+              <button class="btn-sm" onclick="clearCobrarTurno()">✕</button>
+            </div>
+          </div>
         </div>
-        <div style="margin-top:10px">
-          <label class="form-label">O ingresá nombre manualmente</label>
-          <input class="form-input" id="cobrar-nombre-manual" placeholder="Nombre del cliente (si no está en el sistema)">
+
+        <!-- Panel: buscar cliente directo -->
+        <div id="cobrar-panel-cliente" style="display:none">
+          <div class="ac-wrap">
+            <input class="form-input" id="cobrar-srch"
+              placeholder="Buscar clienta por nombre, teléfono o email..."
+              oninput="searchCobrarCl(this.value)" autocomplete="off">
+            <div class="ac-list" id="cobrar-ac-list"></div>
+          </div>
+          <div id="cobrar-cl-card" style="display:none;margin-top:10px;background:rgba(201,169,110,.07);border:1px solid var(--gold-dim);border-radius:6px;padding:12px 14px;align-items:center;justify-content:space-between;gap:12px">
+            <div><div id="cobrar-cl-name" style="font-weight:600"></div><div id="cobrar-cl-det" style="font-size:12px;color:var(--muted);margin-top:2px"></div></div>
+            <button class="btn-sm" onclick="clearCobrarCl()">✕</button>
+          </div>
+          <div style="margin-top:10px">
+            <label class="form-label">O ingresá nombre manualmente</label>
+            <input class="form-input" id="cobrar-nombre-manual" placeholder="Nombre del cliente (si no está en el sistema)">
+          </div>
         </div>
       </div>
 
@@ -1776,6 +1813,95 @@ async function loadDBStats(){
 // ── COBRAR ────────────────────────────────────────────────────────────────────
 let cobrarCl = null, cobrarSrvs = [], cobrarProds = [], allEmpleados = [], allProductos = [];
 let cobrarSrchT = null;
+let cobrarTurno = null;  // turno seleccionado para cobrar
+let cobrarTurnoSrchT = null;
+let cobrarMode = 'turno'; // 'turno' | 'cliente'
+
+function setCobrarMode(mode) {
+  cobrarMode = mode;
+  document.getElementById('cobrar-panel-turno').style.display   = mode === 'turno'   ? '' : 'none';
+  document.getElementById('cobrar-panel-cliente').style.display = mode === 'cliente' ? '' : 'none';
+  document.getElementById('cobrar-tab-turno').style.background  = mode === 'turno'   ? 'var(--gold)' : 'var(--surface2)';
+  document.getElementById('cobrar-tab-turno').style.color       = mode === 'turno'   ? '#111' : 'var(--muted)';
+  document.getElementById('cobrar-tab-cliente').style.background = mode === 'cliente' ? 'var(--gold)' : 'var(--surface2)';
+  document.getElementById('cobrar-tab-cliente').style.color      = mode === 'cliente' ? '#111' : 'var(--muted)';
+}
+
+function searchCobrarTurno(q) {
+  clearTimeout(cobrarTurnoSrchT);
+  const el = document.getElementById('cobrar-turno-ac-list');
+  if (!q || q.length < 2) { el.classList.remove('open'); return; }
+  cobrarTurnoSrchT = setTimeout(async () => {
+    // Support #CODE or plain text
+    const query = q.trim().replace(/^#/, '');
+    const results = await api('GET', `/staff/bookings/search?q=${encodeURIComponent(query)}`);
+    if (!results?.length) {
+      el.innerHTML = '<div class="ac-item" style="color:var(--muted)">Sin resultados</div>';
+      el.classList.add('open'); return;
+    }
+    el.innerHTML = results.map(b => {
+      const nombre = b.client_name || '';
+      const senaInfo = b.sena_amount > 0
+        ? ` · Seña: $${(b.sena_paid ? b.sena_amount : 0).toLocaleString('es-AR')} pagada de $${b.sena_amount.toLocaleString('es-AR')}`
+        : '';
+      return `<div class="ac-item" onclick='pickCobrarTurno(${JSON.stringify(b)})'>
+        <strong>#${b.booking_code} — ${nombre}</strong>
+        <small>${b.service} · ${b.date_str} ${b.time_str} · $${(b.monto||0).toLocaleString('es-AR')}${senaInfo} · ${b.status}</small>
+      </div>`;
+    }).join('');
+    el.classList.add('open');
+  }, 300);
+}
+
+function pickCobrarTurno(b) {
+  cobrarTurno = b;
+  document.getElementById('cobrar-turno-ac-list').classList.remove('open');
+  document.getElementById('cobrar-turno-srch').value = '';
+
+  // Fill client info
+  cobrarCl = { phone: b.client_phone, name: b.client_name, email: b.email, points: 0 };
+
+  const senaAmt  = b.sena_amount || 0;
+  const senaPaid = b.sena_paid ? senaAmt : 0;
+  const saldo    = (b.monto || 0) - senaPaid;
+
+  document.getElementById('cobrar-turno-nombre').textContent = b.client_name || '';
+  document.getElementById('cobrar-turno-det').textContent =
+    `#${b.booking_code} · ${b.service} · ${b.date_str} ${b.time_str}`;
+
+  const saldoEl = document.getElementById('cobrar-turno-saldo');
+  let saldoHtml = `<span style="color:var(--gold);font-weight:600">Saldo a cobrar: $${saldo.toLocaleString('es-AR')}</span>`;
+  if (senaAmt > 0) {
+    saldoHtml += `<span style="color:var(--muted);margin-left:10px;font-size:12px">
+      (Total $${(b.monto).toLocaleString('es-AR')} − Seña ${b.sena_paid ? 'pagada' : 'pendiente'} $${senaAmt.toLocaleString('es-AR')})
+    </span>`;
+  }
+  saldoEl.innerHTML = saldoHtml;
+  document.getElementById('cobrar-turno-card').style.display = '';
+
+  // Pre-cargar servicio del turno en cobrarSrvs
+  cobrarSrvs = [];
+  cobrarProds = [];
+  // Add main service
+  const srvNombre = b.service || '';
+  cobrarSrvs.push({ nombre: srvNombre, monto: saldo }); // saldo ya descuenta la seña
+  renderCobrarSrvList();
+  recalcCobrar();
+
+  // Pre-fill email
+  if (b.email) renderCobrarEmailBlock({ email: b.email });
+}
+
+function clearCobrarTurno() {
+  cobrarTurno = null;
+  cobrarCl = null;
+  cobrarSrvs = [];
+  cobrarProds = [];
+  document.getElementById('cobrar-turno-card').style.display = 'none';
+  document.getElementById('cobrar-turno-srch').value = '';
+  renderCobrarSrvList();
+  recalcCobrar();
+}
 
 async function initCobrar() {
   [allEmpleados, allProductos] = await Promise.all([
@@ -1818,11 +1944,13 @@ async function initCobrar() {
 }
 
 function resetCobrar() {
-  cobrarCl = null; cobrarSrvs = []; cobrarProds = [];
-  const fields = ['cobrar-srch','cobrar-nombre-manual','cobrar-notas','cobrar-descuento'];
+  cobrarCl = null; cobrarSrvs = []; cobrarProds = []; cobrarTurno = null;
+  const fields = ['cobrar-srch','cobrar-nombre-manual','cobrar-notas','cobrar-descuento','cobrar-turno-srch'];
   fields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const clCard = document.getElementById('cobrar-cl-card');
   if (clCard) clCard.style.display = 'none';
+  const turnoCard = document.getElementById('cobrar-turno-card');
+  if (turnoCard) turnoCard.style.display = 'none';
   document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
   const srvList = document.getElementById('cobrar-srv-list');
   if (srvList) srvList.innerHTML = '';
@@ -2033,6 +2161,7 @@ async function confirmarCobro() {
   const descSnapshot = descuento;
 
   const r = await api('POST', '/staff/cobros', {
+    booking_id:   cobrarTurno?.id || null,
     client_phone: cobrarCl?.phone || null,
     client_name:  nombre,
     empleado_id:  empleadoId ? parseInt(empleadoId) : null,
@@ -2042,6 +2171,7 @@ async function confirmarCobro() {
     descuento,
     notas:        notas || null,
     email:        email || null,
+    sena_pagada:  cobrarTurno?.sena_paid ? (cobrarTurno?.sena_amount || 0) : 0,
   });
 
   if (btn) { btn.disabled = false; btn.textContent = '💳 Confirmar cobro y emitir comprobante'; }
