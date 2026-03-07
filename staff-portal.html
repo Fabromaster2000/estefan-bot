@@ -2452,7 +2452,6 @@ function renderCobrarEmailBlock(cl) {
 // ── Confirm cobro ─────────────────────────────────────────────────────────────
 async function confirmarCobro() {
   const empleadoId = document.getElementById('cobrar-empleado').value;
-  const medioPago  = document.getElementById('cobrar-medio').value;
   const descuento  = parseInt(document.getElementById('cobrar-descuento').value) || 0;
   const notas      = document.getElementById('cobrar-notas').value.trim();
 
@@ -2465,7 +2464,6 @@ async function confirmarCobro() {
   const emailInput = document.getElementById('cobrar-email-input');
   let email = emailInput?.value?.trim() || cobrarCl?.email || '';
 
-  // Save new email to client if changed
   if (email && cobrarCl && email !== cobrarCl.email) {
     const parts = nombre.trim().split(' ');
     await api('PUT', `/staff/clients/${encodeURIComponent(cobrarCl.phone)}`, {
@@ -2475,7 +2473,9 @@ async function confirmarCobro() {
   }
 
   const btn = document.querySelector('#panel-cobrar .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
 
+  try {
   // Snapshot before reset
   const srvSnapshot  = [...cobrarSrvs];
   const prodSnapshot = [...cobrarProds];
@@ -2598,6 +2598,12 @@ async function confirmarCobro() {
   mostrarComprobante(r, nombre, getSplitMedioLabel(), email, srvSnapshot, prodSnapshot, descTotal);
   resetCobrar();
   toast('Cobro registrado ✅');
+
+  } catch(err) {
+    console.error('[confirmarCobro]', err);
+    toast('Error: ' + err.message, 1);
+    if (btn) { btn.disabled = false; btn.textContent = '💳 Confirmar cobro y emitir comprobante'; }
+  }
 }
 
 // ── Comprobante modal ─────────────────────────────────────────────────────────
