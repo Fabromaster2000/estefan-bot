@@ -1637,7 +1637,7 @@ document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click
 let adminBookings = [], adminClients = [], pendingAdminDelete = null;
 
 function switchAdminTab(tab) {
-  ['turnos','clientes','empleados','productos','reportes','herramientas'].forEach(t => {
+  ['turnos','clientes','empleados','productos','reportes','herramientas','puntos'].forEach(t => {
     const el = document.getElementById('admin-panel-'+t);
     if (el) el.style.display = t===tab ? '' : 'none';
   });
