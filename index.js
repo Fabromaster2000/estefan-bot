@@ -1084,6 +1084,36 @@ app.get('/staff/productos', staffAuth, async (req, res) => {
 });
 
 // Crear cobro / comprobante
+// Enviar link MP por mail cuando el staff lo pide desde el cobrar
+app.post('/staff/cobros/send-mp-link', staffAuth, async (req, res) => {
+  try {
+    const { email, nombre, url } = req.body;
+    if (!email || !url) return res.status(400).json({ error: 'Faltan campos' });
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }
+    });
+    await transporter.sendMail({
+      from: `"Estefan Peluquería" <${process.env.GMAIL_USER}>`,
+      to: email,
+      subject: '💳 Link de pago — Estefan Peluquería',
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#111;color:#f0e8dc;padding:32px;border-radius:8px">
+          <div style="text-align:center;margin-bottom:24px">
+            <img src="https://peluqueria-bot.onrender.com/assets/logo.jpg" alt="Estefan" width="80" style="border-radius:50%;display:block;margin:0 auto 12px">
+            <div style="font-family:Georgia,serif;font-size:18px;letter-spacing:.05em">ESTEFAN</div>
+          </div>
+          <p style="margin:0 0 16px">Hola${nombre ? ' <strong>' + nombre + '</strong>' : ''}! 💛</p>
+          <p style="margin:0 0 20px;color:#b5a898">Te mandamos el link para abonar en Estefan Peluquería:</p>
+          <a href="${url}" style="display:block;text-align:center;background:#c9a96e;color:#111;padding:14px 24px;border-radius:4px;font-weight:700;text-decoration:none;font-size:15px">💳 Ir a MercadoPago</a>
+          <p style="margin:20px 0 0;font-size:11px;color:#8a7a6a;text-align:center">Estefan Peluquería · Puertos, Buenos Aires · Lunes a sábado 10:00–20:00hs</p>
+        </div>`
+    });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Generar link MP para cobro en caja — comprobante se emite al recibir el pago
 app.post('/staff/cobros/mp-link', staffAuth, async (req, res) => {
   try {

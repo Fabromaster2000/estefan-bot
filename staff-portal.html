@@ -448,11 +448,17 @@
       </div>
 
             <!-- MP link box — aparece después de generar el link -->
-      <div id="cobrar-mp-box" style="display:none;margin-bottom:12px;padding:16px;border:1px solid var(--gold);border-radius:6px;background:rgba(201,169,110,.07)">
-        <div style="font-size:12px;font-weight:600;color:var(--gold);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">💳 Link de pago generado</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Compartí este link con la clienta. El comprobante se emitirá automáticamente al recibir el pago.</div>
-        <a id="cobrar-mp-link" href="#" target="_blank" style="display:block;word-break:break-all;font-size:12px;color:var(--gold);margin-bottom:10px"></a>
-        <button id="cobrar-mp-copy" class="btn-sm" style="background:var(--gold);color:#111;border:none">📋 Copiar link</button>
+      <div id="cobrar-mp-box" class="mp-box" style="margin-bottom:12px">
+        <div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:6px">💳 Link de pago generado</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+          Compartí este link con la clienta. El comprobante se emite automáticamente al recibir el pago.
+        </div>
+        <div id="cobrar-mp-url" class="mp-url"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn-sm gold" onclick="cobrarMpCopy()">📋 Copiar link</button>
+          <button class="btn-sm" onclick="cobrarMpWhatsapp()" style="background:#25d366;color:#fff;border:none">📱 WhatsApp</button>
+          <button class="btn-sm" onclick="cobrarMpMail()" style="background:#4a90d9;color:#fff;border:none">✉️ Enviar por mail</button>
+        </div>
       </div>
 
       <button class="btn-primary" style="width:100%;padding:14px;font-size:15px" onclick="confirmarCobro()" style="margin-top:4px">💳 Confirmar cobro y emitir comprobante</button>
@@ -1918,6 +1924,36 @@ function clearCobrarTurno() {
   recalcCobrar();
 }
 
+function cobrarMpCopy() {
+  const url = window._cobrarMpUrl;
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => toast('Link copiado ✅'));
+}
+
+function cobrarMpWhatsapp() {
+  const url = window._cobrarMpUrl;
+  const nombre = window._cobrarMpNombre || '';
+  const phone = (window._cobrarMpPhone || '').replace(/\D/g, '');
+  if (!url) return;
+  const msg = `Hola ${nombre}! 💛 Te mandamos el link para abonar tu seña en Estefan Peluquería:\n${url}`;
+  if (phone) {
+    window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+  } else {
+    // No phone — open WhatsApp without a number so they can paste
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+  }
+}
+
+async function cobrarMpMail() {
+  const url = window._cobrarMpUrl;
+  const email = window._cobrarMpEmail;
+  const nombre = window._cobrarMpNombre || '';
+  if (!url || !email) { toast('No hay email para esta clienta', 1); return; }
+  const r = await api('POST', '/staff/cobros/send-mp-link', { email, nombre, url });
+  if (r?.ok) toast(`Mail enviado a ${email} ✅`);
+  else toast('Error enviando mail: ' + (r?.error||''), 1);
+}
+
 async function initCobrar() {
   [allEmpleados, allProductos] = await Promise.all([
     api('GET', '/staff/empleados'),
@@ -1967,7 +2003,8 @@ function resetCobrar() {
   const turnoCard = document.getElementById('cobrar-turno-card');
   if (turnoCard) turnoCard.style.display = 'none';
   const mpBox = document.getElementById('cobrar-mp-box');
-  if (mpBox) mpBox.style.display = 'none';
+  if (mpBox) { mpBox.classList.remove('vis'); }
+  window._cobrarMpUrl = null; window._cobrarMpPhone = null; window._cobrarMpEmail = null;
   document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
   const srvList = document.getElementById('cobrar-srv-list');
   if (srvList) srvList.innerHTML = '';
@@ -2203,20 +2240,35 @@ async function confirmarCobro() {
 
     if (!mpR.ok) { toast('Error generando link MP: ' + (mpR.error||''), 1); return; }
 
-    // Mostrar el link de MP para que el staff se lo pase a la cliente
+    // Guardar el link y mostrar el box
+    window._cobrarMpUrl    = mpR.url;
+    window._cobrarMpNombre = nombre;
+    window._cobrarMpPhone  = cobrarCl?.phone || '';
+    window._cobrarMpEmail  = email || cobrarCl?.email || '';
+
     const mpBox = document.getElementById('cobrar-mp-box');
-    const mpLinkEl = document.getElementById('cobrar-mp-link');
-    const mpCopyBtn = document.getElementById('cobrar-mp-copy');
-    if (mpBox && mpLinkEl) {
-      mpLinkEl.href = mpR.url;
-      mpLinkEl.textContent = mpR.url;
-      mpBox.style.display = '';
-      mpCopyBtn?.addEventListener('click', () => {
-        navigator.clipboard.writeText(mpR.url).then(() => toast('Link copiado ✅'));
-      }, { once: true });
+    const mpUrlEl = document.getElementById('cobrar-mp-url');
+    if (mpBox && mpUrlEl) {
+      mpUrlEl.textContent = mpR.url;
+      mpBox.classList.add('vis');
+      // Scroll to the MP box
+      mpBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    toast('Link de MercadoPago generado — compartilo con la clienta 💳');
-    resetCobrar();
+    toast('Link de MercadoPago generado 💳');
+    // Reset form pero NO el mp-box (tiene que seguir visible)
+    cobrarTurno = null; cobrarCl = null; cobrarSrvs = []; cobrarProds = [];
+    const fields = ['cobrar-srch','cobrar-nombre-manual','cobrar-notas','cobrar-descuento','cobrar-turno-srch'];
+    fields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
+    const srvList = document.getElementById('cobrar-srv-list');
+    if (srvList) srvList.innerHTML = '';
+    const prodList = document.getElementById('cobrar-prod-list');
+    if (prodList) prodList.innerHTML = '';
+    const clCard = document.getElementById('cobrar-cl-card');
+    if (clCard) clCard.style.display = 'none';
+    const turnoCard = document.getElementById('cobrar-turno-card');
+    if (turnoCard) turnoCard.style.display = 'none';
+    recalcCobrar();
     return;
   }
 
