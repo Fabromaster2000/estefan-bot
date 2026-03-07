@@ -429,15 +429,12 @@
               <option value="">— Seleccioná —</option>
             </select>
           </div>
-          <div class="form-group">
-            <label class="form-label">💳 Medio de pago *</label>
-            <select class="form-select" id="cobrar-medio">
-              <option value="Efectivo">💵 Efectivo</option>
-              <option value="Transferencia">🏦 Transferencia</option>
-              <option value="Mercado Pago">📱 Mercado Pago</option>
-              <option value="Débito">💳 Débito</option>
-              <option value="Crédito">💳 Crédito</option>
-            </select>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">💳 Medios de pago *</label>
+            <div id="cobrar-splits-wrap" style="display:flex;flex-direction:column;gap:8px">
+              <!-- filas de split generadas dinámicamente -->
+            </div>
+            <button onclick="addSplitRow()" class="btn-sm" style="margin-top:8px;width:100%">+ Agregar medio de pago</button>
           </div>
         </div>
       </div>
@@ -927,6 +924,7 @@ async function showPanel(n){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('panel-'+n).classList.add('active');
   document.getElementById('tab-'+n).classList.add('active');
+  if(n==='cobrar'){ if(!cobrarSplitRows.length) cobrarSplitRows=[{medio:'Efectivo',monto:''}]; renderSplitRows(); }
   if(n==='agenda')loadAgenda();
   if(n==='clientes')loadClientes();
   if(n==='nuevo')resetForm();
@@ -2022,6 +2020,73 @@ async function crearNuevaClienta() {
 
 // ── CÓDIGO DE DESCUENTO EN COBRAR ────────────────────────────────────────────
 var cobrarCodigoActivo = null;
+var cobrarSplitRows = [];  // [{ medio, monto }]
+
+function MEDIOS_OPTS() {
+  return [
+    { v:'Efectivo',     l:'💵 Efectivo'      },
+    { v:'Transferencia',l:'🏦 Transferencia'  },
+    { v:'Mercado Pago', l:'📱 Mercado Pago'   },
+    { v:'Débito',       l:'💳 Débito'         },
+    { v:'Crédito',      l:'💳 Crédito'        },
+  ];
+}
+
+function renderSplitRows() {
+  const wrap = document.getElementById('cobrar-splits-wrap');
+  if (!wrap) return;
+  if (!cobrarSplitRows.length) cobrarSplitRows = [{ medio:'Efectivo', monto:'' }];
+  wrap.innerHTML = cobrarSplitRows.map((row, i) => `
+    <div style="display:flex;gap:8px;align-items:center">
+      <select class="form-select" style="flex:1" onchange="setSplitMedio(${i},this.value)">
+        ${MEDIOS_OPTS().map(o => `<option value="${o.v}" ${o.v===row.medio?'selected':''}>${o.l}</option>`).join('')}
+      </select>
+      <input class="form-input" type="number" placeholder="Monto $" style="width:130px"
+        value="${row.monto}" oninput="setSplitMonto(${i},this.value)" min="0">
+      ${cobrarSplitRows.length > 1
+        ? `<button onclick="removeSplitRow(${i})" style="background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;padding:0 4px">✕</button>`
+        : '<div style="width:28px"></div>'}
+    </div>`).join('');
+}
+
+function addSplitRow() {
+  cobrarSplitRows.push({ medio:'Efectivo', monto:'' });
+  renderSplitRows();
+  recalcCobrar();
+}
+function removeSplitRow(i) {
+  cobrarSplitRows.splice(i, 1);
+  renderSplitRows();
+  recalcCobrar();
+}
+function setSplitMedio(i, v) {
+  cobrarSplitRows[i].medio = v;
+  recalcCobrar();
+}
+function setSplitMonto(i, v) {
+  cobrarSplitRows[i].monto = v === '' ? '' : parseFloat(v) || 0;
+  recalcCobrar();
+}
+// Helper: get medioPago string for display (concatena si hay varios)
+function getSplitMedioLabel() {
+  const filled = cobrarSplitRows.filter(r => r.monto !== '' && r.monto > 0);
+  if (!filled.length) return cobrarSplitRows[0]?.medio || 'Efectivo';
+  if (filled.length === 1) return filled[0].medio;
+  return filled.map(r => `${r.medio} $${Number(r.monto).toLocaleString('es-AR')}`).join(' + ');
+}
+// Helper: total ingresado en splits
+function getSplitTotal() {
+  return cobrarSplitRows.reduce((s,r) => s + (parseFloat(r.monto) || 0), 0);
+}
+// Helper: ¿tiene MP?
+function splitHasMP() {
+  return cobrarSplitRows.some(r => r.medio === 'Mercado Pago' && (parseFloat(r.monto) || 0) > 0);
+}
+// Helper: monto de MP
+function splitMPAmount() {
+  const mp = cobrarSplitRows.find(r => r.medio === 'Mercado Pago');
+  return mp ? (parseFloat(mp.monto) || 0) : 0;
+}
 async function validarCodigo() {
   const code = document.getElementById('cobrar-codigo').value.trim().toUpperCase();
   if (!code) { toast('Ingresá un código', 1); return; }
@@ -2054,20 +2119,25 @@ function buscarClientePts(q) {
     if (q.length < 2) { document.getElementById('pts-admin-clientes-list').innerHTML=''; return; }
     const r = await api('GET', `/staff/clients/search?q=${encodeURIComponent(q)}`);
     if (!Array.isArray(r)) return;
+    // Store results in window to avoid phone interpolation issues in onclick
+    window._ptsClientResults = r;
     const list = document.getElementById('pts-admin-clientes-list');
-    list.innerHTML = r.map(c => {
+    list.innerHTML = r.map((c, i) => {
       const nombre = ((c.name||'') + ' ' + (c.last_name||'')).trim();
-      return `<div onclick="selectPtsClient('${c.phone}','${nombre}',${c.points||0})" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px" class="hover-row">
+      return `<div onclick="selectPtsClient(${i})" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px" class="hover-row">
         <strong>${nombre}</strong> <span style="color:var(--muted)">${c.phone}</span>
         <span style="float:right;color:var(--gold)">⭐ ${c.points||0} pts</span>
       </div>`;
     }).join('') || '<div style="padding:12px;color:var(--muted);font-size:13px">Sin resultados</div>';
   }, 300);
 }
-function selectPtsClient(phone, nombre, pts) {
-  _ptsAdminClient = phone;
+function selectPtsClient(idx) {
+  const c = (window._ptsClientResults || [])[idx];
+  if (!c) return;
+  const nombre = ((c.name||'') + ' ' + (c.last_name||'')).trim();
+  _ptsAdminClient = c.phone;  // stored safely in JS, not interpolated in HTML
   document.getElementById('pts-admin-nombre').textContent = nombre;
-  document.getElementById('pts-admin-pts-actual').textContent = `Puntos actuales: ${pts}`;
+  document.getElementById('pts-admin-pts-actual').textContent = `Puntos actuales: ${c.points||0}`;
   document.getElementById('pts-admin-result').style.display = 'block';
   document.getElementById('pts-admin-clientes-list').innerHTML = '';
   document.getElementById('pts-admin-srch').value = nombre;
@@ -2183,6 +2253,8 @@ function resetCobrar() {
   if (codigoInput) codigoInput.value = '';
   const codigoInfo = document.getElementById('cobrar-codigo-info');
   if (codigoInfo) codigoInfo.style.display = 'none';
+  cobrarSplitRows = [{ medio:'Efectivo', monto:'' }];
+  renderSplitRows();
   document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
   const srvList = document.getElementById('cobrar-srv-list');
   if (srvList) srvList.innerHTML = '';
@@ -2336,6 +2408,14 @@ function recalcCobrar() {
     if (totalProd) rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted)"><span>Productos</span><span>$${totalProd.toLocaleString('es-AR')}</span></div>`;
     if (desc)      rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--red)"><span>Descuento</span><span>-$${desc.toLocaleString('es-AR')}</span></div>`;
     if (codeDisc)  rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:#7cc165"><span>🎟️ Código ${cobrarCodigoActivo.code}</span><span>-$${codeDisc.toLocaleString('es-AR')}</span></div>`;
+    // Split balance
+    const splitPaid = getSplitTotal();
+    if (splitPaid > 0 && splitPaid !== total) {
+      const diff = total - splitPaid;
+      const color = diff > 0 ? 'var(--red)' : '#7cc165';
+      const label = diff > 0 ? `Falta asignar` : `Exceso`;
+      rows += `<div style="display:flex;justify-content:space-between;font-size:12px;color:${color}"><span>⚠️ ${label}</span><span>$${Math.abs(diff).toLocaleString('es-AR')}</span></div>`;
+    }
     if (pts > 0)   rows += `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gold)"><span>⭐ Puntos a ganar</span><span>+${pts} pts</span></div>`;
     resumen.innerHTML = rows;
   }
@@ -2401,66 +2481,78 @@ async function confirmarCobro() {
   const prodSnapshot = [...cobrarProds];
   const descSnapshot = descuento;
 
-  // ── MERCADO PAGO: generar link y esperar pago ──────────────────────────────
-  if (medioPago === 'Mercado Pago') {
+  // ── VALIDAR SPLITS ───────────────────────────────────────────────────────────
+  const _tSrv  = cobrarSrvs.reduce((s,x)=>s+(x.monto||0),0);
+  const _tProd = cobrarProds.reduce((s,x)=>s+(x.precio*x.cantidad),0);
+  const _sub   = _tSrv + _tProd - descuento;
+  let _codDisc = 0;
+  if (cobrarCodigoActivo) {
+    if (cobrarCodigoActivo.discount_type==='pct') _codDisc=Math.round(_sub*cobrarCodigoActivo.discount_value/100);
+    else if (cobrarCodigoActivo.discount_type==='free') _codDisc=_sub;
+    else _codDisc=Number(cobrarCodigoActivo.discount_value)||0;
+    _codDisc=Math.min(_codDisc,_sub);
+  }
+  const totalReal = _sub - _codDisc;
+  const splitPaid = getSplitTotal();
+  if (splitPaid > 0 && Math.abs(splitPaid - totalReal) > 1) {
+    toast(`Los medios de pago suman $${splitPaid.toLocaleString('es-AR')} pero el total es $${totalReal.toLocaleString('es-AR')}`, 1);
+    if (btn) { btn.disabled=false; btn.textContent='💳 Confirmar cobro y emitir comprobante'; }
+    return;
+  }
+  if (splitPaid === 0) cobrarSplitRows[0].monto = totalReal;
+
+  // ── SI HAY MERCADO PAGO EN LOS SPLITS ────────────────────────────────────
+  if (splitHasMP()) {
     if (btn) { btn.disabled = true; btn.textContent = 'Generando link MP...'; }
-
-    // Calcular total a cobrar
-    const totalSrv  = cobrarSrvs.reduce((s,x) => s+(x.monto||0), 0);
-    const totalProd = cobrarProds.reduce((s,x) => s+(x.precio*x.cantidad), 0);
-    const totalFinal = totalSrv + totalProd - descuento;
-
+    const mpAmount   = splitMPAmount();
+    const otherSplits = cobrarSplitRows.filter(r => r.medio !== 'Mercado Pago' && (parseFloat(r.monto)||0) > 0);
     const mpR = await api('POST', '/staff/cobros/mp-link', {
-      booking_id:   cobrarTurno?.id || null,
-      client_phone: cobrarCl?.phone || null,
-      client_name:  nombre,
-      empleado_id:  empleadoId ? parseInt(empleadoId) : null,
-      servicios:    cobrarSrvs,
-      productos:    cobrarProds,
-      descuento,
-      notas:        notas || null,
-      email:        email || null,
-      sena_pagada:  cobrarTurno?.sena_paid ? (cobrarTurno?.sena_amount || 0) : 0,
-      monto:        totalFinal,
+      booking_id:       cobrarTurno?.id || null,
+      client_phone:     cobrarCl?.phone || null,
+      client_name:      nombre,
+      empleado_id:      empleadoId ? parseInt(empleadoId) : null,
+      servicios:        cobrarSrvs,
+      productos:        cobrarProds,
+      descuento:        descuento + _codDisc,
+      notas:            notas || null,
+      email:            email || null,
+      sena_pagada:      cobrarTurno?.sena_paid ? (cobrarTurno?.sena_amount || 0) : 0,
+      monto:            mpAmount || totalReal,
+      splits:           cobrarSplitRows,
+      medio_pago_label: getSplitMedioLabel(),
     });
-
     if (btn) { btn.disabled = false; btn.textContent = '💳 Confirmar cobro y emitir comprobante'; }
-
     if (!mpR.ok) { toast('Error generando link MP: ' + (mpR.error||''), 1); return; }
-
-    // Guardar el link y mostrar el box
     window._cobrarMpUrl    = mpR.url;
     window._cobrarMpNombre = nombre;
     window._cobrarMpPhone  = cobrarCl?.phone || '';
     window._cobrarMpEmail  = email || cobrarCl?.email || '';
-
     const mpBox = document.getElementById('cobrar-mp-box');
     const mpUrlEl = document.getElementById('cobrar-mp-url');
     if (mpBox && mpUrlEl) {
       mpUrlEl.textContent = mpR.url;
       mpBox.classList.add('vis');
-      // Scroll to the MP box
       mpBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    toast('Link de MercadoPago generado 💳');
-    // Reset form pero NO el mp-box (tiene que seguir visible)
-    cobrarTurno = null; cobrarCl = null; cobrarSrvs = []; cobrarProds = [];
-    const fields = ['cobrar-srch','cobrar-nombre-manual','cobrar-notas','cobrar-descuento','cobrar-turno-srch'];
-    fields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-    document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
-    const srvList = document.getElementById('cobrar-srv-list');
-    if (srvList) srvList.innerHTML = '';
-    const prodList = document.getElementById('cobrar-prod-list');
-    if (prodList) prodList.innerHTML = '';
-    const clCard = document.getElementById('cobrar-cl-card');
-    if (clCard) clCard.style.display = 'none';
-    const turnoCard = document.getElementById('cobrar-turno-card');
-    if (turnoCard) turnoCard.style.display = 'none';
-    recalcCobrar();
+    if (otherSplits.length) {
+      const cashStr = otherSplits.map(r=>`${r.medio} $${Number(r.monto).toLocaleString('es-AR')}`).join(' + ');
+      toast(`Registrado: ${cashStr}. Link MP por $${mpAmount.toLocaleString('es-AR')} 💳`);
+    } else {
+      toast('Link de MercadoPago generado 💳');
+    }
+    cobrarTurno=null; cobrarCl=null; cobrarSrvs=[]; cobrarProds=[];
+    ['cobrar-srch','cobrar-nombre-manual','cobrar-notas','cobrar-descuento','cobrar-turno-srch']
+      .forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c=>c.classList.remove('sel'));
+    const _sl=document.getElementById('cobrar-srv-list');if(_sl)_sl.innerHTML='';
+    const _pl=document.getElementById('cobrar-prod-list');if(_pl)_pl.innerHTML='';
+    const _cc=document.getElementById('cobrar-cl-card');if(_cc)_cc.style.display='none';
+    const _tc=document.getElementById('cobrar-turno-card');if(_tc)_tc.style.display='none';
+    cobrarSplitRows=[{medio:'Efectivo',monto:''}]; renderSplitRows(); recalcCobrar();
     return;
   }
 
-  // ── EFECTIVO / TRANSFERENCIA / DÉBITO / CRÉDITO ───────────────────────────
+    // ── EFECTIVO / TRANSFERENCIA / DÉBITO / CRÉDITO ───────────────────────────
   if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
 
   // Calcular descuento total (manual + código)
@@ -2482,7 +2574,8 @@ async function confirmarCobro() {
     client_phone: cobrarCl?.phone || null,
     client_name:  nombre,
     empleado_id:  empleadoId ? parseInt(empleadoId) : null,
-    medio_pago:   medioPago,
+    medio_pago:   getSplitMedioLabel(),
+    splits:       cobrarSplitRows,
     servicios:    cobrarSrvs,
     productos:    cobrarProds,
     descuento:    descTotal,
@@ -2500,7 +2593,9 @@ async function confirmarCobro() {
     await api('POST', '/staff/cobros/usar-codigo', { code: codigoSnap, cobro_id: r.id || r.cobro?.id });
   }
 
-  mostrarComprobante(r, nombre, medioPago, email, srvSnapshot, prodSnapshot, descTotal);
+  // Attach splits to srvSnapshot so mostrarComprobante can show breakdown
+  srvSnapshot._splits = cobrarSplitRows.filter(r => parseFloat(r.monto) > 0);
+  mostrarComprobante(r, nombre, getSplitMedioLabel(), email, srvSnapshot, prodSnapshot, descTotal);
   resetCobrar();
   toast('Cobro registrado ✅');
 }
@@ -2534,7 +2629,11 @@ function mostrarComprobante(cobro, nombre, medioPago, email, srvs, prods, desc) 
         <div style="color:var(--muted)">Fecha</div><div style="text-align:right">${ahora}</div>
         <div style="color:var(--muted)">Cliente</div><div style="text-align:right;font-weight:600">${nombre}</div>
         ${empleadoNombre && empleadoNombre !== '— Seleccioná —' ? `<div style="color:var(--muted)">Atendido por</div><div style="text-align:right">${empleadoNombre.split(' · ')[0]}</div>` : ''}
-        <div style="color:var(--muted)">Medio de pago</div><div style="text-align:right">${medioPago}</div>
+        <div style="color:var(--muted)">Medio de pago</div><div style="text-align:right">${
+          (srvs._splits && srvs._splits.filter(s=>parseFloat(s.monto)>0).length > 1)
+            ? srvs._splits.filter(s=>parseFloat(s.monto)>0).map(s=>`${s.medio} $${Number(s.monto).toLocaleString('es-AR')}`).join(' + ')
+            : medioPago
+        }</div>
       </div>
       ${srvRows || prodRows ? `
       <table style="width:100%;font-size:13px;margin-bottom:12px;border-top:1px solid var(--border);padding-top:12px">

@@ -216,7 +216,7 @@ async function mailTurnoModificado({ to, nombre, servicio, fechaAnterior, horaAn
 }
 // ── COMPROBANTE DE PAGO ───────────────────────────────────────────────────────
 async function mailComprobante({ to, nombre, numero, servicios, productos,
-  totalServicios, totalProductos, descuento, total, medioPago, pointsEarned, senaPagada = 0 }) {
+  totalServicios, totalProductos, descuento, total, medioPago, pointsEarned, senaPagada = 0, splits = [] }) {
   const transporter = getTransporter();
   if (!transporter || !to) return;
   const srvRows = (servicios||[]).map(s =>
@@ -256,7 +256,11 @@ async function mailComprobante({ to, nombre, numero, servicios, productos,
         <tr class="total-row"><td>TOTAL ABONADO HOY</td><td style="text-align:right;color:#e8447a">$${total.toLocaleString('es-AR')}</td></tr>
       </table>
       <div class="section-label" style="margin-top:16px">Medio de pago</div>
-      <p style="font-size:14px;margin:4px 0">${medioPago}</p>
+      <p style="font-size:14px;margin:4px 0">${
+        splits && splits.filter(s=>parseFloat(s.monto)>0).length > 1
+          ? splits.filter(s=>parseFloat(s.monto)>0).map(s=>`${s.medio} <strong>$${Number(s.monto).toLocaleString('es-AR')}</strong>`).join(' + ')
+          : medioPago
+      }</p>
       ${pointsEarned > 0 ? `<div class="pts">⭐ Ganaste <strong>+${pointsEarned} puntos</strong> con esta visita</div>` : ''}
     </div>
     <div class="footer">Estefan Peluquería · Puertos, Buenos Aires · Lunes a sábado 10:00–20:00hs</div>

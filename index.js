@@ -555,7 +555,7 @@ app.post('/mp/webhook', async (req, res) => {
 
           // Marcar turno como Completado si había booking_id
           const cobroR = await dbConn.query(
-            `SELECT p.*, b.date_str, b.time_str, b.service
+            `SELECT p.*, p.splits_json, b.date_str, b.time_str, b.service
              FROM payments p
              LEFT JOIN bookings b ON b.id = p.booking_id
              WHERE p.id = $1`, [cobroId]
@@ -593,8 +593,9 @@ app.post('/mp/webhook', async (req, res) => {
                   totalServicios: cobro.total_servicios,
                   totalProductos: cobro.total_productos,
                   descuento: cobro.descuento, total: cobro.total,
-                  medioPago: 'Mercado Pago', pointsEarned,
+                  medioPago: cobro.medio_pago || 'Mercado Pago', pointsEarned,
                   senaPagada: 0,
+                  splits: cobro.splits_json ? JSON.parse(cobro.splits_json) : [],
                 });
                 console.log(`[mp] ✓ Comprobante cobro enviado a ${cobro.email}`);
               } catch(me) { console.error('[mp] comprobante mail error:', me.message); }
@@ -1027,6 +1028,7 @@ async function init() {
     const migrations = [
       `ALTER TABLE payments ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'paid'`,
       `ALTER TABLE payments ADD COLUMN IF NOT EXISTS mp_payment_link TEXT`,
+      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS splits_json TEXT`,
       `CREATE TABLE IF NOT EXISTS discount_codes (
         id            SERIAL PRIMARY KEY,
         code          VARCHAR(12) UNIQUE NOT NULL,
@@ -1145,20 +1147,23 @@ app.post('/staff/cobros/mp-link', staffAuth, async (req, res) => {
     const total          = monto || (totalServicios + totalProductos - descuentoAmt);
 
     // Guardar cobro_pendiente en tabla payments con status='mp_pending'
+    const splits = req.body.splits || [];
+    const medioLabel = req.body.medio_pago_label || 'Mercado Pago';
     const r = await dbConn.query(`
       INSERT INTO payments
         (booking_id, client_phone, client_name, empleado_id, medio_pago,
          servicios_json, productos_json, total_servicios, total_productos,
-         descuento, total, notas, email, fecha_str, status)
-      VALUES ($1,$2,$3,$4,'Mercado Pago',$5,$6,$7,$8,$9,$10,$11,$12,
+         descuento, total, notas, email, fecha_str, status, splits_json)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
               TO_CHAR(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires','DD/MM/YYYY'),
-              'mp_pending')
+              'mp_pending',$14)
       RETURNING id, numero_comprobante
     `, [
       booking_id||null, client_phone||null, client_name||'',
-      empleado_id||null,
+      empleado_id||null, medioLabel,
       JSON.stringify(servicios||[]), JSON.stringify(productos||[]),
-      totalServicios, totalProductos, descuentoAmt, total, notas||null, email||null
+      totalServicios, totalProductos, descuentoAmt, total, notas||null, email||null,
+      splits.length ? JSON.stringify(splits) : null
     ]);
     const cobro = r.rows[0];
 
@@ -1202,20 +1207,22 @@ app.post('/staff/cobros', staffAuth, async (req, res) => {
     const total          = totalServicios + totalProductos - descuentoAmt;
 
     // Insertar cobro
+    const splits = req.body.splits || [];
     const r = await dbConn.query(`
       INSERT INTO payments
         (booking_id, client_phone, client_name, empleado_id, medio_pago,
          servicios_json, productos_json, total_servicios, total_productos,
-         descuento, total, notas, email, fecha_str)
+         descuento, total, notas, email, fecha_str, splits_json)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-              TO_CHAR(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires','DD/MM/YYYY'))
+              TO_CHAR(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires','DD/MM/YYYY'),$14)
       RETURNING id, numero_comprobante
     `, [
       booking_id||null, client_phone||null, client_name||'',
       empleado_id||null, medio_pago||'Efectivo',
       JSON.stringify(servicios||[]), JSON.stringify(productos||[]),
       totalServicios, totalProductos,
-      descuentoAmt, total, notas||null, email||null
+      descuentoAmt, total, notas||null, email||null,
+      splits.length ? JSON.stringify(splits) : null
     ]);
 
     const cobro = r.rows[0];
@@ -1281,6 +1288,7 @@ app.post('/staff/cobros', staffAuth, async (req, res) => {
           totalServicios, totalProductos, descuento: descuentoAmt, total,
           medioPago: medio_pago, pointsEarned,
           senaPagada: sena_pagada || 0,
+          splits: splits||[],
         });
         console.log(`[cobros] ✓ Comprobante email → ${email}`);
       } catch(me) { console.error('[cobros] mail error:', me.message); }
