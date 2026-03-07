@@ -219,10 +219,48 @@
     <div class="panel" id="panel-clientes">
       <div class="section-header">
         <div><div class="section-title">Clientes</div></div>
-        <button class="btn-sm" onclick="loadClientes()">↺</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-sm gold" onclick="openNuevaClienta()">+ Nueva clienta</button>
+          <button class="btn-sm" onclick="loadClientes()">↺</button>
+        </div>
       </div>
       <input class="search-bar" placeholder="🔍 Nombre, email o teléfono..." oninput="filterClientes(this.value)">
       <div id="list-clientes"><div class="loading">Cargando...</div></div>
+
+      <!-- Modal crear nueva clienta -->
+      <div class="modal-backdrop" id="modal-nueva-clienta">
+        <div class="modal-box" style="max-width:420px;width:100%">
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px">👤 Nueva clienta</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:18px">Completá los datos para crear el perfil</div>
+          <div class="form-group">
+            <label class="form-label">Teléfono * <span style="font-size:11px;color:var(--muted)">(con código de país, ej: 5491123456789)</span></label>
+            <input class="form-input" id="nc-phone" placeholder="5491112345678" type="tel">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="form-group">
+              <label class="form-label">Nombre *</label>
+              <input class="form-input" id="nc-nombre" placeholder="Nombre">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Apellido</label>
+              <input class="form-input" id="nc-apellido" placeholder="Apellido">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input class="form-input" id="nc-email" type="email" placeholder="correo@ejemplo.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nota inicial (opcional)</label>
+            <input class="form-input" id="nc-notas" placeholder="Ej: Cliente referida por...">
+          </div>
+          <p id="nc-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <button class="btn-primary" id="nc-btn" onclick="crearNuevaClienta()" style="flex:1">Crear clienta</button>
+            <button class="btn-sm" onclick="cm('modal-nueva-clienta')" style="flex:0 0 80px">Cancelar</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- NUEVO TURNO -->
@@ -447,7 +485,21 @@
         <div id="cobrar-email-block"></div>
       </div>
 
-            <!-- MP link box — aparece después de generar el link -->
+            <!-- Código de descuento -->
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">🎟️ Código de descuento</label>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="cobrar-codigo" placeholder="Ingresá el código..." style="flex:1;font-family:monospace;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+          <button class="btn-sm gold" onclick="validarCodigo()" style="white-space:nowrap">Validar</button>
+        </div>
+        <div id="cobrar-codigo-info" style="display:none;margin-top:8px;padding:10px 12px;border-radius:6px;background:rgba(124,193,101,.1);border:1px solid rgba(124,193,101,.3)">
+          <div style="font-size:13px;font-weight:600;color:#7cc165" id="cobrar-codigo-label"></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px" id="cobrar-codigo-desc"></div>
+          <button onclick="limpiarCodigo()" style="font-size:11px;color:var(--red);background:none;border:none;cursor:pointer;margin-top:4px;padding:0">✕ Quitar código</button>
+        </div>
+      </div>
+
+      <!-- MP link box — aparece después de generar el link -->
       <div id="cobrar-mp-box" class="mp-box" style="margin-bottom:12px">
         <div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:6px">💳 Link de pago generado</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
@@ -512,6 +564,7 @@
         <button class="chip active" id="atab-turnos" onclick="switchAdminTab('turnos')">📋 Turnos</button>
         <button class="chip" id="atab-clientes" onclick="switchAdminTab('clientes')">👤 Clientes</button>
         <button class="chip" id="atab-empleados" onclick="switchAdminTab('empleados')">✂️ Empleados</button>
+        <button class="chip" id="atab-puntos" onclick="switchAdminTab('puntos')">⭐ Puntos</button>
         <button class="chip" id="atab-productos" onclick="switchAdminTab('productos')">🛍️ Productos</button>
         <button class="chip" id="atab-reportes" onclick="switchAdminTab('reportes')">📊 Reportes</button>
         <button class="chip" id="atab-herramientas" onclick="switchAdminTab('herramientas')">🔧 DB</button>
@@ -660,6 +713,31 @@
         <div id="admin-clients-table" style="font-size:13px">
           <div class="empty"><div class="empty-icon">👤</div><p>Cargando...</p></div>
         </div>
+      </div>
+
+      <!-- Puntos — asignar puntos manualmente -->
+      <div id="admin-panel-puntos" style="display:none">
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">⭐ Asignar / ajustar puntos</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:18px">Buscá una clienta y asignale puntos manualmente (sorteos, bonificaciones, ajustes).</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input class="form-input" id="pts-admin-srch" placeholder="🔍 Nombre, email o teléfono..." oninput="buscarClientePts(this.value)" style="flex:1">
+        </div>
+        <div id="pts-admin-result" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:600" id="pts-admin-nombre"></div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px" id="pts-admin-pts-actual"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Puntos a asignar</label>
+              <input class="form-input" id="pts-admin-valor" type="number" placeholder="ej: 500 o -100">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Motivo</label>
+              <input class="form-input" id="pts-admin-motivo" placeholder="Sorteo, regalo, etc.">
+            </div>
+          </div>
+          <button class="btn-primary" onclick="asignarPuntos()" style="width:100%">⭐ Confirmar asignación</button>
+        </div>
+        <div id="pts-admin-clientes-list" style="max-height:300px;overflow-y:auto"></div>
       </div>
 
       <!-- Modal confirmación con contraseña -->
@@ -1913,6 +1991,101 @@ function pickCobrarTurno(b) {
   if (b.email) renderCobrarEmailBlock({ email: b.email });
 }
 
+// ── CREAR NUEVA CLIENTA ─────────────────────────────────────────────────────
+function openNuevaClienta() {
+  ['nc-phone','nc-nombre','nc-apellido','nc-email','nc-notas'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('nc-error').style.display = 'none';
+  document.getElementById('nc-btn').disabled = false;
+  document.getElementById('nc-btn').textContent = 'Crear clienta';
+  cm('modal-nueva-clienta');
+}
+async function crearNuevaClienta() {
+  const phone   = document.getElementById('nc-phone').value.trim();
+  const nombre  = document.getElementById('nc-nombre').value.trim();
+  const apellido= document.getElementById('nc-apellido').value.trim();
+  const email   = document.getElementById('nc-email').value.trim();
+  const notas   = document.getElementById('nc-notas').value.trim();
+  const errEl   = document.getElementById('nc-error');
+  const btn     = document.getElementById('nc-btn');
+  errEl.style.display = 'none';
+  if (!phone || !nombre) { errEl.textContent = 'Teléfono y nombre son obligatorios'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Creando...';
+  const r = await api('POST', '/staff/clients', { phone, name: nombre, lastName: apellido, email, notes: notas });
+  btn.disabled = false; btn.textContent = 'Crear clienta';
+  if (!r.ok) { errEl.textContent = r.error || 'Error al crear'; errEl.style.display = 'block'; return; }
+  cm('modal-nueva-clienta');
+  toast('Clienta creada ✅');
+  loadClientes();
+}
+
+// ── CÓDIGO DE DESCUENTO EN COBRAR ────────────────────────────────────────────
+var cobrarCodigoActivo = null;
+async function validarCodigo() {
+  const code = document.getElementById('cobrar-codigo').value.trim().toUpperCase();
+  if (!code) { toast('Ingresá un código', 1); return; }
+  const r = await api('POST', '/staff/cobros/validar-codigo', { code });
+  if (!r.ok) { toast(r.error || 'Código inválido', 1); return; }
+  cobrarCodigoActivo = r.discount;
+  const d = r.discount;
+  const label = d.discount_type === 'pct'   ? `${d.discount_value}% de descuento`
+              : d.discount_type === 'free'  ? `Servicio gratuito (100% off)`
+              : `$${Number(d.discount_value).toLocaleString('es-AR')} de descuento fijo`;
+  document.getElementById('cobrar-codigo-label').textContent = `✅ ${d.reward_label}`;
+  document.getElementById('cobrar-codigo-desc').textContent = label;
+  document.getElementById('cobrar-codigo-info').style.display = 'block';
+  toast('Código válido ✅');
+  recalcCobrar();
+}
+function limpiarCodigo() {
+  cobrarCodigoActivo = null;
+  document.getElementById('cobrar-codigo').value = '';
+  document.getElementById('cobrar-codigo-info').style.display = 'none';
+  recalcCobrar();
+}
+
+// ── ADMIN: ASIGNAR PUNTOS ─────────────────────────────────────────────────────
+var _ptsAdminClient = null;
+var _ptsAdminTimer = null;
+function buscarClientePts(q) {
+  clearTimeout(_ptsAdminTimer);
+  _ptsAdminTimer = setTimeout(async () => {
+    if (q.length < 2) { document.getElementById('pts-admin-clientes-list').innerHTML=''; return; }
+    const r = await api('GET', `/staff/clients/search?q=${encodeURIComponent(q)}`);
+    if (!Array.isArray(r)) return;
+    const list = document.getElementById('pts-admin-clientes-list');
+    list.innerHTML = r.map(c => {
+      const nombre = ((c.name||'') + ' ' + (c.last_name||'')).trim();
+      return `<div onclick="selectPtsClient('${c.phone}','${nombre}',${c.points||0})" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px" class="hover-row">
+        <strong>${nombre}</strong> <span style="color:var(--muted)">${c.phone}</span>
+        <span style="float:right;color:var(--gold)">⭐ ${c.points||0} pts</span>
+      </div>`;
+    }).join('') || '<div style="padding:12px;color:var(--muted);font-size:13px">Sin resultados</div>';
+  }, 300);
+}
+function selectPtsClient(phone, nombre, pts) {
+  _ptsAdminClient = phone;
+  document.getElementById('pts-admin-nombre').textContent = nombre;
+  document.getElementById('pts-admin-pts-actual').textContent = `Puntos actuales: ${pts}`;
+  document.getElementById('pts-admin-result').style.display = 'block';
+  document.getElementById('pts-admin-clientes-list').innerHTML = '';
+  document.getElementById('pts-admin-srch').value = nombre;
+}
+async function asignarPuntos() {
+  if (!_ptsAdminClient) { toast('Seleccioná una clienta', 1); return; }
+  const pts    = parseInt(document.getElementById('pts-admin-valor').value);
+  const motivo = document.getElementById('pts-admin-motivo').value.trim();
+  if (!pts || isNaN(pts)) { toast('Ingresá una cantidad de puntos', 1); return; }
+  const r = await api('POST', '/staff/admin/asignar-puntos', { phone: _ptsAdminClient, points: pts, motivo });
+  if (!r.ok) { toast(r.error || 'Error', 1); return; }
+  const nuevo = r.client?.points || 0;
+  document.getElementById('pts-admin-pts-actual').textContent = `Puntos actuales: ${nuevo}`;
+  document.getElementById('pts-admin-valor').value = '';
+  document.getElementById('pts-admin-motivo').value = '';
+  toast(`✅ ${pts > 0 ? '+' + pts : pts} puntos asignados. Nuevo total: ${nuevo}`);
+}
+
 function clearCobrarTurno() {
   cobrarTurno = null;
   cobrarCl = null;
@@ -2005,6 +2178,11 @@ function resetCobrar() {
   const mpBox = document.getElementById('cobrar-mp-box');
   if (mpBox) { mpBox.classList.remove('vis'); }
   window._cobrarMpUrl = null; window._cobrarMpPhone = null; window._cobrarMpEmail = null;
+  cobrarCodigoActivo = null;
+  const codigoInput = document.getElementById('cobrar-codigo');
+  if (codigoInput) codigoInput.value = '';
+  const codigoInfo = document.getElementById('cobrar-codigo-info');
+  if (codigoInfo) codigoInfo.style.display = 'none';
   document.querySelectorAll('[id^="csc-"],[id^="cpc-"]').forEach(c => c.classList.remove('sel'));
   const srvList = document.getElementById('cobrar-srv-list');
   if (srvList) srvList.innerHTML = '';
@@ -2139,7 +2317,16 @@ function recalcCobrar() {
   const totalSrv  = cobrarSrvs.reduce((s, x) => s + (x.monto||0), 0);
   const totalProd = cobrarProds.reduce((s, x) => s + (x.precio * x.cantidad), 0);
   const desc      = parseInt(document.getElementById('cobrar-descuento')?.value) || 0;
-  const total     = totalSrv + totalProd - desc;
+  // Aplicar código de descuento
+  let codeDisc = 0;
+  if (cobrarCodigoActivo) {
+    const sub = totalSrv + totalProd - desc;
+    if (cobrarCodigoActivo.discount_type === 'pct') codeDisc = Math.round(sub * cobrarCodigoActivo.discount_value / 100);
+    else if (cobrarCodigoActivo.discount_type === 'free') codeDisc = sub; // 100%
+    else codeDisc = Number(cobrarCodigoActivo.discount_value) || 0;
+    codeDisc = Math.min(codeDisc, totalSrv + totalProd - desc);
+  }
+  const total     = totalSrv + totalProd - desc - codeDisc;
   const pts       = Math.floor(totalSrv / 1000);
 
   const resumen = document.getElementById('cobrar-resumen');
@@ -2148,6 +2335,7 @@ function recalcCobrar() {
     if (totalSrv)  rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted)"><span>Servicios</span><span>$${totalSrv.toLocaleString('es-AR')}</span></div>`;
     if (totalProd) rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted)"><span>Productos</span><span>$${totalProd.toLocaleString('es-AR')}</span></div>`;
     if (desc)      rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--red)"><span>Descuento</span><span>-$${desc.toLocaleString('es-AR')}</span></div>`;
+    if (codeDisc)  rows += `<div style="display:flex;justify-content:space-between;font-size:13px;color:#7cc165"><span>🎟️ Código ${cobrarCodigoActivo.code}</span><span>-$${codeDisc.toLocaleString('es-AR')}</span></div>`;
     if (pts > 0)   rows += `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gold)"><span>⭐ Puntos a ganar</span><span>+${pts} pts</span></div>`;
     resumen.innerHTML = rows;
   }
@@ -2275,6 +2463,20 @@ async function confirmarCobro() {
   // ── EFECTIVO / TRANSFERENCIA / DÉBITO / CRÉDITO ───────────────────────────
   if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
 
+  // Calcular descuento total (manual + código)
+  const totalSrvSnap  = srvSnapshot.reduce((s,x)=>s+(x.monto||0),0);
+  const totalProdSnap = prodSnapshot.reduce((s,x)=>s+(x.precio*x.cantidad),0);
+  const sub = totalSrvSnap + totalProdSnap - descSnapshot;
+  let codeDiscSnap = 0;
+  if (cobrarCodigoActivo) {
+    if (cobrarCodigoActivo.discount_type === 'pct') codeDiscSnap = Math.round(sub * cobrarCodigoActivo.discount_value / 100);
+    else if (cobrarCodigoActivo.discount_type === 'free') codeDiscSnap = sub;
+    else codeDiscSnap = Number(cobrarCodigoActivo.discount_value) || 0;
+    codeDiscSnap = Math.min(codeDiscSnap, sub);
+  }
+  const descTotal = descSnapshot + codeDiscSnap;
+  const codigoSnap = cobrarCodigoActivo ? cobrarCodigoActivo.code : null;
+
   const r = await api('POST', '/staff/cobros', {
     booking_id:   cobrarTurno?.id || null,
     client_phone: cobrarCl?.phone || null,
@@ -2283,7 +2485,7 @@ async function confirmarCobro() {
     medio_pago:   medioPago,
     servicios:    cobrarSrvs,
     productos:    cobrarProds,
-    descuento,
+    descuento:    descTotal,
     notas:        notas || null,
     email:        email || null,
     sena_pagada:  cobrarTurno?.sena_paid ? (cobrarTurno?.sena_amount || 0) : 0,
@@ -2293,7 +2495,12 @@ async function confirmarCobro() {
 
   if (!r.ok) { toast('Error: ' + (r.error||''), 1); return; }
 
-  mostrarComprobante(r, nombre, medioPago, email, srvSnapshot, prodSnapshot, descSnapshot);
+  // Marcar código como usado
+  if (codigoSnap) {
+    await api('POST', '/staff/cobros/usar-codigo', { code: codigoSnap, cobro_id: r.id || r.cobro?.id });
+  }
+
+  mostrarComprobante(r, nombre, medioPago, email, srvSnapshot, prodSnapshot, descTotal);
   resetCobrar();
   toast('Cobro registrado ✅');
 }

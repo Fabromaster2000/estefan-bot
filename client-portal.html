@@ -181,8 +181,14 @@ textarea.form-input { resize:vertical; min-height:80px; }
         </div>
       </div>
       <div class="card">
-        <div class="card-title">🏆 Beneficios</div>
+        <div class="card-title">🏆 Canjear puntos</div>
+        <p style="font-size:13px;color:var(--muted);margin:-4px 0 12px">Seleccioná una recompensa para generar tu código de descuento. Los puntos se descuentan al canjear.</p>
         <div class="rewards-grid" id="rewards-list"></div>
+      </div>
+      <!-- Códigos activos -->
+      <div class="card" id="codigos-card" style="display:none">
+        <div class="card-title">🎟️ Mis códigos de descuento</div>
+        <div id="codigos-list"></div>
       </div>
     </div>
     <!-- ── DATOS ── -->
@@ -248,10 +254,10 @@ var perfil = null;
 var solicitudActual = null;
 var turnosFiltro = 'todos';
 var REWARDS = [
-  { pts:500,  label:'Descuento 10% en tu próxima visita' },
-  { pts:1000, label:'Tratamiento de regalo' },
-  { pts:2000, label:'Servicio a elección 50% off' },
-  { pts:5000, label:'Servicio gratuito a elección' }
+  { id:'r500',  pts:500,  label:'Descuento 10% en tu próxima visita', type:'pct',  value:10  },
+  { id:'r1000', pts:1000, label:'Tratamiento de regalo',              type:'free', value:100 },
+  { id:'r2000', pts:2000, label:'Servicio a elección 50% off',        type:'pct',  value:50  },
+  { id:'r5000', pts:5000, label:'Servicio gratuito a elección',       type:'free', value:100 },
 ];
 window.addEventListener('load', function() {
   var params = new URLSearchParams(window.location.search);
@@ -371,15 +377,69 @@ function renderPuntos() {
     document.getElementById('pts-next-label').textContent = 'Te faltan ' + (next.pts - pts) + ' puntos para: ' + next.label;
   } else {
     document.getElementById('pts-bar').style.width = '100%';
-    document.getElementById('pts-next-label').textContent = 'Nivel máximo alcanzado';
+    document.getElementById('pts-next-label').textContent = '¡Nivel máximo! Podés canjear cualquier premio ⭐';
   }
   document.getElementById('rewards-list').innerHTML = REWARDS.map(function(r) {
     var unlocked = pts >= r.pts;
-    return '<div class="reward-item' + (unlocked ? '' : ' reward-locked') + '">' +
-      '<div><div style="font-size:13px;font-weight:500">' + r.label + '</div></div>' +
-      '<div class="reward-pts">' + (unlocked ? '✅' : r.pts + ' pts') + '</div>' +
+    return '<div class="reward-item' + (unlocked ? '' : ' reward-locked') + '" style="' + (unlocked ? 'cursor:pointer' : '') + '" ' + (unlocked ? 'onclick="canjear(\'' + r.id + '\')"' : '') + '>' +
+      '<div>' +
+        '<div style="font-size:13px;font-weight:500">' + r.label + '</div>' +
+        (unlocked ? '<div style="font-size:11px;color:var(--accent);margin-top:3px">Tocá para canjear · ' + r.pts + ' pts</div>' : '') +
+      '</div>' +
+      '<div class="reward-pts">' + (unlocked ? '🎁' : r.pts + ' pts') + '</div>' +
       '</div>';
   }).join('');
+  // Cargar códigos activos
+  loadMisCodigos();
+}
+
+async function canjear(rewardId) {
+  var pts = perfil.puntos ? (perfil.puntos.points || 0) : 0;
+  var reward = REWARDS.find(function(r) { return r.id === rewardId; });
+  if (!reward) return;
+  if (!confirm('¿Querés canjear ' + reward.pts + ' puntos por: ' + reward.label + '?')) return;
+  try {
+    var r = await fetch('/cliente/canjear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+      body: JSON.stringify({ reward_id: rewardId })
+    });
+    var data = await r.json();
+    if (!r.ok) { toast(data.error || 'Error al canjear'); return; }
+    // Update points locally
+    if (perfil.puntos) perfil.puntos.points = data.points;
+    toast('¡Código generado! 🎉');
+    renderPuntos();
+  } catch(e) { toast('Error de conexión'); }
+}
+
+async function loadMisCodigos() {
+  try {
+    var r = await fetch('/cliente/mis-codigos', { headers: { 'x-client-token': TOKEN } });
+    var data = await r.json();
+    var codes = (data.codes || []).filter(function(c) { return c.status === 'active'; });
+    var card = document.getElementById('codigos-card');
+    var list = document.getElementById('codigos-list');
+    if (!codes.length) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    list.innerHTML = codes.map(function(c) {
+      var label = c.discount_type === 'pct' ? c.discount_value + '% off'
+                : c.discount_type === 'free' ? 'Gratis'
+                : '$' + Number(c.discount_value).toLocaleString('es-AR') + ' off';
+      return '<div style="background:rgba(201,169,110,.09);border:1.5px dashed var(--border-gold);border-radius:8px;padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:600;color:var(--text)">' + (c.reward_label||'Descuento') + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + label + '</div>' +
+          '</div>' +
+          '<div style="font-family:monospace;font-size:18px;font-weight:700;color:var(--accent);letter-spacing:.1em;background:var(--surface2);padding:8px 12px;border-radius:6px;white-space:nowrap">' + c.code + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:10px">' +
+          '<button onclick="navigator.clipboard.writeText(\'' + c.code + '\').then(function(){toast(\'Código copiado ✅\')})" style="font-size:12px;padding:6px 12px;border:1px solid var(--border-gold);background:transparent;color:var(--text);border-radius:4px;cursor:pointer">📋 Copiar código</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) { /* silencioso */ }
 }
 function renderDatos() {
   var c = perfil.client || {};

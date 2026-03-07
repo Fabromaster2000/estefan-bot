@@ -1027,6 +1027,20 @@ async function init() {
     const migrations = [
       `ALTER TABLE payments ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'paid'`,
       `ALTER TABLE payments ADD COLUMN IF NOT EXISTS mp_payment_link TEXT`,
+      `CREATE TABLE IF NOT EXISTS discount_codes (
+        id            SERIAL PRIMARY KEY,
+        code          VARCHAR(12) UNIQUE NOT NULL,
+        client_phone  VARCHAR(30),
+        reward_id     VARCHAR(50),
+        reward_label  VARCHAR(200),
+        discount_type VARCHAR(20),  -- 'pct' | 'fixed' | 'free'
+        discount_value NUMERIC,
+        points_cost   INT,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        used_at       TIMESTAMPTZ,
+        used_in_cobro INT,
+        status        VARCHAR(20) DEFAULT 'active'
+      )`,
     ];
     for (const m of migrations) {
       await dbConn.query(m).catch(e => console.log('[migration] skipped:', e.message));
@@ -1604,6 +1618,144 @@ app.put('/cliente/perfil', clientAuth, async (req, res) => {
 
 // El cliente solicita cancelar o reprogramar un turno
 // ── CLIENTE: slots disponibles ───────────────────────────────────────────────
+// ── CANJE DE PUNTOS ──────────────────────────────────────────────────────────
+app.get('/cliente/mis-codigos', clientAuth, async (req, res) => {
+  try {
+    const phone = req.clientPhone;
+    const r = await getConn().query(
+      `SELECT id, code, reward_label, discount_type, discount_value, points_cost, created_at, status
+       FROM discount_codes WHERE client_phone=$1 ORDER BY created_at DESC LIMIT 20`,
+      [phone]
+    );
+    res.json({ codes: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/cliente/canjear', clientAuth, async (req, res) => {
+  try {
+    const phone = req.clientPhone;
+    const { reward_id } = req.body;
+    const REWARDS = [
+      { id:'r500',  pts:500,  label:'Descuento 10% en tu próxima visita', type:'pct',   value:10  },
+      { id:'r1000', pts:1000, label:'Tratamiento de regalo',              type:'free',  value:100 },
+      { id:'r2000', pts:2000, label:'Servicio a elección 50% off',        type:'pct',   value:50  },
+      { id:'r5000', pts:5000, label:'Servicio gratuito a elección',       type:'free',  value:100 },
+    ];
+    const reward = REWARDS.find(r => r.id === reward_id);
+    if (!reward) return res.status(400).json({ error: 'Recompensa inválida' });
+
+    const dbConn = getConn();
+    // Verificar puntos
+    const cl = await dbConn.query('SELECT points FROM clients WHERE phone=$1', [phone]);
+    if (!cl.rows.length) return res.status(404).json({ error: 'Cliente no encontrado' });
+    const pts = cl.rows[0].points || 0;
+    if (pts < reward.pts) return res.status(400).json({ error: `Necesitás ${reward.pts} puntos (tenés ${pts})` });
+
+    // Verificar que no tenga ya un código activo del mismo reward
+    const existing = await dbConn.query(
+      `SELECT id FROM discount_codes WHERE client_phone=$1 AND reward_id=$2 AND status='active'`,
+      [phone, reward_id]
+    );
+    if (existing.rows.length) return res.status(400).json({ error: 'Ya tenés un código activo para esta recompensa' });
+
+    // Generar código único
+    const code = 'EST' + Math.random().toString(36).toUpperCase().slice(2, 8);
+
+    // Descontar puntos y crear código
+    await dbConn.query('UPDATE clients SET points=points-$1 WHERE phone=$2', [reward.pts, phone]);
+    await dbConn.query(
+      `INSERT INTO loyalty_transactions (phone, type, points, description)
+       VALUES ($1,'redeem',$2,$3)`,
+      [phone, -reward.pts, `Canje: ${reward.label}`]
+    ).catch(()=>{});
+    const r = await dbConn.query(
+      `INSERT INTO discount_codes (code, client_phone, reward_id, reward_label, discount_type, discount_value, points_cost)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [code, phone, reward_id, reward.label, reward.type, reward.value, reward.pts]
+    );
+    // Devolver cliente actualizado con nuevos puntos
+    const newPts = await dbConn.query('SELECT points FROM clients WHERE phone=$1', [phone]);
+    res.json({ ok: true, code: r.rows[0], points: newPts.rows[0]?.points || 0 });
+  } catch(e) { console.error('[canjear]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── VALIDAR CÓDIGO DE DESCUENTO (usado desde panel cobrar) ───────────────────
+app.post('/staff/cobros/validar-codigo', staffAuth, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'Código requerido' });
+    const r = await getConn().query(
+      `SELECT * FROM discount_codes WHERE UPPER(code)=UPPER($1) AND status='active'`,
+      [code]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Código no encontrado o ya utilizado' });
+    res.json({ ok: true, discount: r.rows[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── MARCAR CÓDIGO COMO USADO (se llama al confirmar cobro) ───────────────────
+app.post('/staff/cobros/usar-codigo', staffAuth, async (req, res) => {
+  try {
+    const { code, cobro_id } = req.body;
+    if (!code) return res.status(400).json({ error: 'Código requerido' });
+    const r = await getConn().query(
+      `UPDATE discount_codes SET status='used', used_at=NOW(), used_in_cobro=$1
+       WHERE UPPER(code)=UPPER($2) AND status='active' RETURNING id`,
+      [cobro_id || null, code]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Código no válido o ya usado' });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CREAR CLIENTE DESDE STAFF ────────────────────────────────────────────────
+app.post('/staff/clients', staffAuth, async (req, res) => {
+  try {
+    const { phone, name, lastName, email, notes } = req.body;
+    if (!phone || !name) return res.status(400).json({ error: 'Teléfono y nombre son obligatorios' });
+    const phoneF = phone.replace(/\D/g, '');
+    if (!phoneF) return res.status(400).json({ error: 'Teléfono inválido' });
+    const dbConn = getConn();
+    // Check if exists
+    const exists = await dbConn.query('SELECT phone FROM clients WHERE phone=$1', [phoneF]);
+    if (exists.rows.length) return res.status(409).json({ error: 'Ya existe un cliente con ese teléfono' });
+    await dbConn.query(
+      `INSERT INTO clients (phone, name, last_name, email, visit_count, points, total_spent, created_at)
+       VALUES ($1,$2,$3,$4,0,0,0,NOW())`,
+      [phoneF, name.trim(), lastName?.trim()||'', email?.trim()||null]
+    );
+    if (notes?.trim()) {
+      await dbConn.query(
+        `INSERT INTO client_notes (phone, content, type, created_by) VALUES ($1,$2,'nota','staff')`,
+        [phoneF, notes.trim()]
+      ).catch(()=>{});
+    }
+    const client = await dbConn.query('SELECT * FROM clients WHERE phone=$1', [phoneF]);
+    res.json({ ok: true, client: client.rows[0] });
+  } catch(e) { console.error('[create client]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── ASIGNAR PUNTOS DESDE ADMIN ───────────────────────────────────────────────
+app.post('/staff/admin/asignar-puntos', staffAuth, async (req, res) => {
+  try {
+    const { phone, points, motivo } = req.body;
+    if (!phone || !points) return res.status(400).json({ error: 'Teléfono y puntos requeridos' });
+    const pts = parseInt(points);
+    if (isNaN(pts) || pts === 0) return res.status(400).json({ error: 'Puntos inválidos' });
+    const dbConn = getConn();
+    const r = await dbConn.query(
+      'UPDATE clients SET points=COALESCE(points,0)+$1 WHERE phone=$2 RETURNING name, last_name, points',
+      [pts, phone.replace(/\D/g,'')]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Cliente no encontrado' });
+    await dbConn.query(
+      `INSERT INTO loyalty_transactions (phone, type, points, description) VALUES ($1,$2,$3,$4)`,
+      [phone, pts > 0 ? 'earn' : 'redeem', pts, motivo || (pts > 0 ? 'Asignación manual' : 'Ajuste manual')]
+    ).catch(()=>{});
+    res.json({ ok: true, client: r.rows[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/cliente/slots', clientAuth, async (req, res) => {
   try {
     const { fecha } = req.query;
