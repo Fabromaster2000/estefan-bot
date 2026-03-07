@@ -1545,8 +1545,7 @@ function renderBookingNotes(prefix, bk) {
   // Separar fotos (línea "Fotos: data:image/...")
   var fotosLine = '';
   var fotosList = [];
-  var lineas = texto.split('
-');
+  var lineas = texto.split('\n');
   var lineasSinFotos = lineas.filter(function(l) {
     if (l.startsWith('Fotos: ')) {
       fotosLine = l.replace('Fotos: ','');
@@ -1557,8 +1556,7 @@ function renderBookingNotes(prefix, bk) {
   if (fotosLine) {
     fotosList = fotosLine.split(',').map(function(u){return u.trim();}).filter(function(u){return u.startsWith('data:image');});
   }
-  var textoFinal = lineasSinFotos.join('
-').trim();
+  var textoFinal = lineasSinFotos.join('\n').trim();
   // Limpiar líneas de metadata que no son notas de usuario
   textoFinal = textoFinal.replace(/^(Nota: )/m,'').trim();
 
