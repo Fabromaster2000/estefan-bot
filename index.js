@@ -377,7 +377,18 @@ app.post('/staff/booking/create', staffAuth, async (req, res) => {
     const phoneF = clientPhone || phone || ('manual-' + Date.now());
     const montoFinal = monto || 0;
     const senaFinal = senaAmount || 0;
-    await db.clientUpsert(phoneF, nombre, email || null);
+    // FIX: Solo hacer upsert para clientes NUEVOS (sin clientPhone).
+    // Para clientes existentes no pisamos name/last_name con el nombre compuesto.
+    if (!clientPhone) {
+      // Cliente nuevo: nombre puede venir como "Nombre Apellido" — split inteligente
+      const partes = nombre.trim().split(/\s+/);
+      const primerNombre = partes[0] || nombre;
+      const apellido = partes.length > 1 ? partes.slice(1).join(' ') : null;
+      await db.clientUpsert(phoneF, primerNombre, email || null, apellido);
+    } else if (email) {
+      // Cliente existente: solo actualizar email si se proporcionó uno nuevo
+      await getConn().query('UPDATE clients SET email=$1 WHERE phone=$2 AND (email IS NULL OR email=\'\')', [email, phoneF]).catch(()=>{});
+    }
     // Si tiene seña → queda pendiente hasta que pague
     const statusInicial = senaFinal > 0 ? 'Seña pendiente' : 'Confirmado';
     const saved = await db.bookingSave({
@@ -391,23 +402,28 @@ app.post('/staff/booking/create', staffAuth, async (req, res) => {
     const { appendTurnoToSheet } = require('./core/sheets');
     await appendTurnoToSheet({ code: saved.code, fecha, hora, nombre, phone: phoneF, servicio: servicioStr, monto: montoFinal, sena: senaFinal, senaPagada: false, estado: statusInicial, canal: 'Staff Manual' }).catch(() => {});
 
-    // Calendar
-    try {
-      const cal = require('./core/calendar');
-      const eventId = await cal.createEvent({ nombre, servicio: servicioStr, fecha, hora, phone: phoneF, code: saved.code, monto: montoFinal });
-      if (eventId) await getConn().query('UPDATE bookings SET calendar_event_id=$1 WHERE id=$2', [eventId, saved.id]).catch(()=>{});
-    } catch(ce) { console.error('[staff] calendar error:', ce.message); }
-
-    // Email confirmación
-    const emailFinal = email || await getConn().query('SELECT email FROM clients WHERE phone=$1',[phoneF]).then(r=>r.rows[0]?.email).catch(()=>null);
-    if (emailFinal) {
+    // FIX: Calendar y mail solo si NO hay seña pendiente
+    if (senaFinal === 0) {
+      // Calendar
       try {
-        const { mailTurnoConfirmado } = require('./agents/mailer');
-        await mailTurnoConfirmado({ to: emailFinal, nombre, servicio: servicioStr, fecha, hora, code: saved.code, monto: montoFinal, senaAmount: senaFinal, senaPaid: false });
-        console.log(`[staff] ✓ Mail confirmación → ${emailFinal}`);
-      } catch(me) { console.error('[staff] mail error:', me.message); }
+        const cal = require('./core/calendar');
+        const eventId = await cal.createEvent({ nombre, servicio: servicioStr, fecha, hora, phone: phoneF, code: saved.code, monto: montoFinal });
+        if (eventId) await getConn().query('UPDATE bookings SET calendar_event_id=$1 WHERE id=$2', [eventId, saved.id]).catch(()=>{});
+      } catch(ce) { console.error('[staff] calendar error:', ce.message); }
+
+      // Email confirmación — solo turnos sin seña
+      const emailFinal = email || await getConn().query('SELECT email FROM clients WHERE phone=$1',[phoneF]).then(r=>r.rows[0]?.email).catch(()=>null);
+      if (emailFinal) {
+        try {
+          const { mailTurnoConfirmado } = require('./agents/mailer');
+          await mailTurnoConfirmado({ to: emailFinal, nombre, servicio: servicioStr, fecha, hora, code: saved.code, monto: montoFinal, senaAmount: 0, senaPaid: false });
+          console.log(`[staff] ✓ Mail confirmación → ${emailFinal}`);
+        } catch(me) { console.error('[staff] mail error:', me.message); }
+      } else {
+        console.log(`[staff] ⚠ Sin email para ${phoneF} — no se envió confirmación`);
+      }
     } else {
-      console.log(`[staff] ⚠ Sin email para ${phoneF} — no se envió confirmación`);
+      console.log(`[staff] ℹ Turno con seña pendiente — mail y calendario se activarán al recibir el pago (booking ${saved.id})`);
     }
 
     res.json({ ok: true, code: saved.code, id: saved.id });
@@ -494,8 +510,45 @@ app.post('/mp/webhook', async (req, res) => {
         if (bookingId) {
           await getConn().query('UPDATE bookings SET sena_paid = true, status = $1 WHERE id = $2', ['Seña pagada', bookingId]).catch(() => {});
           const { updateTurnoStatus } = require('./core/sheets');
-          const b = await getConn().query('SELECT booking_code, service FROM bookings WHERE id = $1', [bookingId]);
-          if (b.rows[0]) await updateTurnoStatus(b.rows[0].booking_code, b.rows[0].service, 'Seña pagada').catch(() => {});
+          const b = await getConn().query(
+            `SELECT b.id, b.booking_code, b.service, b.date_str, b.time_str,
+                    b.monto, b.sena_amount, b.client_phone, b.client_name, b.calendar_event_id,
+                    COALESCE(b.email, c.email) AS email
+             FROM bookings b
+             LEFT JOIN clients c ON c.phone = b.client_phone
+             WHERE b.id = $1`, [bookingId]
+          );
+          const bk = b.rows[0];
+          if (bk) {
+            await updateTurnoStatus(bk.booking_code, bk.service, 'Seña pagada').catch(() => {});
+
+            // ── Agregar al calendario (si no estaba ya) ────────────────────
+            if (!bk.calendar_event_id) {
+              try {
+                const cal = require('./core/calendar');
+                const eventId = await cal.createEvent({
+                  nombre: bk.client_name, servicio: bk.service,
+                  fecha: bk.date_str, hora: bk.time_str,
+                  phone: bk.client_phone, code: bk.booking_code, monto: bk.monto
+                });
+                if (eventId) await getConn().query('UPDATE bookings SET calendar_event_id=$1 WHERE id=$2', [eventId, bk.id]).catch(()=>{});
+                console.log(`[mp] ✓ Calendario creado para booking ${bookingId}`);
+              } catch(ce) { console.error('[mp] calendar error:', ce.message); }
+            }
+
+            // ── Enviar mail de confirmación ────────────────────────────────
+            if (bk.email) {
+              try {
+                const { mailTurnoConfirmado } = require('./agents/mailer');
+                await mailTurnoConfirmado({
+                  to: bk.email, nombre: bk.client_name, servicio: bk.service,
+                  fecha: bk.date_str, hora: bk.time_str, code: bk.booking_code,
+                  monto: bk.monto, senaAmount: bk.sena_amount, senaPaid: true
+                });
+                console.log(`[mp] ✓ Mail confirmación enviado a ${bk.email}`);
+              } catch(me) { console.error('[mp] mail error:', me.message); }
+            }
+          }
           console.log(`[mp] ✓ Seña pagada booking ${bookingId}`);
         }
       }

@@ -40,6 +40,13 @@ const MSGS = {
 
   turnoConfirmado: (nombre, servicio, fechaDisplay, hora, code) =>
     `✅ *¡Listo${nombre ? ', ' + nombre : ''}!* 💛\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n_Guardá el código — con ese podés cambiar o cancelar cuando quieras_ 😊`,
+
+  senaRequerida: (nombre, servicio, fechaDisplay, hora, code, montoSena, mpLink) =>
+    `⏳ *Tu turno está registrado${nombre ? ', ' + nombre : ''}*\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n` +
+    `⚠️ *Para confirmar el turno necesitamos la seña de $${montoSena}*\n` +
+    (mpLink
+      ? `Podés abonarlo acá 👇\n${mpLink}\n\n_Una vez recibido el pago te llega la confirmación por mail_ 📧`
+      : `Coordinamos el pago de la seña cuando vengas al salón o por este chat 💛\n\n_El turno queda confirmado una vez recibida la seña_ ✅`),
 };
 
 function extractEmail(text) {
@@ -282,7 +289,10 @@ async function handle({ sessionId, phone, text }) {
       if (session.lastCalendarEventId) await addGuestToCalendarEvent(session.lastCalendarEventId, em).catch(() => {});
       if (session.lastBooking) {
         const b = session.lastBooking;
-        mailTurnoConfirmado({ to: em, nombre: b.nombre, servicio: b.servicio, fecha: b.fecha, hora: b.hora, code: b.code, calendarLink: b.calLink, monto: b.monto, senaAmount: null }).catch(() => {});
+        // Solo mandar mail si NO hay seña pendiente
+        if (!b.senaRequired) {
+          mailTurnoConfirmado({ to: em, nombre: b.nombre, servicio: b.servicio, fecha: b.fecha, hora: b.hora, code: b.code, calendarLink: b.calLink, monto: b.monto, senaAmount: null }).catch(() => {});
+        }
       }
       session.step = 'PEDIR_APELLIDO';
       return send(`✅ ¡Confirmación enviada a *${em}*! 📆\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛\n_(o *no* para saltear)_`);
@@ -480,45 +490,6 @@ async function handle({ sessionId, phone, text }) {
     return send('¡Claro! 💛 Escribime tu email correcto y lo actualizamos ahora mismo 📧');
   }
 
-  // ── Consulta historial / puntos / próximos turnos ───────────────────────────
-  const esConsultaHistorial =
-    /mis turnos|mis citas|cuando tengo|cuándo tengo|proximo turno|próximo turno|mi historial|que me hice|qué me hice|cuantas visitas|cuántas visitas|mis puntos|cuántos puntos|cuantos puntos|mis reservas/i.test(tl);
-
-  if (esConsultaHistorial && session.step !== 'RESERVANDO') {
-    const client = clientCtx && clientCtx.client;
-    if (!client) {
-      return send('No encontré tu cuenta 😅 ¿Podés pasarme tu nombre o teléfono?');
-    }
-    const nombre = client.name || 'Hola';
-    const proximos = (clientCtx.recentBookings || []).filter(function(b) {
-      return !['Cancelado','Completado','No asistió'].includes(b.status);
-    });
-    const pasados = (clientCtx.recentBookings || []).filter(function(b) {
-      return b.status === 'Completado';
-    }).slice(0, 5);
-
-    let msg = '¡Hola ' + nombre + '! 💛 Acá va tu resumen:\n\n';
-    if (proximos.length) {
-      msg += '📅 *Tus próximos turnos:*\n';
-      proximos.forEach(function(b) {
-        msg += '• ' + b.service + ' — ' + b.date_str + ' a las ' + b.time_str + ' (' + b.status + ')\n';
-      });
-      msg += '\n';
-    } else {
-      msg += '📅 No tenés turnos próximos agendados.\n\n';
-    }
-    if (pasados.length) {
-      msg += '✨ *Últimas visitas:*\n';
-      pasados.forEach(function(b) { msg += '• ' + b.service + ' — ' + b.date_str + '\n'; });
-      msg += '\n';
-    }
-    const pts = client.points || 0;
-    msg += '⭐ *Puntos:* ' + pts + ' pts';
-    if (pts >= 500) msg += ' (¡Tenés beneficios! Escribí *mis puntos* para canjear)';
-    msg += '\n👣 *Visitas:* ' + (client.visit_count || 0) + '\n';
-    return send(msg);
-  }
-
   if (intent === 'GESTIONAR' || intent === 'CANCELAR') {
     // Si estamos en medio de una reserva y la pregunta es sobre horarios/disponibilidad,
     // NO interrumpir el flow — responder y seguir en RESERVANDO
@@ -643,8 +614,20 @@ async function doCreateBooking(session, phone, send) {
     const fechaDisplay = await formatFecha(result.fechaReal);
     const srvDisplay = d.servicio.nombre + (d.extra ? ' + ' + d.extra.nombre : '');
     session.lastCalendarEventId = result.calendarEventId;
-    session.lastBooking = { nombre: d.nombre, servicio: srvDisplay, fecha: result.fechaReal, hora: result.horaReal, code: result.code, calLink: result.calLink, monto: result.monto };
+    session.lastBooking = { nombre: d.nombre, servicio: srvDisplay, fecha: result.fechaReal, hora: result.horaReal, code: result.code, calLink: result.calLink, monto: result.monto, senaRequired: d.servicio?.seña && result.senaAmount > 0 };
     const ptsMsg = result.pointsEarned > 0 ? `\n⭐ Ganaste *+${result.pointsEarned} puntos*` : '';
+    const tieneSeña = d.servicio?.seña && result.senaAmount > 0;
+
+    // ── TURNO CON SEÑA: no mandar mail/calendario hasta recibir el pago ───────
+    if (tieneSeña) {
+      const montoSena = result.senaAmount.toLocaleString('es-AR');
+      const mpLink = result.mpLink || null;
+      const senaMsg = MSGS.senaRequerida(d.nombre, srvDisplay, fechaDisplay, result.horaReal, result.code, montoSena, mpLink);
+      session.step = 'PEDIR_APELLIDO';
+      return send(senaMsg + (ptsMsg ? `\n\n${ptsMsg}` : '') + `\n\n¿Me decís tu apellido para el programa de beneficios? 💛 _(o *no* para saltear)_`);
+    }
+
+    // ── TURNO SIN SEÑA: flujo normal ──────────────────────────────────────────
     const confirmMsg = MSGS.turnoConfirmado(d.nombre, srvDisplay, fechaDisplay, result.horaReal, result.code) + ptsMsg;
 
     // Si ya tenemos email, mandar directo sin preguntar
