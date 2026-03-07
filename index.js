@@ -332,7 +332,7 @@ app.get('/staff/agenda', staffAuth, async (req, res) => {
     const r = await getConn().query(`
       SELECT b.id, b.booking_code as code, b.client_name as nombre, b.client_phone as phone,
              b.service as servicio, b.date_str as fecha, b.time_str as hora,
-             b.status as estado, b.monto, b.created_at,
+             b.status as estado, b.monto, b.created_at, b.notes,
              COALESCE(NULLIF(b.email,''), c.email) AS email
       FROM bookings b
       LEFT JOIN clients c ON c.phone = b.client_phone
@@ -352,7 +352,7 @@ app.get('/staff/today', staffAuth, async (req, res) => {
     const r = await getConn().query(`
       SELECT b.id, b.booking_code as code, b.client_name as nombre, b.client_phone as phone,
              b.service as servicio, b.date_str as fecha, b.time_str as hora,
-             b.status as estado, b.monto,
+             b.status as estado, b.monto, b.notes,
              COALESCE(NULLIF(b.email,''), c.email) AS email
       FROM bookings b
       LEFT JOIN clients c ON c.phone = b.client_phone

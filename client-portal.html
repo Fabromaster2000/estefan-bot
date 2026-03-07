@@ -33,6 +33,13 @@ body { background:var(--bg); color:var(--text); font-family:'Jost',system-ui,san
 .tab { padding:14px 16px; font-family:var(--font-sans); font-size:11px; font-weight:400; letter-spacing:.12em; text-transform:uppercase; color:var(--stone); cursor:pointer; border-bottom:1px solid transparent; white-space:nowrap; transition:all .2s; }
 .tab.active { color:var(--gold); border-bottom-color:var(--gold); }
 .tab:hover:not(.active) { color:var(--cream); }
+.foto-preview-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.foto-thumb { width:72px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--border-gold); cursor:pointer; }
+.foto-remove-btn { position:relative; }
+.foto-thumb-wrap { position:relative; display:inline-block; }
+.foto-thumb-wrap .remove-foto { position:absolute; top:-6px; right:-6px; width:18px; height:18px; background:var(--red,#c0392b); border:none; border-radius:50%; color:#fff; font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; }
+.upload-zone { border:1.5px dashed var(--border-gold); border-radius:10px; padding:14px; text-align:center; cursor:pointer; color:var(--muted); font-size:13px; transition:border-color .2s; }
+.upload-zone:hover { border-color:var(--gold); color:var(--gold); }
 /* ── Content ── */
 .content { max-width:700px; margin:0 auto; padding:20px 16px; }
 .panel { display:none; } .panel.active { display:block; }
@@ -239,8 +246,14 @@ textarea.form-input { resize:vertical; min-height:80px; }
         </div>
         <label class="form-label">Notas (opcional)</label>
         <textarea class="form-input" id="sacar-notas" placeholder="Ej: largo del cabello, referencia, preferencia de horario..." rows="3" style="resize:none;margin-bottom:12px"></textarea>
+        <label class="form-label">Fotos (opcional)</label>
+        <div class="upload-zone" onclick="document.getElementById('sacar-fotos-input').click()">
+          📷 Tocá para subir fotos de referencia o de tu cabello actual
+        </div>
+        <input type="file" id="sacar-fotos-input" accept="image/*" multiple style="display:none" onchange="agregarFotos(event)">
+        <div class="foto-preview-grid" id="sacar-fotos-preview"></div>
         <p id="sacar-error2" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></p>
-        <button class="btn-primary" onclick="sacarConfirmar()">Confirmar solicitud</button>
+        <button class="btn-primary" onclick="sacarConfirmar()" style="margin-top:14px">Confirmar solicitud</button>
       </div>
       <div class="card" id="sacar-paso3" style="display:none;text-align:center;padding:30px 20px">
         <div style="font-size:48px;margin-bottom:12px">✅</div>
@@ -625,6 +638,8 @@ function seleccionarServicio(nombre, aprobacion) {
   document.getElementById('sacar-slots-wrap').style.display = 'none';
   document.getElementById('sacar-fecha').value = '';
   document.getElementById('sacar-notas').value = '';
+  sacarFotos = [];
+  document.getElementById('sacar-fotos-preview').innerHTML = '';
   // Set min date = today
   var hoy = new Date(); var yy = hoy.getFullYear(); var mm = String(hoy.getMonth()+1).padStart(2,'0'); var dd = String(hoy.getDate()).padStart(2,'0');
   document.getElementById('sacar-fecha').min = yy + '-' + mm + '-' + dd;
@@ -683,7 +698,7 @@ async function sacarConfirmar() {
     var r = await fetch('/cliente/solicitar-turno', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
-      body: JSON.stringify({ servicio: sacarServicioSeleccionado.nombre, fecha_tentativa, hora_tentativa, notas })
+      body: JSON.stringify({ servicio: sacarServicioSeleccionado.nombre, fecha_tentativa, hora_tentativa, notas, fotos_urls: sacarFotos.length ? sacarFotos : undefined })
     });
     var data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Error al enviar.'; errEl.style.display = 'block'; return; }
@@ -694,8 +709,59 @@ async function sacarConfirmar() {
   } catch(e) { errEl.textContent = 'Error de conexión.'; errEl.style.display = 'block'; }
 }
 
+// ── FOTOS ──────────────────────────────────────────────────────────────────
+var sacarFotos = []; // array de data URLs
+
+function agregarFotos(event) {
+  var files = Array.from(event.target.files);
+  var MAX = 5;
+  if (sacarFotos.length + files.length > MAX) {
+    files = files.slice(0, MAX - sacarFotos.length);
+    if (!files.length) { alert('Máximo 5 fotos.'); return; }
+  }
+  files.forEach(function(file) {
+    if (!file.type.startsWith('image/')) return;
+    // Resize to max 800px and compress to keep payload small
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        var MAX_DIM = 800;
+        var w = img.width, h = img.height;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+          else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        sacarFotos.push(dataUrl);
+        renderFotoPreview();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  event.target.value = '';
+}
+
+function renderFotoPreview() {
+  var grid = document.getElementById('sacar-fotos-preview');
+  grid.innerHTML = sacarFotos.map(function(url, i) {
+    return '<div class="foto-thumb-wrap"><img class="foto-thumb" src="' + url + '"><button class="remove-foto" onclick="removeFoto(' + i + ')" title="Eliminar">✕</button></div>';
+  }).join('');
+}
+
+function removeFoto(i) {
+  sacarFotos.splice(i, 1);
+  renderFotoPreview();
+}
+
 function sacarReset() {
   sacarServicioSeleccionado = null; sacarSlotSeleccionado = null;
+  sacarFotos = [];
+  document.getElementById('sacar-fotos-preview').innerHTML = '';
   document.getElementById('sacar-paso3').style.display = 'none';
   document.getElementById('sacar-paso2').style.display = 'none';
   document.getElementById('sacar-paso1').style.display = 'block';

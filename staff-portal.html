@@ -777,6 +777,11 @@
       <label class="form-label">Motivo (se incluye en el email a la clienta)</label>
       <textarea class="form-input" id="modal-status-motivo" rows="3" placeholder="Ej: Problema con el turno anterior, reagendamos para la semana que viene..." style="resize:vertical"></textarea>
     </div>
+    <div id="modal-status-notes" style="display:none;margin-bottom:16px;padding:12px;background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.25);border-radius:10px">
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);margin-bottom:8px">📝 Nota de la clienta</div>
+      <div id="modal-status-notes-text" style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5"></div>
+      <div id="modal-status-photos" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn-sm green" onclick="doStatus()">Guardar y notificar</button>
       <button class="btn-sm" onclick="cm('modal-status')">Cancelar</button>
@@ -796,6 +801,11 @@
     <div class="form-group">
       <label class="form-label">Motivo del cambio (se incluye en el email a la clienta)</label>
       <textarea class="form-input" id="rp-motivo" rows="3" placeholder="Ej: Problema de agenda, cambiamos al mismo horario del jueves..." style="resize:vertical"></textarea>
+    </div>
+    <div id="modal-reprogram-notes" style="display:none;margin-bottom:16px;padding:12px;background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.25);border-radius:10px">
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);margin-bottom:8px">📝 Nota de la clienta</div>
+      <div id="modal-reprogram-notes-text" style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5"></div>
+      <div id="modal-reprogram-photos" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
     </div>
     <div class="modal-actions">
       <button class="btn-sm green" onclick="doReprogram()">Guardar y notificar</button>
@@ -1527,12 +1537,54 @@ async function saveEmailIfNew(context) {
 }
 
 // ── STATUS / REPROGRAM ────────────────────────────────────────────────────────
+function renderBookingNotes(prefix, bk) {
+  // Extraer notas y fotos del campo notes del booking
+  var notes = bk?.notes || '';
+  // Limpiar el prefijo "[Solicitud portal cliente]"
+  var texto = notes.replace(/\[Solicitud portal cliente\]\s*/g,'').trim();
+  // Separar fotos (línea "Fotos: data:image/...")
+  var fotosLine = '';
+  var fotosList = [];
+  var lineas = texto.split('
+');
+  var lineasSinFotos = lineas.filter(function(l) {
+    if (l.startsWith('Fotos: ')) {
+      fotosLine = l.replace('Fotos: ','');
+      return false;
+    }
+    return true;
+  });
+  if (fotosLine) {
+    fotosList = fotosLine.split(',').map(function(u){return u.trim();}).filter(function(u){return u.startsWith('data:image');});
+  }
+  var textoFinal = lineasSinFotos.join('
+').trim();
+  // Limpiar líneas de metadata que no son notas de usuario
+  textoFinal = textoFinal.replace(/^(Nota: )/m,'').trim();
+
+  var notesBlock = document.getElementById(prefix+'-notes');
+  var notesText = document.getElementById(prefix+'-notes-text');
+  var photosBlock = document.getElementById(prefix+'-photos');
+
+  if (!textoFinal && !fotosList.length) {
+    notesBlock.style.display='none';
+    return;
+  }
+  notesBlock.style.display='block';
+  notesText.textContent = textoFinal || '(Sin texto)';
+  if (!textoFinal) notesText.style.display='none'; else notesText.style.display='';
+  photosBlock.innerHTML = fotosList.map(function(url){
+    return '<img src="'+url+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,193,7,.4);cursor:pointer" onclick="window.open(this.src)">';
+  }).join('');
+}
+
 function openStatus(id){
   curBkId=id;
   document.getElementById('modal-status-sel').value='Confirmado';
   document.getElementById('modal-status-motivo').value='';
   document.getElementById('motivo-status-group').style.display='none';
   renderEmailBlock('status', bkMap[id]);
+  renderBookingNotes('modal-status', bkMap[id]);
   om('modal-status');
 }
 function toggleMotivoStatus(){
@@ -1558,6 +1610,7 @@ function openReprogram(id){
   curBkId=id;
   ['rp-fecha','rp-hora','rp-motivo'].forEach(i=>document.getElementById(i).value='');
   renderEmailBlock('reprogram', bkMap[id]);
+  renderBookingNotes('modal-reprogram', bkMap[id]);
   om('modal-reprogram');
 }
 async function doReprogram(){
