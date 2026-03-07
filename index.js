@@ -947,6 +947,13 @@ app.post('/cliente/solicitar-turno', clientAuth, async (req, res) => {
     const necesitaAprobacion = SERVICIOS_CON_APROBACION.some(s => servicio.toLowerCase().includes(s));
     const statusInicial = necesitaAprobacion ? 'Consulta Pendiente' : 'Solicitud cliente';
 
+    // Buscar precio real en el catálogo de servicios
+    const SERVICIOS_CORE = require('./core/servicios');
+    const servicioData = SERVICIOS_CORE.find(s => s.nombre === servicio)
+      || SERVICIOS_CORE.find(s => s.nombre.toLowerCase().includes(servicio.toLowerCase()));
+    const montoReal = servicioData?.precio || 0;
+    const senaReal = servicioData?.seña ? Math.round(montoReal * (servicioData.pct || 10) / 100) : 0;
+
     let notaCompleta = `[Solicitud portal cliente]`;
     if (notas) notaCompleta += `
 Nota: ${notas}`;
@@ -962,7 +969,7 @@ Fotos: ${fotos_urls.join(', ')}`;
       nombre, phone,
       servicio, fecha: fecha_tentativa || 'A confirmar',
       hora: hora_tentativa || 'A confirmar',
-      monto: 0, senaAmount: 0, senaPaid: false,
+      monto: montoReal, senaAmount: senaReal, senaPaid: false,
       calendarEventId: null, email: client.email || null,
       notes: notaCompleta,
       status: statusInicial,
