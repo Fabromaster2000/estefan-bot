@@ -1867,3 +1867,23 @@ app.post('/cliente/reprogramar', clientAuth, async (req, res) => {
     res.json({ ok: true, fecha_nueva, hora_nueva });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── CLIENTE: catálogo de servicios ────────────────────────────────────────────
+// Endpoint usa servicios.js como fuente única de verdad.
+// requiereAprobacion = tiene consulta:true (solo servicios de Color)
+// Head Spa y Peinados tienen seña pero no requieren consulta previa.
+const SERVICIOS_CORE = require('./core/servicios');
+
+function buildCatalogoServicios() {
+  return SERVICIOS_CORE.map(s => ({
+    nombre:              s.nombre,
+    precio:              s.precio,
+    categoria:           s.categoria,
+    requiereAprobacion:  !!s.consulta,   // true solo si consulta:true
+    tieneSeña:           !!s.seña,
+  }));
+}
+
+app.get('/cliente/servicios', clientAuth, (req, res) => {
+  res.json({ servicios: buildCatalogoServicios() });
+});

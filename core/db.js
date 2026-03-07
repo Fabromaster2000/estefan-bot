@@ -75,6 +75,7 @@ async function initDB() {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_id TEXT;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_link TEXT;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'whatsapp';
 
 
       CREATE TABLE IF NOT EXISTS empleados (
