@@ -598,8 +598,8 @@ app.post('/mp/webhook', async (req, res) => {
                 [cobro.total, cobro.client_phone]
               ).catch(()=>{});
             }
-            // Puntos
-            const pointsEarned = cobro.total_servicios > 0 ? Math.floor(cobro.total_servicios / 1000) : 0;
+            // Puntos — se calculan sobre el total REAL pagado (después de descuento)
+            const pointsEarned = cobro.total > 0 ? Math.floor(cobro.total / 1000) : 0;
             if (pointsEarned > 0 && cobro.client_phone) {
               await dbConn.query(
                 `UPDATE clients SET points=COALESCE(points,0)+$1 WHERE phone=$2`,
@@ -1312,7 +1312,8 @@ app.post('/staff/cobros', staffAuth, async (req, res) => {
       ).catch(() => {});
 
       if (totalServicios > 0) {
-        pointsEarned = Math.floor(totalServicios / 1000);
+        // Puntos sobre total real (después de descuento)
+        pointsEarned = Math.floor(total / 1000);
         if (pointsEarned > 0) {
           await dbConn.query(
             `UPDATE clients SET points = COALESCE(points,0) + $1 WHERE phone = $2`,
