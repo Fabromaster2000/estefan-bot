@@ -354,7 +354,16 @@ function renderInicio() {
   }
 }
 function kpiCard(val, lbl, color) {
-  return '<div class="kpi"><div class="kpi-val" style="color:' + color + '">' + val + '</div><div class="kpi-lbl">' + lbl + '</div></div>';
+  var action = '';
+  if (lbl === 'Visitas') action = ' onclick="kpiClick(this,1)" style="cursor:pointer"';
+  else if (lbl === 'Puntos') action = ' onclick="kpiClick(this,2)" style="cursor:pointer"';
+  else if (lbl === 'Próximos') action = ' onclick="kpiClick(this,3)" style="cursor:pointer"';
+  return '<div class="kpi"' + action + '><div class="kpi-val" style="color:' + color + '">' + val + '</div><div class="kpi-lbl">' + lbl + '</div></div>';
+}
+function kpiClick(el, type) {
+  if (type === 1) { showTab('turnos'); setTimeout(function(){ filterTurnos('pasados'); }, 50); }
+  else if (type === 2) { showTab('puntos'); }
+  else if (type === 3) { showTab('turnos'); setTimeout(function(){ filterTurnos('proximos'); }, 50); }
 }
 function isProximo(b) {
   if (b.status === 'Cancelado' || b.status === 'Completado') return false;

@@ -962,7 +962,7 @@ Fecha tentativa: ${fecha_tentativa}`;
     if (hora_tentativa) notaCompleta += `
 Horario preferido: ${hora_tentativa}`;
     if (fotos_urls && fotos_urls.length) notaCompleta += `
-Fotos: ${fotos_urls.join(', ')}`;
+Fotos: ${fotos_urls.join('|||')}`;
 
     const saved = await db.bookingSave({
       sessionId: 'portal-cliente',

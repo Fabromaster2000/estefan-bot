@@ -886,6 +886,23 @@ const SRVS=[
 
 let PW='',ADMIN_PW='',allAgenda=[],allClientes=[],selCl=null,mode='existente',selSrvs=new Set(),lastBookingId=null,lastMP='',curBkId=null,curColorId=null,srchT=null;
 
+
+function showPhotoLightbox(src) {
+  var lb = document.getElementById('photo-lightbox');
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.id = 'photo-lightbox';
+    lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:9999;cursor:zoom-out';
+    lb.onclick = function(){lb.style.display='none';};
+    var img = document.createElement('img');
+    img.id = 'photo-lightbox-img';
+    img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,.8)';
+    lb.appendChild(img);
+    document.body.appendChild(lb);
+  }
+  document.getElementById('photo-lightbox-img').src = src;
+  lb.style.display = 'flex';
+}
 async function doLogin(){
   const pw=document.getElementById('pw-input').value;
   if(!pw){document.getElementById('login-error').style.display='block';return;}
@@ -1554,7 +1571,9 @@ function renderBookingNotes(prefix, bk) {
     return true;
   });
   if (fotosLine) {
-    fotosList = fotosLine.split(',').map(function(u){return u.trim();}).filter(function(u){return u.startsWith('data:image');});
+    // Separador ||| para evitar conflicto con comas del base64; retrocompatible con formato viejo
+    var sep = fotosLine.indexOf('|||') !== -1 ? '|||' : ',';
+    fotosList = fotosLine.split(sep).map(function(u){return u.trim();}).filter(function(u){return u.startsWith('data:image');});
   }
   var textoFinal = lineasSinFotos.join('\n').trim();
   // Limpiar líneas de metadata que no son notas de usuario
@@ -1572,7 +1591,7 @@ function renderBookingNotes(prefix, bk) {
   notesText.textContent = textoFinal || '(Sin texto)';
   if (!textoFinal) notesText.style.display='none'; else notesText.style.display='';
   photosBlock.innerHTML = fotosList.map(function(url){
-    return '<img src="'+url+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,193,7,.4);cursor:pointer" onclick="window.open(this.src)">';
+    return '<img src="'+url+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,193,7,.4);cursor:pointer" onclick="showPhotoLightbox(this.src)">';
   }).join('');
 }
 
