@@ -169,6 +169,7 @@
     <div class="nav-tab" onclick="showPanel('cobrar')" id="tab-cobrar">💳 Cobrar</div>
     <div class="nav-tab" onclick="showPanel('ventas')" id="tab-ventas">📈 Ventas</div>
     <div class="nav-tab" onclick="showPanel('admin')" id="tab-admin">⚙️ Admin</div>
+    <div class="nav-tab" onclick="showPanel('chats')" id="tab-chats">💬 Chats <span class="dot"></span></div>
   </div>
 
   <div class="content">
@@ -550,6 +551,48 @@
           <div id="ventas-table" style="overflow-x:auto"></div>
         </div>
       </div>
+
+  <!-- ── CHATS PANEL ─────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-chats" style="display:none;padding:0;">
+    <div class="chats-layout">
+      <!-- Sidebar -->
+      <div class="chats-sidebar">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-weight:700;font-size:13px;">Conversaciones</span>
+          <button onclick="loadChats()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted);" title="Actualizar">↺</button>
+        </div>
+        <div id="chatsListBody">
+          <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">Cargando...</div>
+        </div>
+      </div>
+      <!-- Detalle conversación -->
+      <div class="chats-main">
+        <div class="chats-empty" id="chatsEmpty">
+          <div class="icon">💬</div>
+          <div style="font-size:14px;">Seleccioná una conversación para verla</div>
+        </div>
+        <div id="chatsConv" style="display:none;flex-direction:column;height:100%;">
+          <div class="chat-header-bar">
+            <div class="chat-header-info">
+              <div class="chat-header-name" id="convName">—</div>
+              <div class="chat-header-phone" id="convPhone">—</div>
+            </div>
+            <div class="chat-actions">
+              <button id="btnTomarControl" onclick="tomarControl()" class="btn btn-sm" style="background:#22c55e;color:#fff;display:none;">🤝 Tomar control</button>
+              <button id="btnLiberarControl" onclick="liberarControl()" class="btn btn-sm" style="background:#ef4444;color:#fff;display:none;">🤖 Devolver al bot</button>
+            </div>
+          </div>
+          <div id="humanBanner" class="paused-banner" style="display:none;">✋ <strong>Bot pausado</strong> — esta clienta está siendo atendida manualmente</div>
+          <div class="chat-messages" id="convMessages"></div>
+          <div class="chat-input-bar" id="convInputBar" style="display:none;">
+            <textarea id="convMsgInput" placeholder="Escribí un mensaje..." rows="1"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendStaffMsg();}"></textarea>
+            <button onclick="sendStaffMsg()" class="btn btn-primary" style="height:44px;padding:0 18px;">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
     <!-- ADMIN -->
     <div class="panel" id="panel-admin">
@@ -958,6 +1001,7 @@ async function showPanel(n){
   if(n==='cobrar'){if(!allEmpleados.length)initCobrar();}
   if(n==='ventas'){loadVentas();}
   if(n==='ventas'){loadVentas();}
+  if(n==='chats'){loadChats();}
   if(n==='admin'){
     if(!ADMIN_PW){
       pendingAdminCallback=()=>showPanel('admin');
@@ -2754,7 +2798,41 @@ function printComprobante() {
       @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
       body{font-family:'DM Sans',sans-serif;max-width:380px;margin:30px auto;padding:20px;color:#1a1618;}
       :root{--pink:#e8447a;--muted:#8a7d82;--border:#e0d8db;--gold:#d4a754;--red:#e85c5c;}
-    </style></head><body>${el.innerHTML}</body></html>`);
+  
+  /* ── CHATS PANEL ── */
+  .chats-layout{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 110px);gap:0;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .chats-sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;}
+  .chat-item{padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;}
+  .chat-item:hover{background:rgba(230,180,180,.08);}
+  .chat-item.active{background:rgba(230,180,180,.15);border-left:3px solid var(--pink);}
+  .chat-item.human-mode{background:rgba(34,197,94,.07);}
+  .chat-name{font-weight:600;font-size:13px;color:var(--text);}
+  .chat-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px;margin-top:2px;}
+  .chat-meta{display:flex;justify-content:space-between;align-items:center;margin-top:4px;}
+  .chat-time{font-size:10px;color:var(--muted);}
+  .chat-badge{font-size:10px;padding:2px 7px;border-radius:99px;}
+  .badge-bot{background:rgba(230,180,180,.2);color:var(--pink);}
+  .badge-human{background:rgba(34,197,94,.15);color:#16a34a;}
+  .chats-main{display:flex;flex-direction:column;background:#fafafa;}
+  .chat-header-bar{padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+  .chat-header-info{display:flex;flex-direction:column;}
+  .chat-header-name{font-weight:700;font-size:15px;color:var(--text);}
+  .chat-header-phone{font-size:11px;color:var(--muted);}
+  .chat-actions{display:flex;gap:8px;}
+  .chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px;}
+  .msg-bubble{max-width:75%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.5;word-break:break-word;}
+  .msg-user{align-self:flex-start;background:var(--surface);border:1px solid var(--border);color:var(--text);}
+  .msg-assistant{align-self:flex-end;background:var(--pink);color:#fff;}
+  .msg-staff{align-self:flex-end;background:#22c55e;color:#fff;}
+  .msg-time{font-size:10px;opacity:.6;margin-top:4px;text-align:right;}
+  .msg-role-label{font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;opacity:.7;margin-bottom:2px;}
+  .chat-input-bar{padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);display:flex;gap:8px;}
+  .chat-input-bar textarea{flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;resize:none;height:44px;font-family:inherit;background:#fff;}
+  .chat-input-bar textarea:focus{outline:none;border-color:var(--pink);}
+  .chats-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);gap:10px;}
+  .chats-empty .icon{font-size:40px;opacity:.4;}
+  .paused-banner{background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 14px;font-size:12px;color:#92400e;text-align:center;margin:8px 16px 0;}
+  </style></head><body>${el.innerHTML}</body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
 }
@@ -3148,6 +3226,125 @@ function renderVentasTable() {
   });
   html += '</tbody></table>';
   document.getElementById('ventas-table').innerHTML = html;
+}
+
+// ── CHATS PANEL ───────────────────────────────────────────────────────────────
+
+let activePhone = null;
+let chatPollingInterval = null;
+
+async function loadChats() {
+  try {
+    const r = await fetch('/staff/chats', { headers: { 'x-staff-password': STAFF_PW } });
+    const data = await r.json();
+    const body = document.getElementById('chatsListBody');
+    if (!data.ok || !data.chats || !data.chats.length) {
+      body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">Sin conversaciones aún</div>';
+      return;
+    }
+    body.innerHTML = data.chats.map(ch => {
+      const nombre = [ch.name, ch.last_name].filter(Boolean).join(' ') || ch.phone;
+      const preview = (ch.last_message || '').replace(/\n/g,' ').substring(0, 55);
+      const hora = ch.last_at ? new Date(ch.last_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+      const badge = ch.human_mode
+        ? `<span class="chat-badge badge-human">✋ Staff</span>`
+        : `<span class="chat-badge badge-bot">🤖 Bot</span>`;
+      const activeClass = ch.phone === activePhone ? ' active' : '';
+      const humanClass = ch.human_mode ? ' human-mode' : '';
+      const safeNombre = nombre.replace(/'/g,"\\'");
+      return `<div class="chat-item${activeClass}${humanClass}" onclick="openChat('${ch.phone}','${safeNombre}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div class="chat-name">${nombre}</div>${badge}
+        </div>
+        <div class="chat-preview">${ch.last_role === 'user' ? '👤 ' : '🤖 '}${preview || '—'}</div>
+        <div class="chat-meta">
+          <span class="chat-time">${hora}</span>
+          <span style="font-size:10px;color:var(--muted);">${ch.msgs_today} msgs hoy</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('loadChats error', e); }
+}
+
+async function openChat(phone, nombre) {
+  activePhone = phone;
+  document.getElementById('chatsEmpty').style.display = 'none';
+  const conv = document.getElementById('chatsConv');
+  conv.style.display = 'flex';
+  document.getElementById('convName').textContent = nombre;
+  document.getElementById('convPhone').textContent = phone;
+  loadChats();
+  await refreshHistory();
+  if (chatPollingInterval) clearInterval(chatPollingInterval);
+  chatPollingInterval = setInterval(refreshHistory, 5000);
+}
+
+async function refreshHistory() {
+  if (!activePhone) return;
+  try {
+    const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/historial`, {
+      headers: { 'x-staff-password': STAFF_PW }
+    });
+    const data = await r.json();
+    if (!data.ok) return;
+    document.getElementById('btnTomarControl').style.display = data.human_mode ? 'none' : 'inline-block';
+    document.getElementById('btnLiberarControl').style.display = data.human_mode ? 'inline-block' : 'none';
+    document.getElementById('humanBanner').style.display = data.human_mode ? 'block' : 'none';
+    document.getElementById('convInputBar').style.display = data.human_mode ? 'flex' : 'none';
+    const msgs = document.getElementById('convMessages');
+    const wasBottom = msgs.scrollHeight - msgs.scrollTop <= msgs.clientHeight + 50;
+    msgs.innerHTML = (data.history || []).map(m => {
+      const cls = m.role === 'user' ? 'msg-user' : m.role === 'staff' ? 'msg-staff' : 'msg-assistant';
+      const label = m.role === 'user' ? '👤 Clienta' : m.role === 'staff' ? '✋ Staff' : '🤖 Bot';
+      const hora = new Date(m.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      const text = m.content.replace(/\n/g,'<br>').replace(/\*(.*?)\*/g,'<strong>$1</strong>');
+      return `<div style="display:flex;flex-direction:column;align-items:${m.role==='user'?'flex-start':'flex-end'};margin-bottom:4px;">
+        <div style="font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;opacity:.6;color:var(--muted);margin-bottom:2px;">${label}</div>
+        <div class="msg-bubble ${cls}">${text}<div class="msg-time">${hora}</div></div>
+      </div>`;
+    }).join('');
+    if (wasBottom) msgs.scrollTop = msgs.scrollHeight;
+  } catch(e) { console.error('refreshHistory', e); }
+}
+
+async function tomarControl() {
+  if (!activePhone) return;
+  const staff = prompt('¿Con qué nombre querés aparecer?', 'Staff') || 'Staff';
+  const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/tomar-control`, {
+    method: 'POST',
+    headers: { 'x-staff-password': STAFF_PW, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ staff_name: staff })
+  });
+  const d = await r.json();
+  if (d.ok) { await refreshHistory(); loadChats(); }
+  else alert('Error: ' + d.error);
+}
+
+async function liberarControl() {
+  if (!activePhone) return;
+  if (!confirm('¿Devolver el control al bot para esta conversación?')) return;
+  const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/liberar`, {
+    method: 'POST',
+    headers: { 'x-staff-password': STAFF_PW, 'Content-Type': 'application/json' }
+  });
+  const d = await r.json();
+  if (d.ok) { await refreshHistory(); loadChats(); }
+  else alert('Error: ' + d.error);
+}
+
+async function sendStaffMsg() {
+  const input = document.getElementById('convMsgInput');
+  const msg = input.value.trim();
+  if (!msg || !activePhone) return;
+  input.value = '';
+  const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/mensaje`, {
+    method: 'POST',
+    headers: { 'x-staff-password': STAFF_PW, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mensaje: msg, staff_name: 'Staff' })
+  });
+  const d = await r.json();
+  if (d.ok) refreshHistory();
+  else { alert('Error: ' + d.error); input.value = msg; }
 }
 
 </script>

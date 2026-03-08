@@ -155,10 +155,19 @@ async function initDB() {
         content    TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS human_mode_control (
+        phone      TEXT PRIMARY KEY,
+        active     BOOLEAN DEFAULT FALSE,
+        taken_by   TEXT,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `);
 
     // ── MIGRATIONS: columnas que pueden faltar en DBs existentes ────────────
     const migrations = [
+      `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS human_mode BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS taken_by TEXT`,
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_name TEXT`,
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT`,
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS promo_opt_in BOOLEAN DEFAULT FALSE`,
@@ -450,6 +459,64 @@ async function conversationGetRecent(phone, limit = 20) {
   return r.rows.reverse();
 }
 
+// ── CHAT / HUMAN MODE ────────────────────────────────────────────────────────
+
+async function chatSetHumanMode(phone, enabled, takenBy = null) {
+  // Inserta una fila especial de control de modo en conversation_log
+  // En su lugar, usamos una tabla separada liviana
+  await db.query(`
+    INSERT INTO human_mode_control (phone, active, taken_by, updated_at)
+    VALUES ($1, $2, $3, NOW())
+    ON CONFLICT (phone) DO UPDATE SET active=$2, taken_by=$3, updated_at=NOW()
+  `, [phone, enabled, takenBy]);
+}
+
+async function chatGetHumanMode(phone) {
+  try {
+    const r = await db.query(`SELECT active, taken_by FROM human_mode_control WHERE phone=$1`, [phone]);
+    return r.rows[0] || { active: false, taken_by: null };
+  } catch { return { active: false, taken_by: null }; }
+}
+
+async function chatListConversations() {
+  const r = await db.query(`
+    SELECT 
+      cl.phone,
+      cl.name,
+      cl.last_name,
+      COALESCE(hm.active, false) AS human_mode,
+      COALESCE(hm.taken_by, null) AS taken_by,
+      (SELECT content FROM conversation_log WHERE phone=cl.phone ORDER BY created_at DESC LIMIT 1) AS last_message,
+      (SELECT role    FROM conversation_log WHERE phone=cl.phone ORDER BY created_at DESC LIMIT 1) AS last_role,
+      (SELECT created_at FROM conversation_log WHERE phone=cl.phone ORDER BY created_at DESC LIMIT 1) AS last_at,
+      (SELECT COUNT(*) FROM conversation_log WHERE phone=cl.phone AND role='user' 
+         AND created_at > NOW() - INTERVAL '24 hours') AS msgs_today
+    FROM clients cl
+    LEFT JOIN human_mode_control hm ON hm.phone=cl.phone
+    WHERE EXISTS (SELECT 1 FROM conversation_log WHERE phone=cl.phone)
+    ORDER BY last_at DESC NULLS LAST
+    LIMIT 50
+  `);
+  return r.rows;
+}
+
+async function chatGetHistory(phone, limit = 60) {
+  const r = await db.query(`
+    SELECT role, content, created_at
+    FROM conversation_log WHERE phone=$1
+    ORDER BY created_at ASC
+    LIMIT $2
+  `, [phone, limit]);
+  return r.rows;
+}
+
+async function chatSendStaffMessage(phone, content, staffName) {
+  await db.query(`
+    INSERT INTO conversation_log (phone, role, content) VALUES ($1, 'staff', $2)
+  `, [phone, content]);
+  // El mensaje al cliente via WA (cuando haya wassenger) o se lee en tiempo real
+}
+
 module.exports = {
   initDB, getDB,
   configGet, configSet,
@@ -458,4 +525,5 @@ module.exports = {
   bookingSave, bookingFindByCode, bookingFindByName, bookingCancel, bookingGetByPhone, bookingGetActive, generateBookingCode,
   loyaltyGetBalance, loyaltyGetTransactions, loyaltyGetRewards, loyaltyRedeem,
   conversationLog, conversationGetRecent,
+  chatSetHumanMode, chatGetHumanMode, chatListConversations, chatGetHistory, chatSendStaffMessage,
 };

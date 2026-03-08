@@ -94,6 +94,13 @@ app.post('/webhook', async (req, res) => {
     const text  = msg.body?.trim();
     if (!phone || !text) return;
     console.log(`[wa→in] ${phone}: ${text.substring(0,60)}`);
+    // Verificar modo humano — si staff tomó control, no responde el bot
+    const hmStatus = await db.chatGetHumanMode(phone).catch(() => ({ active: false }));
+    if (hmStatus.active) {
+      await db.conversationLog(phone, 'user', text).catch(() => {});
+      console.log(`[wa→in] ${phone}: modo humano activo, ignorando`);
+      return;
+    }
     const reply = await orchestrator.handle({ sessionId: phone, phone, text });
     await sendWhatsApp(phone, reply);
     console.log(`[wa→out] ${phone}: ${reply.substring(0,80)}`);
@@ -108,6 +115,12 @@ app.post('/chat', async (req, res) => {
     const { sessionId, message, text } = req.body;
     const userText = text || message;
     if (!sessionId || !userText) return res.status(400).json({ error: 'Faltan campos' });
+    // Verificar modo humano
+    const hmWeb = await db.chatGetHumanMode(sessionId).catch(() => ({ active: false }));
+    if (hmWeb.active) {
+      await db.conversationLog(sessionId, 'user', userText).catch(() => {});
+      return res.json({ reply: null, paused: true, taken_by: hmWeb.taken_by });
+    }
     const reply = await orchestrator.handle({ sessionId, phone: sessionId, text: userText });
     const session = getSession(sessionId);
     res.json({
@@ -1933,6 +1946,70 @@ function buildCatalogoServicios() {
     tieneSeña:           !!s.seña,
   }));
 }
+
+// ── STAFF CHAT ENDPOINTS ─────────────────────────────────────────────────────
+
+// Listar todas las conversaciones activas
+app.get('/staff/chats', staffAuth, async (req, res) => {
+  try {
+    const chats = await db.chatListConversations();
+    res.json({ ok: true, chats });
+  } catch(e) {
+    console.error('[staff/chats]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Historial de mensajes de un número
+app.get('/staff/chats/:phone/historial', staffAuth, async (req, res) => {
+  try {
+    const { phone } = req.params;
+    const history = await db.chatGetHistory(phone, 80);
+    const hm = await db.chatGetHumanMode(phone);
+    res.json({ ok: true, history, human_mode: hm.active, taken_by: hm.taken_by });
+  } catch(e) {
+    console.error('[staff/chats/historial]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Tomar control de una conversación (pausa el bot)
+app.post('/staff/chats/:phone/tomar-control', staffAuth, async (req, res) => {
+  try {
+    const { phone } = req.params;
+    const staffName = req.body?.staff_name || 'Staff';
+    await db.chatSetHumanMode(phone, true, staffName);
+    res.json({ ok: true, message: `Control tomado por ${staffName}` });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Liberar control (el bot vuelve a responder)
+app.post('/staff/chats/:phone/liberar', staffAuth, async (req, res) => {
+  try {
+    const { phone } = req.params;
+    await db.chatSetHumanMode(phone, false, null);
+    res.json({ ok: true, message: 'Bot reactivado' });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Enviar mensaje manual desde staff (se loguea, y en el futuro sale por WA)
+app.post('/staff/chats/:phone/mensaje', staffAuth, async (req, res) => {
+  try {
+    const { phone } = req.params;
+    const { mensaje, staff_name } = req.body;
+    if (!mensaje) return res.status(400).json({ ok: false, error: 'Falta mensaje' });
+    await db.chatSendStaffMessage(phone, mensaje, staff_name || 'Staff');
+    // TODO: cuando haya Wassenger → enviar por WA aquí
+    // await axios.post('https://api.wassenger.com/v1/messages', { phone, message: mensaje }, { headers: { Token: WASSENGER_KEY } });
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 app.get('/cliente/servicios', clientAuth, (req, res) => {
   res.json({ servicios: buildCatalogoServicios() });
