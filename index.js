@@ -25,6 +25,32 @@ const PORT             = process.env.PORT || 10000;
 const WASSENGER_KEY    = process.env.WASSENGER_API_KEY;
 const WASSENGER_DEVICE = process.env.WASSENGER_DEVICE_ID || '';
 
+// ── Cloudinary ────────────────────────────────────────────────────────────────
+const CLOUDINARY_CLOUD  = process.env.CLOUDINARY_CLOUD_NAME  || 'dnkl3ihrr';
+const CLOUDINARY_KEY    = process.env.CLOUDINARY_API_KEY     || '592169426961236';
+const CLOUDINARY_SECRET = process.env.CLOUDINARY_API_SECRET  || 'k0hlV8DrIv-dugO42DrLrX5Z3HI';
+const CLOUDINARY_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET || 'grj5qc3x';
+
+/**
+ * Sube una imagen base64 a Cloudinary.
+ * @param {string} dataUrl  - data:image/jpeg;base64,/9j/...
+ * @param {string} folder   - carpeta destino, ej: "estefan/clientas/+5491123456789"
+ * @returns {Promise<string>} URL pública permanente
+ */
+async function uploadToCloudinary(dataUrl, folder) {
+  const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
+  const body = new URLSearchParams();
+  body.append('file', dataUrl);
+  body.append('upload_preset', CLOUDINARY_PRESET);
+  body.append('folder', folder);
+  const resp = await axios.post(url, body, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return resp.data.secure_url;
+}
+
 // ── Express ──────────────────────────────────────────────────────────────────
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -332,7 +358,7 @@ app.get('/staff/agenda', staffAuth, async (req, res) => {
     const r = await getConn().query(`
       SELECT b.id, b.booking_code as code, b.client_name as nombre, b.client_phone as phone,
              b.service as servicio, b.date_str as fecha, b.time_str as hora,
-             b.status as estado, b.monto, b.created_at, b.notes,
+             b.status as estado, b.monto, b.created_at, b.notes, b.fotos,
              COALESCE(NULLIF(b.email,''), c.email) AS email
       FROM bookings b
       LEFT JOIN clients c ON c.phone = b.client_phone
@@ -352,7 +378,7 @@ app.get('/staff/today', staffAuth, async (req, res) => {
     const r = await getConn().query(`
       SELECT b.id, b.booking_code as code, b.client_name as nombre, b.client_phone as phone,
              b.service as servicio, b.date_str as fecha, b.time_str as hora,
-             b.status as estado, b.monto, b.notes,
+             b.status as estado, b.monto, b.notes, b.fotos,
              COALESCE(NULLIF(b.email,''), c.email) AS email
       FROM bookings b
       LEFT JOIN clients c ON c.phone = b.client_phone
@@ -937,6 +963,7 @@ app.post('/cliente/solicitar-turno', clientAuth, async (req, res) => {
   try {
     const phone = req.clientPhone;
     const { servicio, fecha_tentativa, hora_tentativa, notas, fotos_urls } = req.body;
+    console.log(`[solicitar-turno] fotos_urls count=${fotos_urls?.length||0}, first_len=${fotos_urls?.[0]?.length||0}`);
     if (!servicio) return res.status(400).json({ error: 'Servicio requerido' });
 
     const dbConn = db.getDB();
@@ -961,8 +988,22 @@ Nota: ${notas}`;
 Fecha tentativa: ${fecha_tentativa}`;
     if (hora_tentativa) notaCompleta += `
 Horario preferido: ${hora_tentativa}`;
-    if (fotos_urls && fotos_urls.length) notaCompleta += `
-Fotos: ${fotos_urls.join('|||')}`;
+    // Subir fotos a Cloudinary y guardar solo las URLs (no base64 en la DB)
+    let fotosJson = null;
+    if (fotos_urls && fotos_urls.length) {
+      try {
+        const folder = `estefan/clientas/${phone.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const urls = await Promise.all(
+          fotos_urls.map(dataUrl => uploadToCloudinary(dataUrl, folder))
+        );
+        fotosJson = JSON.stringify(urls);
+        console.log('[solicitar-turno] fotos subidas a Cloudinary:', urls);
+      } catch (cloudErr) {
+        console.error('[solicitar-turno] Error Cloudinary:', cloudErr.message);
+        // Fallback: guardar base64 si Cloudinary falla, para no perder la solicitud
+        fotosJson = JSON.stringify(fotos_urls);
+      }
+    }
 
     const saved = await db.bookingSave({
       sessionId: 'portal-cliente',
@@ -972,6 +1013,7 @@ Fotos: ${fotos_urls.join('|||')}`;
       monto: montoReal, senaAmount: senaReal, senaPaid: false,
       calendarEventId: null, email: client.email || null,
       notes: notaCompleta,
+      fotos: fotosJson,
       status: statusInicial,
     });
 

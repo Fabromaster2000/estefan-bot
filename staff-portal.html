@@ -1555,29 +1555,31 @@ async function saveEmailIfNew(context) {
 
 // ── STATUS / REPROGRAM ────────────────────────────────────────────────────────
 function renderBookingNotes(prefix, bk) {
-  // Extraer notas y fotos del campo notes del booking
+  // Leer notas de texto (columna notes)
   var notes = bk?.notes || '';
   // Limpiar el prefijo "[Solicitud portal cliente]"
-  var texto = notes.replace(/\[Solicitud portal cliente\]\s*/g,'').trim();
-  // Separar fotos (línea "Fotos: data:image/...")
-  var fotosLine = '';
-  var fotosList = [];
-  var lineas = texto.split('\n');
-  var lineasSinFotos = lineas.filter(function(l) {
-    if (l.startsWith('Fotos: ')) {
-      fotosLine = l.replace('Fotos: ','');
-      return false;
-    }
-    return true;
-  });
-  if (fotosLine) {
-    // Separador ||| para evitar conflicto con comas del base64; retrocompatible con formato viejo
-    var sep = fotosLine.indexOf('|||') !== -1 ? '|||' : ',';
-    fotosList = fotosLine.split(sep).map(function(u){return u.trim();}).filter(function(u){return u.startsWith('data:image');});
-  }
-  var textoFinal = lineasSinFotos.join('\n').trim();
-  // Limpiar líneas de metadata que no son notas de usuario
+  var textoFinal = notes.replace(/\[Solicitud portal cliente\]\s*/g,'').trim();
   textoFinal = textoFinal.replace(/^(Nota: )/m,'').trim();
+
+  // Leer fotos desde columna separada bk.fotos (JSON array de data URLs)
+  // También soporta formato viejo (Fotos: dentro del campo notes)
+  var fotosList = [];
+  if (bk.fotos) {
+    try { fotosList = JSON.parse(bk.fotos); } catch(e) { fotosList = []; }
+  } else {
+    // fallback: parsear desde notes (formato viejo con |||)
+    var lineas = textoFinal.split('\n');
+    var fotosLine = '';
+    var lineasSinFotos = lineas.filter(function(l) {
+      if (l.startsWith('Fotos: ')) { fotosLine = l.replace('Fotos: ',''); return false; }
+      return true;
+    });
+    textoFinal = lineasSinFotos.join('\n').trim();
+    if (fotosLine) {
+      var sep = fotosLine.indexOf('|||') !== -1 ? '|||' : ',';
+      fotosList = fotosLine.split(sep).map(function(u){return u.trim();}).filter(function(u){return u.length > 10;});
+    }
+  }
 
   var notesBlock = document.getElementById(prefix+'-notes');
   var notesText = document.getElementById(prefix+'-notes-text');
