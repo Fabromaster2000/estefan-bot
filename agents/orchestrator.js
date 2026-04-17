@@ -101,7 +101,9 @@ async function handle({ sessionId, phone, text }) {
   // ── Comandos globales ─────────────────────────────────────────────────────
   if (/^(\.?menu|menú|inicio|volver|start|hola\.?|buenas\.?)$/i.test(tl)) {
     session.step = 'LIBRE'; session.data = {};
-    return send(await personal.greet({ clientCtx: await intake.buildContext(phone) }));
+    const saludoMsg = await personal.greet({ clientCtx: await intake.buildContext(phone) });
+    const menuOpciones = `\n\n¿Qué querés hacer?\n\n1️⃣ Sacar un turno\n2️⃣ Ver / cambiar mi turno\n3️⃣ Ver precios\n4️⃣ Hablar con alguien del equipo`;
+    return send(saludoMsg + menuOpciones);
   }
   if (/hablar.*persona|quiero.*humano|hablar.*alguien|necesito.*alguien|un agente/i.test(tl)) {
     return send('Te conecto con alguien del equipo — te responden en menos de 2 horas 💛');
@@ -564,7 +566,9 @@ async function handle({ sessionId, phone, text }) {
 
   // SALUDO
   if (intent === 'SALUDO') {
-    return send(await personal.greet({ clientCtx }));
+    const saludoMsg = await personal.greet({ clientCtx });
+    const menuOpciones = `\n\n¿Qué querés hacer?\n\n1️⃣ Sacar un turno\n2️⃣ Ver / cambiar mi turno\n3️⃣ Ver precios\n4️⃣ Hablar con alguien del equipo`;
+    return send(saludoMsg + menuOpciones);
   }
 
   // Memory update y fallback
