@@ -170,6 +170,7 @@
     <div class="nav-tab" onclick="showPanel('ventas')" id="tab-ventas">📈 Ventas</div>
     <div class="nav-tab" onclick="showPanel('admin')" id="tab-admin">⚙️ Admin</div>
     <div class="nav-tab" onclick="showPanel('chats')" id="tab-chats">💬 Chats <span class="dot"></span></div>
+    <div class="nav-tab" onclick="showPanel('giftcards')" id="tab-giftcards">🎁 Gift Cards</div>
   </div>
 
   <div class="content">
@@ -591,6 +592,100 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- GIFT CARDS -->
+  <div class="panel" id="panel-giftcards" style="display:none">
+    <div class="section-title" style="margin-bottom:4px">🎁 Gift Cards</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Creá y gestioná gift cards de regalo para las clientas.</p>
+
+    <!-- Crear nueva GC -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
+      <div style="font-weight:600;margin-bottom:16px;font-size:15px">✨ Crear nueva Gift Card</div>
+
+      <!-- Tipo -->
+      <div style="margin-bottom:14px">
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">TIPO DE REGALO</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="gcTipoServicio" class="chip active" onclick="gcSetTipo('servicio')">✂️ Servicio específico</button>
+          <button id="gcTipoMonto" class="chip" onclick="gcSetTipo('monto')">💰 Monto en pesos</button>
+          <button id="gcTipoPuntos" class="chip" onclick="gcSetTipo('puntos')">⭐ Puntos</button>
+        </div>
+      </div>
+
+      <!-- Campo dinámico según tipo -->
+      <div id="gcFieldServicio" style="margin-bottom:14px">
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">SERVICIO</label>
+        <select id="gcServicioSelect" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px">
+          <option value="">Seleccionar servicio...</option>
+          <option>Corte de pelo</option>
+          <option>Corte + brushing</option>
+          <option>Brushing</option>
+          <option>Brushing con planchita</option>
+          <option>Retoque de raíz / Color de raíz</option>
+          <option>Color entero</option>
+          <option>Contorno</option>
+          <option>Balayage</option>
+          <option>Decoloración total</option>
+          <option>Babylights</option>
+          <option>Mechas</option>
+          <option>Head Spa</option>
+          <option>Corte + color</option>
+          <option>Peinado fiesta / 15</option>
+          <option>Peinado novia</option>
+        </select>
+      </div>
+      <div id="gcFieldMonto" style="display:none;margin-bottom:14px">
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">MONTO ($)</label>
+        <input id="gcMonto" type="number" placeholder="Ej: 50000" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px;box-sizing:border-box">
+      </div>
+      <div id="gcFieldPuntos" style="display:none;margin-bottom:14px">
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">PUNTOS</label>
+        <input id="gcPuntos" type="number" placeholder="Ej: 20" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px;box-sizing:border-box">
+      </div>
+
+      <!-- Destinataria -->
+      <div style="font-size:13px;font-weight:600;color:var(--muted);margin:18px 0 10px;text-transform:uppercase;letter-spacing:1px">Para (destinataria)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <input id="gcRecipientName" placeholder="Nombre *" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px">
+        <input id="gcRecipientEmail" type="email" placeholder="Email * (para enviar la GC)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px">
+        <input id="gcRecipientPhone" placeholder="WhatsApp (opcional)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px">
+      </div>
+
+      <!-- Compradora -->
+      <div style="font-size:13px;font-weight:600;color:var(--muted);margin:18px 0 10px;text-transform:uppercase;letter-spacing:1px">De (quién regala)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <input id="gcBuyerName" placeholder="Nombre" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px">
+        <input id="gcBuyerEmail" type="email" placeholder="Email" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px">
+        <input id="gcBuyerPhone" placeholder="WhatsApp" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px">
+      </div>
+
+      <!-- Método de pago -->
+      <div style="margin-bottom:18px">
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">MÉTODO DE PAGO</label>
+        <div style="display:flex;gap:8px">
+          <button id="gcPagoEfectivo" class="chip active" onclick="gcSetPago('efectivo')">💵 Efectivo</button>
+          <button id="gcPagoTransferencia" class="chip" onclick="gcSetPago('transferencia')">🏦 Transferencia</button>
+        </div>
+      </div>
+
+      <button onclick="gcCrear()" style="background:var(--pink);color:#fff;border:none;padding:12px 28px;border-radius:8px;font-weight:600;cursor:pointer;width:100%;font-size:15px">
+        🎁 Crear y enviar Gift Card
+      </button>
+      <div id="gcCrearMsg" style="margin-top:10px;font-size:13px;text-align:center"></div>
+    </div>
+
+    <!-- Lista de gift cards -->
+    <div style="font-weight:600;margin-bottom:12px;font-size:15px">📋 Gift Cards emitidas</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="chip active" id="gcFiltroTodas" onclick="gcCargar('todas')">Todas</button>
+      <button class="chip" id="gcFiltroPendientes" onclick="gcCargar('pendientes')">⏳ Pendientes de pago</button>
+      <button class="chip" id="gcFiltroActivas" onclick="gcCargar('activas')">✅ Activas</button>
+      <button class="chip" id="gcFiltroUsadas" onclick="gcCargar('usadas')">✔️ Usadas</button>
+    </div>
+    <div id="gcListaBody">
+      <div style="color:var(--muted);text-align:center;padding:30px">Cargando...</div>
     </div>
   </div>
 
@@ -3235,7 +3330,7 @@ let chatPollingInterval = null;
 
 async function loadChats() {
   try {
-    const r = await fetch('/staff/chats', { headers: { 'x-staff-password': STAFF_PW } });
+    const r = await fetch('/staff/chats', { headers: { 'x-staff-password': PW } });
     const data = await r.json();
     const body = document.getElementById('chatsListBody');
     if (!data.ok || !data.chats || !data.chats.length) {
@@ -3283,7 +3378,7 @@ async function refreshHistory() {
   if (!activePhone) return;
   try {
     const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/historial`, {
-      headers: { 'x-staff-password': STAFF_PW }
+      headers: { 'x-staff-password': PW }
     });
     const data = await r.json();
     if (!data.ok) return;
@@ -3312,7 +3407,7 @@ async function tomarControl() {
   const staff = prompt('¿Con qué nombre querés aparecer?', 'Staff') || 'Staff';
   const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/tomar-control`, {
     method: 'POST',
-    headers: { 'x-staff-password': STAFF_PW, 'Content-Type': 'application/json' },
+    headers: { 'x-staff-password': PW, 'Content-Type': 'application/json' },
     body: JSON.stringify({ staff_name: staff })
   });
   const d = await r.json();
@@ -3325,7 +3420,7 @@ async function liberarControl() {
   if (!confirm('¿Devolver el control al bot para esta conversación?')) return;
   const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/liberar`, {
     method: 'POST',
-    headers: { 'x-staff-password': STAFF_PW, 'Content-Type': 'application/json' }
+    headers: { 'x-staff-password': PW, 'Content-Type': 'application/json' }
   });
   const d = await r.json();
   if (d.ok) { await refreshHistory(); loadChats(); }
@@ -3339,7 +3434,7 @@ async function sendStaffMsg() {
   input.value = '';
   const r = await fetch(`/staff/chats/${encodeURIComponent(activePhone)}/mensaje`, {
     method: 'POST',
-    headers: { 'x-staff-password': STAFF_PW, 'Content-Type': 'application/json' },
+    headers: { 'x-staff-password': PW, 'Content-Type': 'application/json' },
     body: JSON.stringify({ mensaje: msg, staff_name: 'Staff' })
   });
   const d = await r.json();
@@ -3363,5 +3458,175 @@ async function sendStaffMsg() {
       </div>
     </div>
   </div>
+
+<script>
+// ── GIFT CARDS PANEL ──────────────────────────────────────────────────────────
+let gcTipoActual = 'servicio';
+let gcPagoActual = 'efectivo';
+
+function gcSetTipo(tipo) {
+  gcTipoActual = tipo;
+  document.getElementById('gcFieldServicio').style.display = tipo==='servicio' ? 'block' : 'none';
+  document.getElementById('gcFieldMonto').style.display    = tipo==='monto'    ? 'block' : 'none';
+  document.getElementById('gcFieldPuntos').style.display   = tipo==='puntos'   ? 'block' : 'none';
+  ['Servicio','Monto','Puntos'].forEach(t => {
+    document.getElementById('gcTipo'+t).classList.toggle('active', tipo===t.toLowerCase());
+  });
+}
+
+function gcSetPago(metodo) {
+  gcPagoActual = metodo;
+  document.getElementById('gcPagoEfectivo').classList.toggle('active', metodo==='efectivo');
+  document.getElementById('gcPagoTransferencia').classList.toggle('active', metodo==='transferencia');
+}
+
+async function gcCrear() {
+  const msg = document.getElementById('gcCrearMsg');
+  const recipientName  = document.getElementById('gcRecipientName').value.trim();
+  const recipientEmail = document.getElementById('gcRecipientEmail').value.trim();
+  const recipientPhone = document.getElementById('gcRecipientPhone').value.trim();
+  const buyerName  = document.getElementById('gcBuyerName').value.trim();
+  const buyerEmail = document.getElementById('gcBuyerEmail').value.trim();
+  const buyerPhone = document.getElementById('gcBuyerPhone').value.trim();
+
+  if (!recipientName || !recipientEmail) {
+    msg.style.color='var(--red)'; msg.textContent='⚠️ Nombre y email de la destinataria son obligatorios'; return;
+  }
+
+  const body = {
+    tipo: gcTipoActual,
+    servicio: gcTipoActual==='servicio' ? document.getElementById('gcServicioSelect').value : null,
+    monto:    gcTipoActual==='monto'    ? parseInt(document.getElementById('gcMonto').value)||0 : 0,
+    puntos:   gcTipoActual==='puntos'   ? parseInt(document.getElementById('gcPuntos').value)||0 : 0,
+    recipientName, recipientEmail, recipientPhone,
+    buyerName, buyerEmail, buyerPhone,
+    pagoMetodo: gcPagoActual,
+    password: window.staffPw || ''
+  };
+
+  if (gcTipoActual==='servicio' && !body.servicio) {
+    msg.style.color='var(--red)'; msg.textContent='⚠️ Seleccioná un servicio'; return;
+  }
+  if (gcTipoActual==='monto' && body.monto <= 0) {
+    msg.style.color='var(--red)'; msg.textContent='⚠️ Ingresá un monto válido'; return;
+  }
+  if (gcTipoActual==='puntos' && body.puntos <= 0) {
+    msg.style.color='var(--red)'; msg.textContent='⚠️ Ingresá una cantidad de puntos'; return;
+  }
+
+  msg.style.color='var(--muted)'; msg.textContent='Creando gift card...';
+
+  try {
+    const r = await fetch('/gift-cards/crear', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (!data.ok) { msg.style.color='var(--red)'; msg.textContent='❌ '+data.error; return; }
+
+    msg.style.color='#4caf50';
+    const emailTxt = data.emailEnviado ? '✅ Gift card creada y email enviado a '+recipientEmail
+      : '✅ Gift card creada (código: '+data.gc.code+') — pendiente de pago';
+    msg.textContent = emailTxt;
+    // Limpiar form
+    document.getElementById('gcRecipientName').value='';
+    document.getElementById('gcRecipientEmail').value='';
+    document.getElementById('gcRecipientPhone').value='';
+    document.getElementById('gcBuyerName').value='';
+    document.getElementById('gcBuyerEmail').value='';
+    document.getElementById('gcBuyerPhone').value='';
+    document.getElementById('gcMonto').value='';
+    document.getElementById('gcPuntos').value='';
+    gcCargar('todas');
+  } catch(e) {
+    msg.style.color='var(--red)'; msg.textContent='❌ Error de red';
+  }
+}
+
+async function gcCargar(filtro='todas') {
+  ['Todas','Pendientes','Activas','Usadas'].forEach(f =>
+    document.getElementById('gcFiltro'+f).classList.remove('active'));
+  const btn = document.getElementById('gcFiltro'+filtro.charAt(0).toUpperCase()+filtro.slice(1));
+  if (btn) btn.classList.add('active');
+
+  const body = document.getElementById('gcListaBody');
+  body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px">Cargando...</div>';
+
+  let url = '/staff/gift-cards?';
+  if (filtro==='pendientes') url += 'estado=pendiente';
+  else if (filtro==='activas') url += 'estado=pagado&usada=false';
+  else if (filtro==='usadas') url += 'usada=true';
+
+  try {
+    const r = await fetch(url, { headers:{'x-staff-password': window.staffPw||''} });
+    const data = await r.json();
+    if (!data.ok || !data.gift_cards.length) {
+      body.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px">No hay gift cards en esta categoría</div>';
+      return;
+    }
+
+    body.innerHTML = data.gift_cards.map(gc => {
+      const exp = new Date(gc.expires_at).toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'2-digit'});
+      const vencida = new Date(gc.expires_at) < new Date();
+      let estadoBadge = '';
+      if (gc.usada) estadoBadge = '<span style="background:#333;color:#aaa;padding:2px 8px;border-radius:12px;font-size:11px">✔️ Usada</span>';
+      else if (gc.pago_estado==='pendiente') estadoBadge = '<span style="background:#442;color:#fc3;padding:2px 8px;border-radius:12px;font-size:11px">⏳ Pendiente</span>';
+      else if (vencida) estadoBadge = '<span style="background:#422;color:#f66;padding:2px 8px;border-radius:12px;font-size:11px">❌ Vencida</span>';
+      else estadoBadge = '<span style="background:#143;color:#4c8;padding:2px 8px;border-radius:12px;font-size:11px">✅ Activa</span>';
+
+      let valor = '';
+      if (gc.tipo==='servicio') valor = '✂️ '+gc.servicio;
+      else if (gc.tipo==='monto') valor = '💰 $'+Number(gc.monto).toLocaleString('es-AR');
+      else valor = '⭐ '+gc.puntos+' puntos';
+
+      const pagarBtn = gc.pago_estado==='pendiente' && !gc.usada
+        ? `<button onclick="gcPagar('${gc.code}')" style="background:#c9a84c;color:#111;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">✅ Marcar pagada</button>`
+        : '';
+
+      return `
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <div>
+              <div style="font-family:monospace;font-size:16px;font-weight:700;color:var(--pink);margin-bottom:4px">${gc.code}</div>
+              <div style="font-size:13px;font-weight:600">${valor}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px">
+                Para: <b style="color:var(--text)">${gc.recipient_name}</b> (${gc.recipient_email})<br>
+                De: ${gc.buyer_name||'—'} · Vence: ${exp}
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+              ${estadoBadge}
+              ${pagarBtn}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    body.innerHTML = '<div style="color:var(--red);text-align:center;padding:20px">Error al cargar</div>';
+  }
+}
+
+async function gcPagar(code) {
+  if (!confirm('¿Marcar la gift card '+code+' como pagada y enviar el email a la destinataria?')) return;
+  try {
+    const r = await fetch('/staff/gift-cards/'+code+'/pagar', {
+      method:'POST', headers:{'x-staff-password': window.staffPw||''}
+    });
+    const data = await r.json();
+    if (data.ok) { alert('✅ Gift card marcada como pagada y email enviado'); gcCargar('todas'); }
+    else alert('Error: '+data.error);
+  } catch(e) { alert('Error de red'); }
+}
+
+// Cargar gift cards cuando se abre el panel
+const _origShowPanel = typeof showPanel === 'function' ? showPanel : null;
+document.addEventListener('DOMContentLoaded', () => {
+  // Hookear showPanel para cargar GC al abrir tab
+  const origShow = window.showPanel;
+  window.showPanel = function(name) {
+    origShow(name);
+    if (name === 'giftcards') gcCargar('todas');
+  };
+});
+</script>
 </body>
 </html>
