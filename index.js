@@ -146,7 +146,8 @@ app.post('/chat/start', async (req, res) => {
     await run({ phone: sessionId });
     const clientCtx = await buildContext(sessionId);
     const welcome = await greet({ clientCtx });
-    res.json({ sessionId, message: welcome });
+    const menuOpciones = `\n\n¿Qué querés hacer?\n\n1️⃣ Sacar un turno\n2️⃣ Ver / cambiar mi turno\n3️⃣ Ver precios\n4️⃣ Hablar con alguien del equipo`;
+    res.json({ sessionId, message: welcome + menuOpciones });
   } catch(err) {
     console.error('[start error]', err.message);
     res.status(500).json({ error: err.message });
@@ -2013,4 +2014,142 @@ app.post('/staff/chats/:phone/mensaje', staffAuth, async (req, res) => {
 
 app.get('/cliente/servicios', clientAuth, (req, res) => {
   res.json({ servicios: buildCatalogoServicios() });
+});
+
+// ── GIFT CARDS ─────────────────────────────────────────────────────────────────
+
+// Crear gift card (staff o portal cliente)
+app.post('/gift-cards/crear', async (req, res) => {
+  try {
+    const { tipo, servicio, monto, puntos, buyerPhone, buyerName, buyerEmail,
+            recipientName, recipientEmail, recipientPhone, pagoMetodo, password } = req.body;
+
+    // Autenticación: staff O portal cliente (sin auth forzamos solo crear pendiente)
+    const isStaff = password === STAFF_PASSWORD;
+
+    if (!tipo || !recipientName || !recipientEmail) {
+      return res.status(400).json({ ok: false, error: 'Faltan campos requeridos' });
+    }
+    if (!['servicio','monto','puntos'].includes(tipo)) {
+      return res.status(400).json({ ok: false, error: 'Tipo inválido' });
+    }
+
+    const gc = await db.giftCardCreate({
+      tipo, servicio, monto: parseInt(monto)||0, puntos: parseInt(puntos)||0,
+      buyerPhone, buyerName, buyerEmail,
+      recipientName, recipientEmail, recipientPhone,
+      pagoMetodo: pagoMetodo || 'efectivo',
+      createdBy: isStaff ? 'staff' : 'portal'
+    });
+
+    // Si pago es efectivo y es staff → marcar pagado directamente
+    if (isStaff && (pagoMetodo === 'efectivo' || pagoMetodo === 'transferencia')) {
+      await db.giftCardMarkPaid(gc.code, null);
+      // Enviar email a la destinataria
+      const { mailGiftCard } = require('./agents/mailer');
+      await mailGiftCard({
+        recipientEmail: gc.recipient_email,
+        recipientName: gc.recipient_name,
+        buyerName: gc.buyer_name || 'Alguien especial',
+        tipo: gc.tipo,
+        servicio: gc.servicio,
+        monto: gc.monto,
+        puntos: gc.puntos,
+        code: gc.code,
+        expiresAt: gc.expires_at
+      }).catch(e => console.error('[gift-cards] mail error:', e.message));
+
+      // Notif al admin
+      const { mailNotifAdmin } = require('./agents/mailer');
+      await mailNotifAdmin({
+        asunto: `🎁 Nueva Gift Card creada — ${gc.code}`,
+        html: `<p>Tipo: <b>${gc.tipo}</b> | Código: <b>${gc.code}</b><br>
+               Para: <b>${gc.recipient_name}</b> (${gc.recipient_email})<br>
+               De: ${gc.buyer_name||'staff'} | Pago: ${pagoMetodo}</p>`
+      }).catch(()=>{});
+
+      return res.json({ ok: true, gc, emailEnviado: true });
+    }
+
+    res.json({ ok: true, gc, emailEnviado: false });
+  } catch(e) {
+    console.error('[gift-cards/crear]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Verificar código (para usar al reservar)
+app.get('/gift-cards/verificar/:code', async (req, res) => {
+  try {
+    const gc = await db.giftCardGetByCode(req.params.code);
+    if (!gc) return res.json({ ok: false, error: 'Código no encontrado' });
+    if (gc.usada) return res.json({ ok: false, error: 'Esta gift card ya fue usada' });
+    if (gc.pago_estado !== 'pagado') return res.json({ ok: false, error: 'Esta gift card no fue pagada aún' });
+    if (new Date(gc.expires_at) < new Date()) return res.json({ ok: false, error: 'Esta gift card venció' });
+    res.json({ ok: true, gc });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Listar todas (staff)
+app.get('/staff/gift-cards', staffAuth, async (req, res) => {
+  try {
+    const { estado, usada } = req.query;
+    const filter = {};
+    if (estado) filter.pago_estado = estado;
+    if (usada !== undefined) filter.usada = usada === 'true';
+    const gcs = await db.giftCardGetAll(filter);
+    res.json({ ok: true, gift_cards: gcs });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Marcar como pagada manualmente (staff)
+app.post('/staff/gift-cards/:code/pagar', staffAuth, async (req, res) => {
+  try {
+    const gc = await db.giftCardMarkPaid(req.params.code, null);
+    if (!gc) return res.status(404).json({ ok: false, error: 'Gift card no encontrada' });
+
+    // Enviar email a la destinataria
+    const { mailGiftCard } = require('./agents/mailer');
+    await mailGiftCard({
+      recipientEmail: gc.recipient_email,
+      recipientName: gc.recipient_name,
+      buyerName: gc.buyer_name || 'Alguien especial',
+      tipo: gc.tipo, servicio: gc.servicio,
+      monto: gc.monto, puntos: gc.puntos,
+      code: gc.code, expiresAt: gc.expires_at
+    }).catch(e => console.error('[gift-cards/pagar] mail error:', e.message));
+
+    res.json({ ok: true, gc, emailEnviado: true });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Canjear gift card (asociar a un turno)
+app.post('/gift-cards/canjear', staffAuth, async (req, res) => {
+  try {
+    const { code, bookingCode } = req.body;
+    if (!code) return res.status(400).json({ ok: false, error: 'Falta código' });
+
+    // Verificar antes de canjear
+    const gc = await db.giftCardGetByCode(code);
+    if (!gc) return res.json({ ok: false, error: 'Código no encontrado' });
+    if (gc.usada) return res.json({ ok: false, error: 'Ya fue usada' });
+    if (gc.pago_estado !== 'pagado') return res.json({ ok: false, error: 'No está pagada' });
+    if (new Date(gc.expires_at) < new Date()) return res.json({ ok: false, error: 'Venció' });
+
+    // Si es tipo puntos → acreditar a la receptora
+    if (gc.tipo === 'puntos' && gc.recipient_phone) {
+      await db.loyaltyAdd(gc.recipient_phone, gc.puntos, `Gift card ${gc.code}`).catch(()=>{});
+    }
+
+    const redeemed = await db.giftCardRedeem(code, bookingCode || null);
+    res.json({ ok: true, gc: redeemed });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
