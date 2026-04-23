@@ -98,6 +98,25 @@ async function handle({ sessionId, phone, text }) {
 
   const send = async (msg) => { await conversationLog(phone, 'assistant', msg); return msg; };
 
+  // CEO MODE — if message comes from the owner, switch to data mode
+const CEO_PHONE = process.env.CEO_PHONE || process.env.OWNER_PHONE;
+if (CEO_PHONE && phone === CEO_PHONE) {
+  const { handleCEO } = require('./personal');
+  const reply = await handleCEO(t, session.historial || []);
+  session.historial = session.historial || [];
+  session.historial.push({ role: 'user', content: t });
+  session.historial.push({ role: 'assistant', content: reply });
+  return send(reply);
+}
+ 
+// FAQ SHORTCUT — answer directly from profile, no AI needed
+const { handleFAQ } = require('./personal');
+const clientCtxFAQ = await intake.buildContext(phone);
+const faqReply = handleFAQ(t, clientCtxFAQ);
+if (faqReply) return send(faqReply);
+ 
+// ── END PATCH ─────────────────────────────────────────────────────────────────
+
   // ── Comandos globales ─────────────────────────────────────────────────────
   if (/^(\.?menu|menú|inicio|volver|start|hola\.?|buenas\.?)$/i.test(tl)) {
     session.step = 'LIBRE'; session.data = {};
