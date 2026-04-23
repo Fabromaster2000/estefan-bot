@@ -1,58 +1,116 @@
-// ── AGENT: INTAKE ─────────────────────────────────────────────────────────────
-// Responsabilidad única: identificar al cliente, crear o recuperar su perfil.
-// Se activa cuando un cliente escribe por primera vez o no está identificado.
-// Devuelve { identified: bool, client: {...}, isNew: bool }
+// agents/intake.js
+// =============================================================================
+// Intake — loads and hydrates a ClientProfile for every incoming message.
+// This is what gives Estefi her "memory" of each client.
+// =============================================================================
+'use strict';
 
-const { clientGet, clientResolve, clientUpsert, memoryGet } = require('../core/db');
+const { ClientProfile } = require('../core/client_profile');
+const { clientGet, getDB } = require('../core/db');
 
-async function run({ phone, name = null, email = null }) {
-  // Buscar cliente por email primero (fusiona sesiones), luego por phone
-  let client = await clientResolve(phone, email);
-  const isNew = !client;
+// In-memory cache so we don't hit the DB on every single message
+// Invalidated after 5 minutes or on explicit refresh
+const _cache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
-  if (isNew) {
-    await clientUpsert(phone, name, email);
-    client = await clientGet(phone);
-  } else if (name && !client.name) {
-    await clientUpsert(client.phone, name, email);
-    client = await clientGet(client.phone);
+/**
+ * Load a ClientProfile for a given phone number.
+ * Uses in-memory cache with 5-min TTL.
+ */
+async function loadProfile(phone) {
+  const cached = _cache.get(phone);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.profile;
   }
 
-  // Cargar memoria si existe
-  const memory = await memoryGet(phone);
+  const profile = new ClientProfile();
+
+  try {
+    const db = getDB();
+    if (!db) return profile;
+
+    // Parallel DB queries
+    const [clientRow, bookingsRow, fichaRow, notesRow] = await Promise.all([
+      clientGet(phone),
+      db.query(`
+        SELECT booking_code, service, date_str, time_str, status, monto, created_at
+        FROM bookings
+        WHERE client_phone = $1
+        ORDER BY date_str DESC, time_str DESC
+        LIMIT 20
+      `, [phone]).then(r => r.rows).catch(() => []),
+      db.query(
+        'SELECT * FROM client_ficha WHERE client_phone = $1',
+        [phone]
+      ).then(r => r.rows[0] || null).catch(() => null),
+      db.query(`
+        SELECT content, type, created_by, created_at
+        FROM client_notes
+        WHERE client_phone = $1
+        ORDER BY created_at DESC
+        LIMIT 10
+      `, [phone]).then(r => r.rows).catch(() => []),
+    ]);
+
+    profile.hydrate(clientRow, bookingsRow, fichaRow, notesRow);
+
+  } catch(e) {
+    console.error('[intake] Error loading profile for', phone, e.message);
+  }
+
+  _cache.set(phone, { profile, ts: Date.now() });
+  return profile;
+}
+
+/**
+ * Invalidate cache for a phone (call after booking, payment, note update, etc.)
+ */
+function invalidateCache(phone) {
+  _cache.delete(phone);
+}
+
+/**
+ * buildContext — returns the full context object the orchestrator uses.
+ * Backward compatible with existing orchestrator calls.
+ */
+async function buildContext(phone) {
+  const profile = await loadProfile(phone);
+
+  // Build recentBookings array for upsell engine (backward compat)
+  const recentBookings = profile.lastServices.map(s => ({
+    service: s.servicio,
+    date:    s.fecha,
+  }));
 
   return {
-    identified: true,
-    isNew,
-    client: {
-      ...client,
-      memory: memory || null,
-    }
+    phone,
+    profile,                          // full ClientProfile object
+    client: {                          // legacy flat object (orchestrator uses this)
+      phone,
+      name:        profile.firstName,
+      last_name:   profile.lastName,
+      email:       profile.email,
+      visit_count: profile.visitCount,
+      points:      profile.points,
+      total_spent: profile.totalSpent,
+      last_visit:  profile.lastVisitDate,
+    },
+    isNewClient:     profile.isNewClient,
+    isVip:           profile.isVip,
+    recentBookings,
+    nextBooking:     profile.nextBooking,
+    favoriteService: profile.favoriteService,
+    upsellOpps:      profile.upsellOpportunities,
+    promptContext:   profile.toPromptContext(),   // ← injected into Estefi's prompt
   };
 }
 
-// Construir contexto del cliente para pasarle a otros agentes
-async function buildContext(phone) {
-  const client = await clientGet(phone);
-  if (!client) return null;
-
-  const memory = await memoryGet(phone);
-  const { bookingGetByPhone, loyaltyGetBalance } = require('../core/db');
-  const recentBookings = await bookingGetByPhone(phone, 5);
-  const points = await loyaltyGetBalance(phone);
-
-  let ctx = '';
-  if (client.name) ctx += `Cliente: ${client.name}${client.last_name ? ' ' + client.last_name : ''}\n`;
-  if (client.visit_count > 0) ctx += `Visitas: ${client.visit_count} · Total gastado: $${client.total_spent?.toLocaleString('es-AR')}\n`;
-  if (points > 0) ctx += `Puntos de beneficios: ${points} pts\n`;
-  if (recentBookings.length > 0) {
-    ctx += `Últimos servicios: ${recentBookings.map(b => `${b.service} (${b.date_str})`).join(', ')}\n`;
-  }
-  if (memory?.summary) ctx += `Notas: ${memory.summary}\n`;
-  if (memory?.favorite_services) ctx += `Servicios favoritos: ${memory.favorite_services}\n`;
-  if (memory?.personality_notes) ctx += `Personalidad: ${memory.personality_notes}\n`;
-
-  return { client, memory, recentBookings, points, context: ctx.trim() };
+/**
+ * run — legacy function called at session start.
+ * Just warms up the cache.
+ */
+async function run({ phone }) {
+  await loadProfile(phone);
 }
 
-module.exports = { run, buildContext };
+module.exports = { buildContext, run, loadProfile, invalidateCache };
