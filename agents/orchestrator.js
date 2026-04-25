@@ -137,23 +137,10 @@ async function handle({ sessionId, phone, text }) {
   // ── MENÚ PRINCIPAL (step LIBRE) ──────────────────────────────────────────────
   if (session.step === 'LIBRE') {
 
-    // Saludos → si ya tiene historial, respuesta breve. Si es el primer mensaje, saludo completo.
-    if (/^(hola\b|buenas\b|buenos días|buen dia|buenas tardes|buenas noches|hey\b|hi\b)/i.test(tl)) {
-      const yaInteractuó = session.historial.length > 2;
-      if (yaInteractuó) {
-        // Ya habló — respuesta corta, no repetir el menú completo
-        const nombre = profile?.firstName || '';
-        return send(nombre
-          ? `¡${nombre}! 💛 ¿En qué te ayudo?`
-          : `¡Hola de vuelta! 💛 ¿En qué te ayudo?
+    // REGLA: los intents de ACCIÓN tienen prioridad sobre el saludo.
+    // "Buen día Stefi, quiero agendar un turno" → iniciar reserva, no regenerar saludo.
 
-1️⃣ Sacar un turno  2️⃣ Ver mi turno  3️⃣ Precios`
-        );
-      }
-      return send(await personal.generarSaludo(profile));
-    }
-
-    // Opciones numéricas (1-3 en el menú, 4 ya no se muestra pero igual lo manejamos)
+    // Opciones numéricas
     if (/^[1-4][\s.]*$/.test(t)) {
       const n = parseInt(t);
       if (n === 1) return await _iniciarReserva(session, phone, profile, send);
@@ -165,19 +152,35 @@ async function handle({ sessionId, phone, text }) {
       }
     }
 
-    // "Quiero reservar / turno / sacar turno"
-    if (/reservar|sacar.*turno|quiero.*turno|pedir.*turno/i.test(tl)) {
+    // Intent de reserva — va ANTES del check de saludo
+    if (/reservar|agendar|sacar.*turno|quiero.*turno|pedir.*turno|un turno|turno.*corte|turno.*color|turno.*pelo/i.test(tl)) {
       return await _iniciarReserva(session, phone, profile, send);
     }
 
-    // Pregunta de precios
+    // Pregunta de precios — va ANTES del check de saludo
     if (/precio|cuánto|cuanto|cuesta|vale|cobran|servicios/i.test(tl)) {
       return send(await personal.responderPrecios(t, session.historial.slice(-4)));
     }
 
-    // Alisado / keratina → derivar
+    // Alisado / keratina → derivar — va ANTES del check de saludo
     if (/alisado|keratina|botox capilar|nanoplastia|progressiva|formol/i.test(tl)) {
       return await _derivarAlistado(session, phone, send);
+    }
+
+    // Solo si no hay intent de acción → procesar como saludo
+    const esSoloSaludo = /^(hola|buenas|buenos días|buen día|buen dia|buenas tardes|buenas noches|hey|hi|buen dia stefi|hola stefi|buenas stefi)[!.,\s]*$/i.test(tl);
+    if (esSoloSaludo || /^(hola|buenas|buen día|buen dia|buenos días|buenas tardes|buenas noches|hey|hi)\b/i.test(tl)) {
+      const yaInteractuó = session.historial.length > 2;
+      if (yaInteractuó) {
+        const nombre = profile?.firstName || '';
+        return send(nombre
+          ? `¡${nombre}! 💛 ¿En qué te ayudo?`
+          : `¡Hola de vuelta! 💛 ¿En qué te ayudo?
+
+1️⃣ Sacar un turno  2️⃣ Ver mi turno  3️⃣ Precios`
+        );
+      }
+      return send(await personal.generarSaludo(profile));
     }
   }
 
