@@ -503,7 +503,7 @@ async function avanzarReserva(session, phone, profile, clientCtx, send) {
     return send(await personal.pedirNombre(d.servicio, d.dia, d.hora, h));
   }
 
-  // Email
+  // Email — pedirlo UNA SOLA VEZ antes del upsell
   if (!d.emailPreguntado) {
     const clientEmail = clientCtx?.client?.email;
     if (clientEmail) {
@@ -511,17 +511,23 @@ async function avanzarReserva(session, phone, profile, clientCtx, send) {
       d.emailPreguntado = true;
     } else {
       d.emailPreguntado = true;
-      session.step = 'RESERVANDO'; // permanece en reservando hasta que avanzarReserva siga
-      // Pedimos email dentro del flujo reserva (antes de confirmar)
+      d._esperandoEmail = true;
       return send(await personal.pedirEmail(d.nombre, h));
     }
   }
 
-  // Capturar email si el paso anterior lo pidió
+  // Capturar respuesta al pedido de email
   if (d._esperandoEmail) {
-    const em = extractEmail(session.historial[session.historial.length - 2]?.content || '');
-    if (em) { d.email = em; await clientUpsert(phone, d.nombre, em).catch(() => {}); }
     d._esperandoEmail = false;
+    const ultimoMsg = session.historial.filter(h => h.role === 'user').slice(-1)[0]?.content || '';
+    const em = extractEmail(ultimoMsg);
+    if (em) {
+      d.email = em;
+      await clientUpsert(phone, d.nombre, em).catch(() => {});
+    } else {
+      // Dijo "no" u otra cosa → marcar como skipped para no volver a pedir
+      d.emailSkipped = true;
+    }
   }
 
   // Upsell personalizado
@@ -589,7 +595,12 @@ async function _crearTurno(session, phone, clientCtx, send) {
       return send(confirmMsg + `\n\n✉️ Confirmación enviada a *${email}* 💌\n\n¿Me decís tu apellido para el programa de beneficios? 💛 _(o *no* para saltear)_`);
     }
 
-    // No tiene email → pedirlo
+    // No tiene email y no lo salteó → pedirlo
+    // Si emailSkipped=true, ya lo rechazó antes — no pedir de nuevo
+    if (d.emailSkipped) {
+      session.step = 'PEDIR_APELLIDO';
+      return send(confirmMsg + '\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛 _(o *no* para saltear)_');
+    }
     session.step = 'PEDIR_EMAIL';
     return send(confirmMsg + '\n\n' + await personal.pedirEmail(d.nombre, session.historial.slice(-4)));
 
