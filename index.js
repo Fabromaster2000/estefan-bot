@@ -141,11 +141,13 @@ app.post('/chat/start', async (req, res) => {
     const sessionId = generateSessionId();
     const session = getSession(sessionId);
     session.welcomed = true;
-    const { run } = require('./agents/intake');
-    const { saludoInicial } = require('./agents/orchestrator');
+    const { buildContext, run } = require('./agents/intake');
+    const { greet } = require('./agents/personal');
     await run({ phone: sessionId });
-    const welcome = await saludoInicial(sessionId, sessionId);
-    res.json({ sessionId, message: welcome });
+    const clientCtx = await buildContext(sessionId);
+    const welcome = await greet({ clientCtx });
+    const menuOpciones = `\n\n¿Qué querés hacer?\n\n1️⃣ Sacar un turno\n2️⃣ Ver / cambiar mi turno\n3️⃣ Ver precios\n4️⃣ Hablar con alguien del equipo`;
+    res.json({ sessionId, message: welcome + menuOpciones });
   } catch(err) {
     console.error('[start error]', err.message);
     res.status(500).json({ error: err.message });
@@ -703,7 +705,10 @@ app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
     const { status, motivo } = req.body;
     const validStatuses = ['Confirmado','Seña pagada','Seña pendiente','Cancelado','Completado','Consulta Pendiente','Reprogramado','No asistió','Solicitud cliente'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
-    await getConn().query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
+    const extraFields = ['Cancelado','No asistió'].includes(status)
+      ? ', cancelled_at = NOW()'
+      : '';
+    await getConn().query(`UPDATE bookings SET status = $1${extraFields} WHERE id = $2`, [status, req.params.id]);
 
     // Traer datos completos del turno — email desde booking o desde clients
     const bk = await getBookingWithEmail(req.params.id);
@@ -1537,6 +1542,12 @@ async function initNewTables() {
   `);
   await db_conn.query('CREATE INDEX IF NOT EXISTS idx_client_tokens_token ON client_tokens(token)');
   await db_conn.query('CREATE INDEX IF NOT EXISTS idx_client_notes_phone  ON client_notes(client_phone)');
+
+  // Migración: cancelled_at para tracking de anticipación de cancelaciones
+  await db_conn.query('ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ');
+  await db_conn.query('CREATE INDEX IF NOT EXISTS idx_bookings_cancelled_at ON bookings(cancelled_at) WHERE cancelled_at IS NOT NULL');
+  await db_conn.query('CREATE INDEX IF NOT EXISTS idx_bookings_client_status ON bookings(client_phone, status)');
+
   console.log('[init] Nuevas tablas OK');
 }
 initNewTables().catch(e => console.error('[init] Error nuevas tablas:', e.message));
@@ -1862,7 +1873,7 @@ app.post('/cliente/cancelar', clientAuth, async (req, res) => {
     );
     if (!bk.rows.length) return res.status(404).json({ error: 'Turno no encontrado' });
     const b = bk.rows[0];
-    await getConn().query("UPDATE bookings SET status='Cancelado' WHERE id=$1", [b.id]);
+    await getConn().query("UPDATE bookings SET status='Cancelado', cancelled_at=NOW() WHERE id=$1", [b.id]);
     const { updateTurnoStatus } = require('./core/sheets');
     updateTurnoStatus(booking_code, b.service, 'Cancelado').catch(() => {});
     const clientData = await db.clientGet(phone);

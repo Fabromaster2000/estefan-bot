@@ -55,6 +55,13 @@ class ClientProfile {
     // ── Upsell intelligence ──────────────────────────────────────────────────
     this.upsellOpportunities = [];  // services that pair well with their history
     this.neverBooked         = [];  // services they've never tried
+
+    // ── Reliability score ────────────────────────────────────────────────────
+    this.cancelCount         = 0;   // cancelaciones en últimos 12 turnos
+    this.noShowCount         = 0;   // no-shows en últimos 12 turnos
+    this.reliabilityScore    = 100; // 0-100
+    this.requiresSena        = false; // true si score < 60
+    this.cancelledServices   = [];  // [{servicio, fecha}]
   }
 
   /**
@@ -88,10 +95,13 @@ class ClientProfile {
       this.daysSinceVisit = Math.floor((Date.now() - lv.getTime()) / 86400000);
     }
 
-    // Bookings analysis
-    const completed = bookings.filter(b => b.status === 'Completado' || b.status === 'Confirmado');
-    const upcoming  = bookings.filter(b =>
-      !['Cancelado','Completado','Reprogramado'].includes(b.status)
+    // Bookings analysis — incluye cancelados para score de confiabilidad
+    const completed   = bookings.filter(b => b.status === 'Completado' || b.status === 'Confirmado');
+    const cancelled   = bookings.filter(b => b.status === 'Cancelado');
+    const noShows     = bookings.filter(b => b.status === 'No asistió');
+    const last12      = bookings.slice(0, 12); // últimos 12 turnos (cualquier estado)
+    const upcoming    = bookings.filter(b =>
+      !['Cancelado','Completado','Reprogramado','No asistió'].includes(b.status)
     );
 
     if (upcoming.length > 0) {
@@ -165,10 +175,64 @@ class ClientProfile {
     }));
     this.hasNotes = this.staffNotes.length > 0;
 
+    // Cancelled services history
+    this.cancelledServices = cancelled.slice(0, 5).map(b => ({
+      servicio: b.service || b.servicio,
+      fecha:    b.date_str || b.fecha,
+    }));
+
+    // Reliability score
+    this._computeReliability(last12, cancelled, noShows);
+
     // Upsell intelligence
     this._computeUpsell(completed);
 
     return this;
+  }
+
+  _computeReliability(last12, cancelled, noShows) {
+    const total = last12.length;
+    if (total === 0) { this.reliabilityScore = 100; return; }
+
+    // Contar cancelaciones y no-shows en últimos 12
+    const cancelInLast12 = last12.filter(b => b.status === 'Cancelado').length;
+    const noShowInLast12 = last12.filter(b => b.status === 'No asistió').length;
+
+    this.cancelCount = cancelInLast12;
+    this.noShowCount = noShowInLast12;
+
+    // Cancelaciones con menos de 24hs de anticipación (si tenemos cancelled_at)
+    let lateCancel = 0;
+    for (const b of last12.filter(bk => bk.status === 'Cancelado')) {
+      if (b.cancelled_at && b.date_str && b.time_str) {
+        try {
+          // Reconstruir fecha del turno desde date_str (DD/MM/YYYY) + time_str (HH:MM)
+          const [d, m, y] = (b.date_str || '').split('/');
+          const turnoDate  = new Date(`${y}-${m}-${d}T${b.time_str}:00-03:00`);
+          const cancelDate = new Date(b.cancelled_at);
+          const horasAntes = (turnoDate - cancelDate) / (1000 * 60 * 60);
+          if (horasAntes >= 0 && horasAntes < 24) lateCancel++;
+        } catch {}
+      }
+    }
+    this.lateCancelCount = lateCancel;
+
+    // Score: empieza en 100
+    // Cancelación normal:      -5
+    // Cancelación < 24hs:      -12 (más grave, destruye la agenda)
+    // No-show:                 -18 (no avisó nada)
+    let score = 100;
+    const normalCancel = cancelInLast12 - lateCancel;
+    score -= normalCancel * 5;
+    score -= lateCancel   * 12;
+    score -= noShowInLast12 * 18;
+    score = Math.max(0, Math.min(100, score));
+
+    this.reliabilityScore = score;
+
+    // Umbral: score < 60 → requiere seña en todos los servicios
+    // Equivale a ~5 cancelaciones normales, o ~3 late cancels, o ~2 no-shows
+    this.requiresSena = score < 60;
   }
 
   _computeUpsell(bookings) {
@@ -248,6 +312,22 @@ class ClientProfile {
       lines.push(`  Notas del staff:`);
       for (const n of this.staffNotes.slice(0, 3)) {
         lines.push(`    • [${n.date}] ${n.content}`);
+      }
+    }
+
+    // Reliability score
+    if (!this.isNewClient) {
+      if (this.requiresSena) {
+        lines.push(`  ⚠️ REQUIERE SEÑA: Score de confiabilidad ${this.reliabilityScore}/100 — canceló ${this.cancelCount} de sus últimos ${this.cancelCount + this.noShowCount + (this.visitCount)} turnos. Para esta clienta, todos los servicios requieren seña no reembolsable.`);
+      } else if (this.cancelCount >= 2) {
+        lines.push(`  ⚠️ Atención: canceló ${this.cancelCount} turno${this.cancelCount > 1 ? 's' : ''} en su historial reciente (score: ${this.reliabilityScore}/100).`);
+      }
+      if (this.cancelledServices.length > 0) {
+        const canc = this.cancelledServices.map(s => `${s.servicio} (${s.fecha})`).join(', ');
+        lines.push(`  Turnos cancelados: ${canc}`);
+      }
+      if (this.noShowCount > 0) {
+        lines.push(`  No-shows: ${this.noShowCount}`);
       }
     }
 

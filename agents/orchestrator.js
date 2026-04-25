@@ -83,6 +83,13 @@ async function handle({ sessionId, phone, text }) {
       if (!srv) {
         toolResultado = `Error: servicio "${input.servicio}" no encontrado en el catálogo.`;
       } else {
+        // Verificar si esta clienta requiere seña por score de confiabilidad bajo
+        const clientRequiereSena = profile?.requiresSena && !srv.seña;
+        if (clientRequiereSena) {
+          // Forzar seña aunque el servicio normalmente no la requiera
+          srv = { ...srv, seña: true, pct: 20, senaNotes: 'Seña requerida por historial de cancelaciones' };
+        }
+
         const email = input.email || clientCtx?.client?.email || null;
         const bResult = await booking.create({
           sessionId: session.id,
