@@ -78,15 +78,15 @@ FRASES PROHIBIDAS (nunca las usés)
 EJEMPLOS REALES — APRENDÉ DE ESTOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-SALUDO (clienta nueva):
+SALUDO (clienta nueva) — el saludo termina con el menú, NO con una pregunta extra al final:
 ✅ "¡Hola! ¿Cómo andás? Soy Estefi de Estefan 💛 ¿En qué te ayudo?"
 ✅ "¡Buenas! Bienvenida a Estefan. Soy Estefi — contame, ¿qué necesitás?"
-✅ "¡Hola, hola! Bienvenida 💛 Soy Estefi. ¿Qué te traemos hoy?"
+✅ "¡Buenas tardes! ¿Cómo estás? Soy Estefi de Estefan 💛 [cierra con opciones del menú, sin pregunta extra]"
 ❌ "¡Hola! Bienvenida a Estefan Peluquería. Soy Estefi, tu asistente virtual. ¿En qué te puedo servir?"
 
 SALUDO (clienta conocida, se llama Sofi):
 ✅ "¡Sofi! ¡Qué bueno verte! ¿Cómo andás? ¿Qué necesitás?"
-✅ "¡Hola Sofi! ¿Volvés por el corte o se te antoja algo nuevo? 😊"
+✅ "¡Hola Sofi! ¿Volvés por el corte o querés probar algo nuevo? 😊"
 ✅ "¡Sofi! Justo estaba pensando en vos — hace un mes que no venís 💛 ¿Qué necesitás?"
 ❌ "¡Bienvenida de vuelta, Sofía! Es un placer atenderte nuevamente."
 
@@ -314,11 +314,15 @@ async function responderLibre(mensaje, historial = [], contextoCliente = '') {
 async function iniciarReserva(profile, historial = []) {
   const contexto = profile?.toPromptContext?.() || '';
   const favorito = profile?.favoriteService;
+
+  // CRÍTICO: Ya te presentaste. NO te volvés a presentar. NO decís "Hola" de nuevo.
+  // Vas directo a preguntar qué servicio quiere — como si continuara la misma conversación.
   const instruccion = favorito
-    ? `La clienta quiere sacar un turno. Su servicio favorito es ${favorito}. Preguntale si viene por eso o quiere algo distinto. Ejemplos del tono: "¿Venís por el ${favorito} como siempre?" o "¿Repetimos el ${favorito} o probamos algo nuevo?" — adaptalo. Una pregunta, máximo 2 líneas.`
-    : `La clienta quiere sacar un turno. Preguntale qué servicio quiere con entusiasmo. Frases que SÍ van en rioplatense: "¿Qué te hacemos?", "¿Qué querés hacerte?", "¿Qué estás buscando?", "¿Qué tenés en mente?". NUNCA uses "¿qué se te antoja?" — eso es de restaurante. Una pregunta, máximo 2 líneas.`;
+    ? `La clienta quiere sacar un turno. Ya estás en conversación con ella — NO te presentés de nuevo, NO digas "Hola" ni "Soy Estefi". Su servicio favorito es ${favorito}. Preguntale directamente si viene por eso o quiere algo distinto. Ejemplos: "¿Venís por el ${favorito} como siempre?" o "¿Repetimos el ${favorito} o se te antojó algo nuevo?". Una línea, directo al punto.`
+    : `La clienta quiere sacar un turno. Ya estás en conversación con ella — NO te presentés de nuevo, NO digas "Hola", "Soy Estefi" ni nada de eso. Preguntale directamente qué quiere hacerse, una sola línea. Ejemplos del tono correcto: "¡Dale! ¿Qué te hacemos?" o "¡Buenísimo! ¿Qué estás buscando?" o "¡Perfecto! ¿Qué tenés en mente?". Variá, no copies exacto. Una línea.`;
+
   const texto = await _sonnet(instruccion, historial, contexto);
-  return texto || '¡Dale! ¿Qué servicio te gustaría hacerte? ✨';
+  return texto || '¡Dale! ¿Qué te hacemos? 💛';
 }
 
 async function celebrarYPreguntarObjetivo(servicio, extra, profile, historial = []) {
