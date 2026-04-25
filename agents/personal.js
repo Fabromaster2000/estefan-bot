@@ -321,28 +321,35 @@ async function iniciarReserva(profile, historial = []) {
   return texto || '¡Dale! ¿Qué servicio te gustaría hacerte? ✨';
 }
 
-async function celebrarServicioYPedirDia(servicio, extra, profile, historial = []) {
+async function celebrarYPreguntarObjetivo(servicio, extra, profile, historial = []) {
+  // Paso 1 del flujo consultivo: felicitar + entender el por qué
+  // Lo que diga acá lo usamos después para personalizar el upsell
   const srvStr = servicio.nombre + (extra ? ` + ${extra.nombre}` : '');
-  const habitual = profile?.usualDay ? ` Suele venir los ${profile.usualDay}.` : '';
   const contexto = profile?.toPromptContext?.() || '';
 
-  // IMPORTANTE: acá NO se hace upsell. Solo celebrar el servicio y pedir el día.
-  // El upsell tiene su propio paso en el flujo, después de tener día, hora y nombre.
-  const instruccion = `La clienta eligió: ${srvStr}. Tenés que hacer DOS cosas y SOLO DOS:
-1. Celebrar la elección con entusiasmo genuino y específico al servicio
-2. Preguntar qué día le viene bien (atendemos lunes a sábado de 10 a 20hs${habitual ? ', ' + habitual.trim() : ''})
+  const instruccion = `La clienta eligió ${srvStr}. Tenés que hacer DOS cosas:
+1. Felicitarla con entusiasmo genuino por la elección
+2. Preguntarle cuál es su objetivo — qué tiene en mente, qué busca lograr
 
-IMPORTANTE: NO menciones otros servicios acá. NO hagas upsell. NO expliques precios.
-Solo celebrá + preguntá el día. Una sola pregunta, máximo 2 líneas.
+Ejemplos del tono y las preguntas:
+- "¡Excelente elección! ¿Tenías algo en mente — solo las puntas, un cambio más notorio, o querés renovarte con algo diferente?"
+- "¡Me encanta! ¿Qué estás buscando — mantenimiento, un cambio de look, o algo en el medio?"
+- "¡Buenísimo! ¿Venís por un retoque o se te antoja algo más?"
 
-Ejemplos del tono correcto:
-- Para corte: "¡Buena elección! El corte incluye lavado y aireado — salís impecable 💛 ¿Qué día te viene bien?"
-- Para balayage: "¡Uh, el balayage! Una pasión. ¿Cuándo venís?"
-- Para Head Spa: "¡El Head Spa es una experiencia increíble! ¿Qué día te queda bien?"
-Adaptá al servicio ${servicio.nombre}.`;
+El objetivo de la pregunta es entender QUÉ RESULTADO BUSCA — esa respuesta le sirve al estilista Y nos ayuda a recomendar mejor después.
+NO pidas el día todavía. NO menciones precios. Solo felicitá + preguntá el objetivo. Máximo 2 líneas.`;
 
   const texto = await _sonnet(instruccion, historial, contexto);
-  return texto || `¡Buena elección! ✨ ¿Qué día te viene bien?\nAtendemos *lunes a sábado de 10:00 a 20:00hs*`;
+  return texto || `¡Excelente elección! ¿Tenías algo en mente — un retoque, un cambio más notorio, o querés renovarte con algo distinto? 💛`;
+}
+
+async function celebrarServicioYPedirDia(servicio, extra, profile, historial = []) {
+  // Mantener compatibilidad — usado cuando ya tenemos el objetivo
+  const contexto = profile?.toPromptContext?.() || '';
+  const habitual = profile?.usualDay ? ` Suele venir los ${profile.usualDay}.` : '';
+  const instruccion = `La clienta eligió ${servicio.nombre}${extra ? ' + ' + extra.nombre : ''}. Ya sabemos qué quiere hacerse. Preguntá qué día le viene bien de forma breve y cálida. Atendemos lunes a sábado de 10 a 20hs.${habitual} Una línea.`;
+  const texto = await _sonnet(instruccion, historial, contexto);
+  return texto || `¿Qué día te viene bien? Atendemos *lunes a sábado de 10:00 a 20:00hs* 💛`;
 }
 
 async function pedirHora(dia, servicio, profile, historial = []) {
@@ -364,37 +371,39 @@ Una sola línea. No pidas el email acá, no expliques nada más.`;
   return texto || '¿Cómo te llamás para anotar el turno? 😊';
 }
 
-async function ofrecerUpsell(servicioPrincipal, servicioExtra, profile, historial = []) {
+async function ofrecerUpsell(servicioPrincipal, servicioExtra, profile, historial = [], objetivoCliente = '') {
   const BENEFICIOS = {
     'Ampolla':              'hidrata en profundidad, sella la cutícula — pelo suave, brillante y sin frizz',
     'Ozono':                'son 15 minutitos y el pelo queda con otro brillo y textura, se nota desde lejos',
     'Head Spa completo':    'limpieza profunda del cuero cabelludo, masajes, hidratación total — una experiencia',
-    'Brushing / Planchita': 'salís del salón con el pelo listo y divino, no tenés que hacer nada en casa',
+    'Brushing / Planchita': 'salís del salón con el pelo listo y divino, te ahorrás el trabajo en casa',
   };
   const beneficio = BENEFICIOS[servicioExtra.nombre] || 'potencia el resultado y el pelo queda increíble';
   const precio = servicioExtra.precio.toLocaleString('es-AR');
 
-  const instruccion = `La clienta eligió ${servicioPrincipal.nombre}. Es el momento de ofrecer ${servicioExtra.nombre} como complemento.
+  // La clave: usamos lo que dijo la clienta para conectar el upsell con su objetivo real
+  const contextoObjetivo = objetivoCliente
+    ? `La clienta dijo que busca: "${objetivoCliente}". Usá eso para conectar el beneficio del upsell con lo que ella quiere lograr.`
+    : '';
 
-FILOSOFÍA: Asumís que va a querer. Presentás el VALOR primero, el precio después como "solo $X más", y la pregunta final siempre invita al sí.
+  const instruccion = `La clienta eligió ${servicioPrincipal.nombre} y es momento de ofrecerle ${servicioExtra.nombre}.
+${contextoObjetivo}
 
-Beneficio concreto de ${servicioExtra.nombre}: ${beneficio}
-Precio: solo $${precio} más
+FILOSOFÍA DE VENTA:
+- Usás lo que ella dijo para justificar el upsell — hablás de SU objetivo, no del producto
+- Mostrás cómo ${servicioExtra.nombre} multiplica el resultado de lo que ya eligió
+- Precio como "solo $${precio} más" — nunca el precio total
+- Pregunta final que asume el sí: "¿Lo sumamos?", "¿Le damos?", "¿Arrancamos con eso?"
 
-Estructura ideal:
-1. Mencioná el beneficio concreto (1 línea)
-2. El precio como "solo $${precio} más" o "por solo $${precio} extra"
-3. Pregunta que invita al sí: "¿Lo sumamos?", "¿Le damos?", "¿Arrancamos con eso?"
+Ejemplos de cómo conectar el objetivo con el upsell:
+- Si dijo "quiero cortarme las puntas solamente": "El corte ya va a dejar el pelo prolijo, pero con el brushing ese pequeño cambio se va a notar como un upgrade total — el pelo cae diferente, con volumen y brillo. Son solo $20.000 más. ¿Lo sumamos?"
+- Si dijo "quiero renovarme": "Y para que la renovación se sienta de verdad, el brushing hace que el corte brille — salís completamente distinta. Por solo $20.000 más. ¿Le damos?"
+- Si dijo "me creció mucho": "El corte va a sacar todo lo que sobra. Si le sumamos el brushing, el pelo va a caer perfectamente y se va a notar mucho más. Son solo $20.000 más. ¿Lo sumamos?"
 
-Ejemplos del tono:
-✅ "La ampolla después del corte es un golazo — hidrata, sella la cutícula, pelo suave y brillante. Son solo $30.000 más. ¿La sumamos?"
-✅ "Si querés salir con el pelo listo, le sumamos el brushing — la experiencia completa por solo $20.000 más. ¿Le damos?"
-✅ "El ozono son 15 minutitos y el resultado se nota posta. Por solo $30.000 más lo tenés. ¿Arrancamos?"
-
-Adaptalo a ${servicioExtra.nombre} sobre ${servicioPrincipal.nombre}. Máximo 2 líneas. NO uses "¿Cuál preferís?" ni "¿Querés o no querés?".`;
+Adaptá usando lo que dijo la clienta. Máximo 2 líneas. NO uses "¿Cuál preferís?" ni des opción de elegir el menos.`;
 
   const texto = await _sonnet(instruccion, historial, profile?.toPromptContext?.() || '');
-  return texto || `La *${servicioExtra.nombre}* ${beneficio}. Por solo $${precio} más la sumamos. ¿Le damos? 💛`;
+  return texto || `Con el brushing ese corte va a lucir x10 — salís con el pelo listo y divino. Por solo $${precio} más. ¿Lo sumamos? 💛`;
 }
 
 async function pedirEmail(nombre, historial = []) {
@@ -567,6 +576,7 @@ module.exports = {
 
   // Flujo de reserva
   iniciarReserva,
+  celebrarYPreguntarObjetivo,
   celebrarServicioYPedirDia,
   pedirHora,
   pedirNombre,

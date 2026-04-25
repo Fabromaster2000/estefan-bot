@@ -485,12 +485,24 @@ async function avanzarReserva(session, phone, profile, clientCtx, send) {
     return send(await personal.iniciarReserva(profile, h));
   }
 
-  // Celebrar servicio (solo una vez)
-  if (!d._servicioFestejado) {
-    d._servicioFestejado = true;
-    // Si ya tiene día en el mismo mensaje, pasar directo
-    if (!d.dia) {
-      return send(await personal.celebrarServicioYPedirDia(d.servicio, d.extra, profile, h));
+  // Paso 1 consultivo: felicitar + preguntar el objetivo (solo para cortes, no para color)
+  // Para color ya hay flujo de consulta. Para otros servicios simples, preguntamos el objetivo.
+  const servicioNecesitaObjetivo = !d.servicio?.consulta; // no para color que ya tiene su flujo
+  if (servicioNecesitaObjetivo && !d._objetivoPreguntado) {
+    d._objetivoPreguntado = true;
+    // Si ya dijo el objetivo en el mismo mensaje que el servicio, lo capturamos después
+    // Por ahora preguntamos
+    return send(await personal.celebrarYPreguntarObjetivo(d.servicio, d.extra, profile, h));
+  }
+
+  // Capturar el objetivo que acaba de decir (el último mensaje del usuario)
+  if (d._objetivoPreguntado && !d._objetivoCaptado) {
+    d._objetivoCaptado = true;
+    // Guardar lo que dijo como contexto para el upsell y el estilista
+    const ultimoUser = session.historial.filter(x => x.role === 'user').slice(-1)[0]?.content || '';
+    // Solo guardar si no es un saludo ni un número de menú — si es la respuesta al objetivo
+    if (ultimoUser && !/^\d+$/.test(ultimoUser.trim()) && ultimoUser.length > 2) {
+      d.objetivoCliente = ultimoUser;
     }
   }
 
@@ -538,7 +550,7 @@ async function avanzarReserva(session, phone, profile, clientCtx, send) {
       d.upsellOfrecido = true;
       session.step = 'UPSELL';
       const srvUpsell = SERVICIOS.findById(upsell.targetId);
-      if (srvUpsell) return send(await personal.ofrecerUpsell(d.servicio, srvUpsell, h));
+      if (srvUpsell) return send(await personal.ofrecerUpsell(d.servicio, srvUpsell, profile, h, d.objetivoCliente || ''));
     }
     d.upsellOfrecido = true;
   }
@@ -557,6 +569,7 @@ async function _crearTurno(session, phone, clientCtx, send) {
       servicio: d.servicio, extra: d.extra || null,
       dia: d.dia, hora: d.hora,
       email: d.email || clientCtx?.client?.email || null,
+      notes: d.objetivoCliente ? `Objetivo clienta: "${d.objetivoCliente}"` : null,
     });
 
     const { formatFecha } = require('../core/utils');
