@@ -554,7 +554,7 @@
       </div>
 
   <!-- ── CHATS PANEL ─────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-chats" style="display:none;padding:0;">
+  <div class="panel" id="panel-chats" style="padding:0;">
     <div class="chats-layout">
       <!-- Sidebar -->
       <div class="chats-sidebar">
@@ -596,7 +596,7 @@
   </div>
 
   <!-- GIFT CARDS -->
-  <div class="panel" id="panel-giftcards" style="display:none">
+  <div class="panel" id="panel-giftcards">
     <div class="section-title" style="margin-bottom:4px">🎁 Gift Cards</div>
     <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Creá y gestioná gift cards de regalo para las clientas.</p>
 
@@ -1085,9 +1085,9 @@ async function adminApi(method,path,body){
 }
 
 async function showPanel(n){
-  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>{p.classList.remove('active');p.style.display='none';});
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('panel-'+n).classList.add('active');
+  const _activePanel=document.getElementById('panel-'+n);if(_activePanel){_activePanel.classList.add('active');_activePanel.style.display='block';}
   document.getElementById('tab-'+n).classList.add('active');
   if(n==='cobrar'){ if(!cobrarSplitRows.length) cobrarSplitRows=[{medio:'Efectivo',monto:''}]; renderSplitRows(); }
   if(n==='agenda')loadAgenda();
@@ -1097,6 +1097,7 @@ async function showPanel(n){
   if(n==='ventas'){loadVentas();}
   if(n==='ventas'){loadVentas();}
   if(n==='chats'){loadChats();}
+  if(n==='giftcards'){gcCargar('todas');}
   if(n==='admin'){
     if(!ADMIN_PW){
       pendingAdminCallback=()=>showPanel('admin');
@@ -3619,14 +3620,7 @@ async function gcPagar(code) {
 
 // Cargar gift cards cuando se abre el panel
 const _origShowPanel = typeof showPanel === 'function' ? showPanel : null;
-document.addEventListener('DOMContentLoaded', () => {
-  // Hookear showPanel para cargar GC al abrir tab
-  const origShow = window.showPanel;
-  window.showPanel = function(name) {
-    origShow(name);
-    if (name === 'giftcards') gcCargar('todas');
-  };
-});
+/* tab fix applied above */
 </script>
 </body>
 </html>
