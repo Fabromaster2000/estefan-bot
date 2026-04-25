@@ -304,14 +304,14 @@ Ejemplos: "¿A qué hora el ${dia}?" o "¿Y a qué hora te viene bien?" — muy 
 }
 
 async function pedirNombre(servicio, dia, hora, historial = []) {
-  const instruccion = `Tenemos ${servicio.nombre} el ${dia} a las ${hora}. Pedí el nombre para anotar el turno.
+  const instruccion = `Tenemos ${servicio.nombre} el ${dia} a las ${hora}. Pedí solo el nombre para anotar el turno.
 Ejemplos del tono correcto:
-- "¿Y cómo te llamás para anotar el turno? 😊"
-- "¡Perfecto! ¿Me decís tu nombre?"
-- "Buenísimo. ¿A nombre de quién lo anoto?"
-Una línea, variá el ejemplo.`;
+- "¿Y cómo te llamás? Lo necesito para anotar el turno 😊"
+- "¡Perfecto! ¿A nombre de quién lo anoto?"
+- "Buenísimo. ¿Me decís tu nombre?"
+Una sola línea. No pidas el email acá, no expliques nada más.`;
   const texto = await _sonnet(instruccion, historial);
-  return texto || '¿Me decís tu nombre para anotar el turno? 😊';
+  return texto || '¿Cómo te llamás para anotar el turno? 😊';
 }
 
 async function ofrecerUpsell(servicioPrincipal, servicioExtra, profile, historial = []) {
@@ -333,13 +333,26 @@ Adaptalo a ${servicioExtra.nombre}. Máximo 2 líneas.`;
 }
 
 async function pedirEmail(nombre, historial = []) {
-  const instruccion = `${nombre ? nombre + ' confirmó' : 'Confirmó'} el turno. Pedile el email para mandarle la confirmación con el código.
-Ejemplos del tono correcto:
-- "¿Me dejás tu mail? Te mando el código del turno para tenerlo guardado 📧"
-- "¿Tenés mail? Te mando la confirmación con todos los datos"
-Aclará que puede escribir *no* para saltear. Una línea.`;
+  // Este mensaje es crítico para generar confianza.
+  // La clienta tiene que entender el VALOR antes de dar su dato.
+  // No es spam — es su portal, sus puntos, su recordatorio.
+  const instruccion = `${nombre ? nombre : "La clienta"} confirmó el turno. Ahora pedile el email.
+IMPORTANTE: Antes de pedirlo, explicá brevemente por qué lo necesitamos y para qué sirve.
+Tiene que sonar natural, no como aviso legal. El tono es de amiga que le explica algo útil.
+
+El email sirve para:
+- Mandarle la confirmación del turno con el código de reserva
+- Acceder a su portal personal donde ve sus puntos, historial y puede cambiar turnos
+- Recibir el recordatorio del turno (para que no se olvide)
+Sus datos no se comparten con nadie y solo se usan para darle mejor atención.
+
+Ejemplo del tono correcto:
+"¿Me dejás tu mail? Te mando la confirmación con el código del turno, y también podés acceder a tu perfil para ver tus puntos y el historial. Tus datos son solo nuestros, no te mandamos publicidad que no pediste 😊 (o escribí *no* para saltear)"
+
+Adaptalo con naturalidad, máximo 3 líneas. Que suene a persona, no a política de privacidad.`;
   const texto = await _sonnet(instruccion, historial);
-  return texto || '¿Me dejás tu mail? Te mando el código del turno 📧\n_(o *no* para saltear)_';
+  return texto ||
+    '¿Me dejás tu mail? Te mando la confirmación con el código del turno y podés acceder a tu perfil — ahí ves tus puntos acumulados, historial y podés cambiar turnos. Tus datos son solo nuestros, sin publicidad 😊\n_(o *no* para saltear)_';
 }
 
 async function responderPrecios(mensajeCliente, historial = [], contextoCliente = '') {

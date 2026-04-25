@@ -198,12 +198,27 @@ async function handle({ sessionId, phone, text }) {
     if (dia  && !d.dia)  d.dia  = dia;
     if (hora && !d.hora) d.hora = hora;
 
-    // Nombre: si el paso es ASK_NOMBRE y este mensaje parece un nombre
+    // Nombre: validación estricta para evitar capturar preguntas como nombres
     if (d._esperandoNombre && !d.nombre) {
-      const noEsComando = !/\d/.test(t) && t.length > 1 && t.length < 50;
-      if (noEsComando) {
-        d.nombre = t.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      // Rechazar si: tiene signos de pregunta, verbos comunes, es muy corta o muy larga,
+      // contiene palabras que claramente no son nombres propios
+      const esNombre = (
+        !/[¿?!]/.test(t) &&                          // sin signos de pregunta/exclamación
+        !/\b(para|porque|por qué|cómo|cuánto|cuándo|qué|quien|quién|cuál|tenés|tengo|hacés|hacen|querés|quiero|puedo|sirve|necesito)\b/i.test(t) &&
+        !/\d/.test(t) &&                             // sin números
+        t.length >= 2 &&                              // mínimo 2 caracteres
+        t.length <= 40 &&                             // máximo 40
+        /^[A-Za-záéíóúÁÉÍÓÚüÜñÑ\s'-]+$/.test(t)  // solo letras, espacios, guión, apóstrofe
+      );
+      if (esNombre) {
+        d.nombre = t.trim().split(' ')
+          .filter(Boolean)
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(' ');
         d._esperandoNombre = false;
+      } else {
+        // No es un nombre — dejar _esperandoNombre=true y dejar que avanzarReserva lo vuelva a pedir
+        console.log(`[orch] texto rechazado como nombre: "${t}"`);
       }
     }
 
