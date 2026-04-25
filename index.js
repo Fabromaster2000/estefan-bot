@@ -142,12 +142,12 @@ app.post('/chat/start', async (req, res) => {
     const session = getSession(sessionId);
     session.welcomed = true;
     const { buildContext, run } = require('./agents/intake');
-    const { greet } = require('./agents/personal');
+    const { generarSaludo } = require('./agents/personal');
     await run({ phone: sessionId });
     const clientCtx = await buildContext(sessionId);
-    const welcome = await greet({ clientCtx });
-    const menuOpciones = `\n\n¿Qué querés hacer?\n\n1️⃣ Sacar un turno\n2️⃣ Ver / cambiar mi turno\n3️⃣ Ver precios\n4️⃣ Hablar con alguien del equipo`;
-    res.json({ sessionId, message: welcome + menuOpciones });
+    const profile = clientCtx?.profile || null;
+    const welcome = await generarSaludo(profile);
+    res.json({ sessionId, message: welcome });
   } catch(err) {
     console.error('[start error]', err.message);
     res.status(500).json({ error: err.message });
