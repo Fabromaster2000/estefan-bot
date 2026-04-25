@@ -116,14 +116,16 @@ async function handle({ sessionId, phone, text }) {
           if (email) _mandarEmailSena(bResult, srv, srvDisplay, input.nombre, email).catch(() => {});
           toolResultado = `Turno registrado con seña requerida. Código: ${bResult.code}. Fecha: ${fechaDisplay}. Hora: ${bResult.horaReal}. Seña requerida: $${montoSena}${bResult.mpLink ? '. Link de pago MercadoPago: ' + bResult.mpLink : ''}.`;
           // Mensaje hardcodeado para el resumen — datos críticos no los genera Sonnet
-          const msgSena = personal.msgSenaRequerida(input.nombre, srvDisplay, fechaDisplay, bResult.horaReal, bResult.code, montoSena, bResult.mpLink);
+          const portalLinkSena = await _generarLinkPortal(phone);
+          const msgSena = personal.msgSenaRequerida(input.nombre, srvDisplay, fechaDisplay, bResult.horaReal, bResult.code, montoSena, bResult.mpLink, portalLinkSena);
           return send(msgSena + _msgApellido());
         }
 
         // Sin seña — confirmación directa
         if (email) _mandarEmailConfirmacion(bResult, srv, srvDisplay, input.nombre, email).catch(() => {});
         toolResultado = `Turno confirmado exitosamente. Código: ${bResult.code}. Fecha: ${fechaDisplay}. Hora: ${bResult.horaReal}. Puntos ganados: ${pts}.`;
-        const msgConfirm = personal.msgTurnoConfirmado(input.nombre, srvDisplay, fechaDisplay, bResult.horaReal, bResult.code, pts);
+        const portalLink = await _generarLinkPortal(phone);
+        const msgConfirm = personal.msgTurnoConfirmado(input.nombre, srvDisplay, fechaDisplay, bResult.horaReal, bResult.code, pts, portalLink);
         return send(msgConfirm + _msgApellido());
       }
     } catch (e) {
@@ -229,7 +231,9 @@ async function handle({ sessionId, phone, text }) {
           });
         }
       }
-      toolResultado = `Email ${input.email} guardado correctamente. Se mandó la confirmación del turno.`;
+      // Generar link del portal para incluir en la respuesta
+      const portalLinkEmail = await _generarLinkPortal(phone);
+      toolResultado = `Email ${input.email} guardado correctamente. Se mandó la confirmación del turno.${portalLinkEmail ? ' Link del portal personal: ' + portalLinkEmail : ''}`;
     } catch (e) {
       toolResultado = `Error guardando email: ${e.message}`;
     }
@@ -278,6 +282,27 @@ async function _mandarEmailSena(bResult, srv, srvDisplay, nombre, email) {
 // Mensaje post-confirmación de turno
 function _msgApellido() {
   return '\n\n¿Me decís tu apellido para sumarte al programa de beneficios? 💛\n_(o *no* para saltear)_';
+}
+
+// ── Generar link personalizado del portal ────────────────────────────────────
+async function _generarLinkPortal(phone) {
+  try {
+    const { getDB } = require('../core/db');
+    const db = getDB();
+    if (!db) return null;
+    const crypto = require('crypto');
+    const token   = crypto.randomBytes(24).toString('hex');
+    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 días
+    await db.query(
+      'INSERT INTO client_tokens (client_phone, token, expires_at) VALUES ($1,$2,$3)',
+      [phone, token, expires]
+    );
+    const base = process.env.BASE_URL || 'https://peluqueria-bot.onrender.com';
+    return `${base}/mi-cuenta?t=${token}`;
+  } catch (e) {
+    console.error('[orch] generarLinkPortal error:', e.message);
+    return null;
+  }
 }
 
 // ── Notificaciones staff ──────────────────────────────────────────────────────
