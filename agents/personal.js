@@ -62,12 +62,14 @@ FRASES PROHIBIDAS (nunca las usés)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ❌ "¿En qué te puedo ayudar?" — genérico, de call center
-❌ "¿Qué te sirve?" / "¿Cómo te puedo servir?" — traducción literal del inglés, no existe en rioplatense
+❌ "¿Qué te sirve?" / "¿Cómo te puedo servir?" — traducción del inglés, no existe en rioplatense
+❌ "¿Qué se te antoja?" — es de restaurante o bodega, no de peluquería
 ❌ "¡Por supuesto!" / "¡Claro que sí!" — robótico
 ❌ "Como asistente virtual..." — nunca menciones que sos un bot
-❌ "¿Podría decirme...?" — muy formal, no sos una recepcionista de banco
+❌ "¿Podría decirme...?" — muy formal
 ❌ "Perfecto, voy a procesar tu solicitud" — de chatbot genérico
 ❌ "¿Hay algo más en lo que pueda asistirte?" — igual
+❌ Repetir el menú completo si la clienta ya interactuó — si ya habló con vos, avanzás
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EJEMPLOS REALES — APRENDÉ DE ESTOS
@@ -199,55 +201,61 @@ async function _sonnet(instruccion, historialCorto = [], contextoCliente = '') {
 // ─────────────────────────────────────────────────────────────────────────────
 // SALUDO INICIAL
 // ─────────────────────────────────────────────────────────────────────────────
-const MENU = `\n\n1️⃣ Sacar un turno\n2️⃣ Ver o cambiar mi turno\n3️⃣ Precios y servicios\n4️⃣ Hablar con el equipo`;
+const MENU = `\n\n1️⃣ Sacar un turno\n2️⃣ Ver o cambiar mi turno\n3️⃣ Precios y servicios\n\n_Y si en algún momento necesitás hablar con alguien del equipo, te conecto enseguida 💛_`;
 
 async function generarSaludo(profile) {
-  // Clienta conocida — personalizado con sus datos reales
+  // Determinar saludo según hora en Argentina
+  const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+  const hora = ahora.getHours();
+  const saludoHora = hora >= 6 && hora < 12 ? 'buen día'
+    : hora >= 12 && hora < 20 ? 'buenas tardes'
+    : 'buenas noches';
+
+  // ── CLIENTA CONOCIDA ────────────────────────────────────────────────────────
   if (profile && !profile.isNewClient && profile.firstName) {
     const nombre = profile.firstName;
     const contexto = profile.toPromptContext();
+    const extras = [
+      profile.nextBooking ? `Tiene turno de ${profile.nextBooking.servicio} el ${profile.nextBooking.fecha}.` : '',
+      profile.daysSinceVisit > 45 ? `Hace ${profile.daysSinceVisit} días que no viene.` : '',
+      profile.isVip ? 'Es clienta VIP.' : '',
+      profile.favoriteService ? `Su favorito es ${profile.favoriteService}.` : '',
+    ].filter(Boolean).join(' ');
 
-    const instruccion = [
-      `Saludá a ${nombre} como a una amiga que ya conocés bien. Usá su nombre.`,
-      profile.nextBooking
-        ? `Tiene un turno de ${profile.nextBooking.servicio} el ${profile.nextBooking.fecha} — podés mencionarlo.`
-        : '',
-      profile.daysSinceVisit > 45
-        ? `Hace ${profile.daysSinceVisit} días que no viene — podés mencionarlo con cariño, no con reproche.`
-        : '',
-      profile.isVip ? `Es clienta VIP — tratala con ese nivel de atención.` : '',
-      profile.favoriteService
-        ? `Su servicio favorito es ${profile.favoriteService} — podés usarlo.`
-        : '',
-      `Después del saludo, mostrá las opciones del menú de forma natural. Máximo 4 líneas total.`,
-      `IMPORTANTE: Usá el tono de los ejemplos del sistema prompt. Nada de "¿En qué te puedo ayudar?".`,
-    ].filter(Boolean).join('\n');
+    const instruccion = `Es de ${saludoHora}. Saludá a ${nombre} usando "${saludoHora}" al principio.
+Preguntale cómo está. Presentate como Estefi, su asistente personal de Estefan Peluquería.
+Decile que tu objetivo es brindarle el mejor servicio y que estás atenta a lo que necesite.
+${extras}
+Luego ofrecé las opciones del menú de forma natural. Máximo 5 líneas.
+NO uses "¿En qué te puedo ayudar?". Tono cálido, personal, como si la conocieras bien.`;
 
     const texto = await _sonnet(instruccion, [], contexto);
-    return (texto || `¡${nombre}! ¡Qué bueno verte! 💛`) + MENU;
+    return (texto || `¡${saludoHora.charAt(0).toUpperCase() + saludoHora.slice(1)}, ${nombre}! ¿Cómo estás? Soy Estefi 💛`) + MENU;
   }
 
-  // Clienta nueva — variantes curadas para que Sonnet no invente algo genérico
-  const VARIANTES = [
-    `¡Hola! ¿Cómo andás? Soy Estefi de Estefan 💛`,
-    `¡Buenas! Bienvenida a Estefan. Soy Estefi —`,
-    `¡Hola, hola! Bienvenida a Estefan 💛 Soy Estefi.`,
-    `¡Hola! Soy Estefi, de Estefan Peluquería 💛`,
-  ];
-  // Elegimos una al azar y dejamos que Sonnet complete con las opciones
-  const base = VARIANTES[Math.floor(Math.random() * VARIANTES.length)];
+  // ── CLIENTA NUEVA ───────────────────────────────────────────────────────────
+  const instruccion = `Es de ${saludoHora}. Escribí el saludo inicial de Estefi para una clienta nueva de Estefan Peluquería.
 
-  const instruccion = `Completá este saludo con las opciones del menú de forma natural y cálida:
-"${base} [completá acá]"
+El saludo tiene que incluir, en orden natural:
+1. Saludo según la hora: "${saludoHora}" — usá esa frase exacta al empezar
+2. Preguntar cómo está
+3. Presentarte como Estefi, asistente personal de Estefan Peluquería
+4. Decirle que tu objetivo es brindarle el mejor servicio y que estás atenta a lo que necesite cuando lo necesite
+5. Las opciones del menú integradas de forma natural (no como lista corporativa):
+   1️⃣ Sacar un turno  2️⃣ Ver o cambiar mi turno  3️⃣ Precios y servicios
+   Y mencioná al final, como red de seguridad, que si en algún momento necesita hablar con alguien del equipo la conectás enseguida
 
-Opciones a incluir: 1️⃣ Sacar un turno  2️⃣ Ver o cambiar mi turno  3️⃣ Precios y servicios  4️⃣ Hablar con el equipo
+Tono: cálida, genuina, como una amiga profesional. Rioplatense natural.
+NO uses: "¿En qué te puedo ayudar?", "¿Qué te sirve?", "¿Qué se te antoja?"
+Máximo 5 líneas.`;
 
-Integrá las opciones de forma conversacional, no como lista fría de corporativo.
-Máximo 4 líneas. Tono: amiga que trabaja en el salón.
-NO uses "¿En qué te puedo ayudar?" ni "¿Qué te sirve?".`;
-
+  const FALLBACK_HORA = saludoHora.charAt(0).toUpperCase() + saludoHora.slice(1);
   const texto = await _sonnet(instruccion);
-  return texto || (`¡Hola! Soy Estefi de Estefan Peluquería 💛` + MENU);
+  return texto || (
+    `¡${FALLBACK_HORA}! ¿Cómo estás? Soy Estefi, tu asistente personal de Estefan Peluquería 💛\n\n` +
+    `Mi objetivo es darte el mejor servicio y estar atenta a lo que necesités cuando lo necesités.` +
+    MENU
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -288,8 +296,8 @@ async function iniciarReserva(profile, historial = []) {
   const contexto = profile?.toPromptContext?.() || '';
   const favorito = profile?.favoriteService;
   const instruccion = favorito
-    ? `La clienta quiere sacar un turno. Su servicio favorito es ${favorito}. Preguntale si viene por eso o por otra cosa. Ejemplos: "¿Venís por el ${favorito} como siempre, o se te antoja algo distinto?" — adaptalo. Una pregunta, máximo 2 líneas.`
-    : `La clienta quiere sacar un turno. Respondé con entusiasmo genuino y preguntale qué servicio quiere. Ejemplos: "¡Dale! ¿Qué querés hacerte?" o "¡Buenísimo! ¿Qué se te antoja?" — variá, no copies exacto. Una pregunta, máximo 2 líneas.`;
+    ? `La clienta quiere sacar un turno. Su servicio favorito es ${favorito}. Preguntale si viene por eso o quiere algo distinto. Ejemplos del tono: "¿Venís por el ${favorito} como siempre?" o "¿Repetimos el ${favorito} o probamos algo nuevo?" — adaptalo. Una pregunta, máximo 2 líneas.`
+    : `La clienta quiere sacar un turno. Preguntale qué servicio quiere con entusiasmo. Frases que SÍ van en rioplatense: "¿Qué te hacemos?", "¿Qué querés hacerte?", "¿Qué estás buscando?", "¿Qué tenés en mente?". NUNCA uses "¿qué se te antoja?" — eso es de restaurante. Una pregunta, máximo 2 líneas.`;
   const texto = await _sonnet(instruccion, historial, contexto);
   return texto || '¡Dale! ¿Qué servicio te gustaría hacerte? ✨';
 }

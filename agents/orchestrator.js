@@ -137,20 +137,31 @@ async function handle({ sessionId, phone, text }) {
   // ── MENÚ PRINCIPAL (step LIBRE) ──────────────────────────────────────────────
   if (session.step === 'LIBRE') {
 
-    // Saludos → regenerar menú
+    // Saludos → si ya tiene historial, respuesta breve. Si es el primer mensaje, saludo completo.
     if (/^(hola\b|buenas\b|buenos días|buen dia|buenas tardes|buenas noches|hey\b|hi\b)/i.test(tl)) {
+      const yaInteractuó = session.historial.length > 2;
+      if (yaInteractuó) {
+        // Ya habló — respuesta corta, no repetir el menú completo
+        const nombre = profile?.firstName || '';
+        return send(nombre
+          ? `¡${nombre}! 💛 ¿En qué te ayudo?`
+          : `¡Hola de vuelta! 💛 ¿En qué te ayudo?
+
+1️⃣ Sacar un turno  2️⃣ Ver mi turno  3️⃣ Precios`
+        );
+      }
       return send(await personal.generarSaludo(profile));
     }
 
-    // Opciones numéricas
+    // Opciones numéricas (1-3 en el menú, 4 ya no se muestra pero igual lo manejamos)
     if (/^[1-4][\s.]*$/.test(t)) {
       const n = parseInt(t);
       if (n === 1) return await _iniciarReserva(session, phone, profile, send);
       if (n === 2) { session.step = 'BUSCANDO_TURNO'; return send('🔍 Ingresá tu *código de reserva* (ej: #AB12) o tu nombre completo:'); }
       if (n === 3) return send(await personal.responderPrecios(t, session.historial.slice(-4)));
       if (n === 4) {
-        _notificarStaff(phone, session.profile?.nombre, 'Opción 4 — quiere hablar con alguien', 'DERIVACION');
-        return send('¡Dale! Le aviso al equipo y te escriben a la brevedad 💛');
+        _notificarStaff(phone, session.profile?.nombre, 'Quiere hablar con alguien del equipo', 'DERIVACION');
+        return send('¡Claro! Le aviso al equipo ahora mismo y te escriben a la brevedad 💛');
       }
     }
 
