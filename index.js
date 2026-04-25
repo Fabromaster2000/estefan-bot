@@ -141,12 +141,10 @@ app.post('/chat/start', async (req, res) => {
     const sessionId = generateSessionId();
     const session = getSession(sessionId);
     session.welcomed = true;
-    const { buildContext, run } = require('./agents/intake');
-    const { generarSaludo } = require('./agents/personal');
+    const { run } = require('./agents/intake');
+    const { saludoInicial } = require('./agents/orchestrator');
     await run({ phone: sessionId });
-    const clientCtx = await buildContext(sessionId);
-    const profile = clientCtx?.profile || null;
-    const welcome = await generarSaludo(profile);
+    const welcome = await saludoInicial(sessionId, sessionId);
     res.json({ sessionId, message: welcome });
   } catch(err) {
     console.error('[start error]', err.message);

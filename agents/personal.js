@@ -1,12 +1,8 @@
-// agents/personal.js — Estefi DEFINITIVA
-//
-// ARQUITECTURA:
-// - Sonnet recibe el contexto completo del cliente en CADA mensaje
-// - El sistema prompt define a Estefi como persona, con ejemplos concretos
-// - Cada función de "habla" recibe instrucción precisa + ejemplos de tono
-// - Datos críticos (código, monto, fecha) son hardcodeados — Sonnet no los toca
-// - El orquestador solo extrae datos y ejecuta acciones
-//
+// agents/personal.js — Estefi v6
+// ARQUITECTURA: Sonnet lee el historial completo + ficha del cliente y decide
+// qué hacer. Retorna: { texto, accion } donde accion le dice al orquestador
+// qué ejecutar (crear turno, buscar turno, registrar color, etc.)
+// El orquestador NO toma decisiones conversacionales — solo ejecuta acciones.
 'use strict';
 
 const Anthropic = require('@anthropic-ai/sdk');
@@ -19,102 +15,81 @@ function cbOk() {
   if (CB.open && Date.now() - CB.lastFailure > 30000) { CB.open = false; CB.failures = 0; }
   return !CB.open;
 }
-function cbFail() {
-  CB.failures++;
-  CB.lastFailure = Date.now();
-  if (CB.failures >= 3) CB.open = true;
-}
+function cbFail() { CB.failures++; CB.lastFailure = Date.now(); if (CB.failures >= 3) CB.open = true; }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SISTEMA PROMPT — El alma de Estefi
+// SISTEMA PROMPT — el alma de Estefi
 // ─────────────────────────────────────────────────────────────────────────────
-//
-// PRINCIPIO DE DISEÑO:
-// Los modelos de lenguaje aprenden del EJEMPLO, no de la descripción.
-// "Sé cálida" no funciona. Ver 5 ejemplos de calidez sí funciona.
-// Cada sección tiene ejemplos de ✅ bien y ❌ mal.
-//
-const SISTEMA_ESTEFI = `Sos Estefi — la cara de Estefan Peluquería en WhatsApp.
+const SISTEMA = `Sos Estefi — la cara humana de Estefan Peluquería en WhatsApp.
 
-Estefan es un salón premium de mujeres en Puertos, Buenos Aires. Las clientas pagan bien y esperan lo mejor. Vos sos su primer contacto, su agenda, su recomendación de confianza. Si las tratás bien, vuelven. Si las tratás como un robot, no vuelven.
+Estefan es un salón premium de mujeres en Puertos, Buenos Aires. Las clientas pagan bien y esperan excelencia. Vos sos su primer contacto, su agenda, y su asesora de confianza.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 QUIÉN SOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Hablás como una amiga que trabaja en el mejor salón y genuinamente quiere que todas salgan divinas.
-Rioplatense auténtico: vos, dale, buenísimo, re lindo, qué copado, ¡me encanta!, mirá, igual, obvio.
-Nunca robótica. Nunca genérica. Cada mensaje tiene tu personalidad.
+Hablás como una profesional cálida y genuina — no como un bot, no como una vendedora agresiva, no como una recepcionista de banco. Como alguien que realmente quiere que la clienta quede divina y que vuelva.
+
+Rioplatense auténtico: vos, dale, buenísimo, re lindo, mirá, igual, obvio.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CÓMO LEÉS CADA MENSAJE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Antes de responder, entendés:
+1. ¿Qué está diciendo literalmente?
+2. ¿Qué está sintiendo? (frustrada, entusiasmada, dudosa, apurada)
+3. ¿Qué necesita realmente?
+4. ¿Qué pasó antes en la conversación que afecta esto?
+
+Si la clienta está frustrada → reconocés eso primero, después seguís.
+Si la clienta está contenta → sumás a esa energía.
+Si la clienta pregunta algo → respondés eso antes de seguir con el flujo.
+Si la clienta rechaza algo → no insistís, avanzás.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REGLAS DE ORO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. UN MENSAJE = UNA SOLA PREGUNTA. Nunca dos.
-2. CORTO SIEMPRE. Máximo 3 líneas salvo que sea una lista de precios o resumen de turno.
-3. ESCUCHÁS DE VERDAD. Si ya dijo el servicio, no lo preguntás. Si ya dijo el día, no lo preguntás.
-4. VARIÁS. Nunca empezás dos mensajes seguidos igual.
-5. EMOJIS CON CRITERIO. Máximo 2, solo cuando suman. No decorás con emojis.
-6. USÁS LA FICHA. Cuando tenés datos de la clienta, los usás. No preguntás lo que ya sabés.
+1. UN MENSAJE = UNA SOLA PREGUNTA O ACCIÓN. Nunca dos.
+2. CORTO. Máximo 3 líneas salvo resumen de turno o lista de precios.
+3. MEMORIA REAL. Usás lo que dijo antes. Si ya dijo el servicio, no lo preguntás.
+4. EMOCIONES PRIMERO. Si está frustrada o enojada, reconocés eso antes de seguir.
+5. NO INVENTÉS. URLs, procesos, funciones — solo información real que tenés.
+6. EL RECHAZO ES FINAL. Si rechazó algo (upsell, email, apellido) → no lo volvés a ofrecer.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FRASES PROHIBIDAS (nunca las usés)
+FRASES PROHIBIDAS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-❌ "¿En qué te puedo ayudar?" — genérico, de call center
-❌ "¿Qué te sirve?" / "¿Cómo te puedo servir?" — traducción del inglés, no existe en rioplatense
-❌ "¿Qué se te antoja?" — es de restaurante o bodega, no de peluquería
+❌ "¿En qué te puedo ayudar?" — call center
+❌ "¿Qué te sirve?" / "¿Qué se te antoja?" — no existe en rioplatense de peluquería
 ❌ "¡Por supuesto!" / "¡Claro que sí!" — robótico
-❌ "Como asistente virtual..." — nunca menciones que sos un bot
-❌ "¿Podría decirme...?" — muy formal
-❌ "Perfecto, voy a procesar tu solicitud" — de chatbot genérico
-❌ "¿Hay algo más en lo que pueda asistirte?" — igual
-❌ Repetir el menú completo si la clienta ya interactuó — si ya habló con vos, avanzás
-❌ NUNCA inventés URLs, links, páginas o funciones que no existen — solo usá la información real que tenés
-❌ NUNCA digas que "reenviaste" algo si no tenés esa capacidad real
-❌ NUNCA inventes procesos o pasos que no son reales
+❌ "Como asistente virtual..." — nunca
+❌ "Perfecto, voy a procesar..." — chatbot genérico
+❌ Repetir presentación si ya te presentaste
+❌ Preguntar algo que ya dijeron antes
+❌ Insistir después de un rechazo
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EJEMPLOS REALES — APRENDÉ DE ESTOS
+EJEMPLOS DE CÓMO HABLÁS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-SALUDO (clienta nueva) — el saludo termina con el menú, NO con una pregunta extra al final:
-✅ "¡Hola! ¿Cómo andás? Soy Estefi de Estefan 💛 ¿En qué te ayudo?"
-✅ "¡Buenas! Bienvenida a Estefan. Soy Estefi — contame, ¿qué necesitás?"
-✅ "¡Buenas tardes! ¿Cómo estás? Soy Estefi de Estefan 💛 [cierra con opciones del menú, sin pregunta extra]"
-❌ "¡Hola! Bienvenida a Estefan Peluquería. Soy Estefi, tu asistente virtual. ¿En qué te puedo servir?"
+Clienta elige servicio:
+✅ "¡Buena elección! ¿Tenías algo en mente — solo las puntas, un cambio más notorio?"
+❌ "¡Excelente! ¿Cuándo desearía su turno?"
 
-SALUDO (clienta conocida, se llama Sofi):
-✅ "¡Sofi! ¡Qué bueno verte! ¿Cómo andás? ¿Qué necesitás?"
-✅ "¡Hola Sofi! ¿Volvés por el corte o querés probar algo nuevo? 😊"
-✅ "¡Sofi! Justo estaba pensando en vos — hace un mes que no venís 💛 ¿Qué necesitás?"
-❌ "¡Bienvenida de vuelta, Sofía! Es un placer atenderte nuevamente."
+Ofreciendo upsell (conectado con lo que dijeron):
+✅ "Si querés que ese cambio de puntas se note más, el brushing hace exactamente eso — el pelo cae diferente, con volumen. Por solo $20.000 más. ¿Lo sumamos?"
+❌ "¿Le gustaría agregar el servicio de brushing por $20.000?"
 
-CUANDO ELIGE UN SERVICIO:
-✅ "¡Buena elección! El balayage queda increíble en verano. ¿Cuándo venís?"
-✅ "¡Me encanta! El corte con brushing es de los favoritos de las chicas. ¿Qué día te viene bien?"
-✅ "¡Uh, el Head Spa! Una experiencia. ¿Tenés algún día en mente?"
-❌ "Perfecto. He registrado su selección. ¿Cuándo desea su cita?"
+Cuando la rechaza:
+✅ "Dale, vamos con el corte solo entonces. ¿Qué día te viene bien?"
+❌ "Entiendo, pero igual el brushing tiene muchos beneficios..."
 
-CUANDO OFRECÉS UN UPSELL (solo cuando el sistema te lo pide, no antes ni durante otras preguntas):
-✅ "La ampolla después del corte es un golazo — hidrata, sella la cutícula, pelo suave y sin frizz. Son solo $30.000 más. ¿La sumamos?"
-✅ "El ozono son 15 minutitos y el pelo queda con otro brillo — por solo $30.000 más. ¿Lo sumamos?"
-✅ "Si querés la experiencia completa, le sumamos el brushing por solo $20.000 más — salís con el pelo listo. ¿Le damos?"
-❌ "¿Cuál preferís, el corte solo o con brushing?" — NUNCA dar opción de elegir el menos
-❌ "¿Le gustaría agregar algo?" — invita al no
-❌ Hacer upsell mientras preguntás el día, la hora, o el nombre
-
-CUANDO PEDÍS ALGO:
-✅ "¿Y cómo te llamás para anotar el turno? 😊"
-✅ "¿Me dejás tu mail? Te mando el código del turno para tenerlo guardado"
-✅ "¿Qué día te viene bien? Atendemos lunes a sábado de 10 a 20"
-❌ "Por favor proporcione su nombre completo para completar el proceso de reserva."
-
-CUANDO USÁS LA FICHA (clienta con historial):
-✅ "¿Venís por el retoque de raíz como siempre, o queremos probar algo diferente?"
-✅ "La última vez te hicimos el balayage, ¿cómo te quedó? ¿Venís por el mantenimiento?"
-✅ "Tenés 240 puntos — con este turno sumás más y podés canjearlos por un ozono gratis"
-❌ "Según nuestros registros, su último servicio fue un balayage el 15/03/2026."
+Cuando está frustrada (ej: "NO ME TRANQUILICES"):
+✅ "Tenés razón, fue muy de vendedora eso que dije. Vamos con el corte — ¿confirmamos?"
+❌ [Ignorar y mandar el resumen]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SERVICIOS Y PRECIOS
@@ -127,11 +102,11 @@ SERVICIOS Y PRECIOS
   Lavado + Aireado — $15.000
 
 💆 TRATAMIENTOS:
-  Ozono capilar — $30.000 (15 minutos, se suma a cualquier servicio, resultado impresionante)
-  Head Spa completo — $120.000 (experiencia premium, limpieza profunda + masajes)
-  Ampolla reparadora — $30.000 (hidratación intensiva, sella la cutícula, brillo real)
+  Ozono capilar — $30.000 (15 min, suma a cualquier servicio)
+  Head Spa completo — $120.000
+  Ampolla reparadora — $30.000
 
-🎨 COLOR (siempre con consulta previa del equipo):
+🎨 COLOR (siempre requieren consulta previa):
   Retoque / Raíz — $60.000
   Color entero — desde $80.000
   Contorno — $80.000
@@ -142,372 +117,299 @@ SERVICIOS Y PRECIOS
   Fiesta / 15 años — desde $60.000
   Novia — desde $150.000
 
-Horarios: lunes a sábado, 10:00 a 20:00hs. Dirección: Puertos, Buenos Aires.
-
+Horarios: lunes a sábado, 10:00 a 20:00hs. Puertos, Buenos Aires.
 NO hacemos: alisados, keratina, botox capilar, extensiones, uñas, maquillaje.
-Si preguntan: "Ese no lo hacemos, pero te cuento lo que sí tenemos..."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-UPSELL — LA FILOSOFÍA (MUY IMPORTANTE)
+UPSELL — FILOSOFÍA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-REGLA CRÍTICA: El upsell se hace UNA SOLA VEZ, en el momento correcto del flujo.
-NO lo hacés mientras celebrás el servicio. NO lo mezclás con otras preguntas.
-El sistema te avisa cuándo hacerlo. Hasta ese momento, NO mencionés otros servicios.
+Usás lo que dijeron para justificar el upsell. No vendés el producto — mostrás cómo potencia lo que ya eligieron.
 
-Cuando SÍ toca el upsell, la filosofía es:
-- Asumís que la clienta va a querer. No preguntás "¿quiere o no quiere?" — presentás el valor y preguntás "¿lo sumamos?"
-- Framear el precio como "solo $X más" o "por solo $X extra"
-- Siempre resaltás el beneficio concreto ANTES del precio
-- La pregunta final siempre invita al sí: "¿Lo sumamos?", "¿Le damos?", "¿Arrancamos con eso?"
+ESTRUCTURA: beneficio conectado con su objetivo → precio como "solo $X más" → pregunta que asume el sí.
 
-EJEMPLOS DE UPSELL CORRECTO:
-✅ "El corte incluye lavado y aireado 💛 Y si querés la experiencia completa, le sumamos el brushing por solo $20.000 más — salís con el pelo listo. ¿Lo sumamos?"
-✅ "La ampolla después del corte es un golazo — hidrata, sella la cutícula, pelo suave y brillante. Son solo $30.000 más. ¿Le damos?"
-✅ "El ozono son 15 minutitos y el resultado es impresionante. Por solo $30.000 más lo sumamos a cualquier servicio. ¿Arrancamos con eso?"
+✅ "Dijiste que querés algo tranqui — con el brushing ese cambio sutil se va a notar mucho más. Por solo $20.000 más. ¿Lo sumamos?"
+✅ "Para que ese corte nuevo brille, el brushing hace la diferencia — el pelo cae perfecto. Son solo $20.000 más. ¿Le damos?"
+❌ "¿Cuál preferís, con o sin brushing?"
+❌ Ofrecer de nuevo si ya rechazó
 
-EJEMPLOS DE UPSELL INCORRECTO:
-❌ "¿Cuál preferís, el corte solo o con brushing?" — da opción de elegir el menos
-❌ "¿Le gustaría agregar algo?" — invita al no
-❌ "El brushing vale $70.000 en total" — framing de precio alto sin contexto de valor
-❌ Mezclar el upsell con la pregunta del día o la hora
+Si rechaza → "Dale, vamos sin eso." y seguís. No explicás, no insistís.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-INFORMACIÓN REAL — SOLO USÁ ESTO, NUNCA INVENTÉS
+FLUJO DE RESERVA — LO QUE NECESITÁS RECOPILAR
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-PORTAL DE CLIENTE:
-URL: https://peluqueria-bot.onrender.com/mi-cuenta
-La clienta entra con su número de WhatsApp. Desde ahí ve sus turnos, puntos, historial y puede hacer cambios.
+Para crear un turno necesitás: servicio + día + hora + nombre.
+Recopilás de a uno — lo que ya dijeron, no lo volvés a preguntar.
 
-CUANDO PREGUNTEN POR EL PORTAL:
-✅ "Tu portal está en https://peluqueria-bot.onrender.com/mi-cuenta — entrás con tu número de WhatsApp y listo"
-❌ NUNCA inventes otra URL, proceso de acceso, o que "reenviaste" algo que no podés reenviar
+Pasos en orden:
+1. Entender qué servicio quiere (y si hay, su objetivo — qué busca lograr)
+2. Ofrecer upsell UNA SOLA VEZ de forma conectada con su objetivo
+3. Pedir día
+4. Pedir hora
+5. Pedir nombre
+6. Pedir email (explicando el valor: código de turno, portal, recordatorio, datos solo nuestros)
+7. Mostrar resumen y pedir confirmación
+8. Confirmar y dar código
 
-REGLA CRÍTICA ANTI-INVENCIÓN:
-Si no sabés algo con certeza → decí "Lo chequeo con el equipo y te aviso" o "Eso lo tienen que confirmar las chicas del salón"
-NUNCA inventes: URLs, funciones del sistema, pasos de procesos, o que realizaste acciones que no realizaste`;
+Una vez que rechazó el email → no lo volvés a pedir.
+Una vez que rechazó el upsell → no lo volvés a ofrecer.
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FUNCIÓN BASE — llamada a Sonnet con contexto completo
-// ─────────────────────────────────────────────────────────────────────────────
-async function _sonnet(instruccion, historialCorto = [], contextoCliente = '') {
-  if (!cbOk()) return null;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONSULTAS DE COLOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  const systemFinal = contextoCliente
-    ? `${SISTEMA_ESTEFI}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFICHA DE LA CLIENTA CON LA QUE HABLÁS AHORA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${contextoCliente}`
-    : SISTEMA_ESTEFI;
+Para cualquier color: antes de agendar, hacés una mini-consulta.
+1. ¿Tiene procesos previos? (tintura, decoloración, alisado)
+2. ¿Qué resultado busca?
+3. Pedís 2 fotos: pelo actual + referencia
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INFORMACIÓN REAL DEL SISTEMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Portal cliente: https://peluqueria-bot.onrender.com/mi-cuenta (acceso con número de WhatsApp)
+Si no sabés algo → "Lo chequeo con el equipo y te aviso" — nunca inventés.`;
+
+// ── Tools que Sonnet usa para comunicar al orquestador qué ejecutar ───────────
+const TOOLS = [
+  {
+    name: 'crear_turno',
+    description: 'Crear un turno en el sistema. Usar cuando tenés servicio + día + hora + nombre Y la clienta confirmó con sí/dale/ok.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre:          { type: 'string' },
+        servicio:        { type: 'string', description: 'Nombre exacto del catálogo' },
+        extra:           { type: 'string', description: 'Servicio adicional o null' },
+        dia:             { type: 'string' },
+        hora:            { type: 'string', description: 'HH:MM' },
+        email:           { type: 'string', description: 'Email o null' },
+        objetivo_notas:  { type: 'string', description: 'Lo que dijo que busca lograr — para el estilista' },
+      },
+      required: ['nombre', 'servicio', 'dia', 'hora'],
+    },
+  },
+  {
+    name: 'buscar_turno',
+    description: 'Buscar un turno existente por código (#AB12) o nombre.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'cancelar_turno',
+    description: 'Cancelar un turno. Solo después de confirmación explícita.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        booking_code: { type: 'string' },
+      },
+      required: ['booking_code'],
+    },
+  },
+  {
+    name: 'reprogramar_turno',
+    description: 'Cambiar la fecha/hora de un turno existente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        booking_code: { type: 'string' },
+        nuevo_dia:    { type: 'string' },
+        nueva_hora:   { type: 'string' },
+      },
+      required: ['booking_code', 'nuevo_dia', 'nueva_hora'],
+    },
+  },
+  {
+    name: 'registrar_consulta_color',
+    description: 'Registrar una consulta de color para que el equipo contacte a la clienta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre:        { type: 'string' },
+        servicio:      { type: 'string' },
+        procesos:      { type: 'string', description: 'Procesos previos en el pelo' },
+        resultado:     { type: 'string', description: 'Resultado que busca' },
+        contacto:      { type: 'string', description: 'Email o teléfono, null si no hay' },
+        tiene_alisado: { type: 'boolean' },
+      },
+      required: ['nombre', 'servicio', 'resultado'],
+    },
+  },
+  {
+    name: 'guardar_email',
+    description: 'Guardar el email de la clienta en el sistema.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string' },
+      },
+      required: ['email'],
+    },
+  },
+  {
+    name: 'notificar_equipo',
+    description: 'Notificar al equipo que la clienta quiere atención humana.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        motivo: { type: 'string' },
+      },
+      required: ['motivo'],
+    },
+  },
+];
+
+// ── Llamada principal a Sonnet ────────────────────────────────────────────────
+// Retorna { texto, tool } donde tool puede ser null
+async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora = '' }) {
+  if (!cbOk()) {
+    return { texto: 'Perdoná, tenemos alta demanda ahora. Escribinos en unos minutos 🙏', tool: null };
+  }
+
+  // Sistema enriquecido con ficha del cliente si existe
+  const systemFinal = [
+    SISTEMA,
+    fichaCliente ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFICHA DE LA CLIENTA CON LA QUE HABLÁS AHORA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${fichaCliente}` : '',
+    saludoHora ? `\nHora actual en Buenos Aires: ${saludoHora} — usá el saludo correspondiente si es el primer mensaje.` : '',
+  ].filter(Boolean).join('');
+
+  // Historial completo — Sonnet lee todo
+  const messages = historial
+    .slice(-20)
+    .filter(h => h.role && h.content)
+    .map(h => ({ role: h.role, content: String(h.content) }));
+
+  messages.push({ role: 'user', content: mensaje });
 
   try {
-    const messages = [
-      ...historialCorto.slice(-8).filter(h => h.role && h.content),
-      { role: 'user', content: instruccion },
-    ];
     const resp = await client.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 350,
+      max_tokens: 600,
       system: systemFinal,
+      tools: TOOLS,
+      tool_choice: { type: 'auto' },
       messages,
     });
-    return resp.content[0]?.text?.trim() || null;
+
+    const toolBlock = resp.content.find(b => b.type === 'tool_use');
+    const textBlock = resp.content.find(b => b.type === 'text');
+
+    return {
+      texto: textBlock?.text?.trim() || null,
+      tool:  toolBlock ? { name: toolBlock.name, input: toolBlock.input, id: toolBlock.id } : null,
+    };
   } catch (err) {
     cbFail();
-    console.error('[personal] Sonnet error:', err.message);
-    return null;
+    console.error('[personal] Error Sonnet:', err?.message || err);
+    return { texto: 'Perdón, tuve un problema técnico. ¿Podés repetir? 🙏', tool: null };
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SALUDO INICIAL
-// ─────────────────────────────────────────────────────────────────────────────
-const MENU = `\n\n1️⃣ Sacar un turno\n2️⃣ Ver o cambiar mi turno\n3️⃣ Precios y servicios\n\n_Y si en algún momento necesitás hablar con alguien del equipo, te conecto enseguida 💛_`;
+// ── Continuar conversación después de ejecutar una tool ───────────────────────
+// Le devolvemos el resultado al modelo para que genere la respuesta final
+async function continuar({ toolId, toolName, toolResultado, historial = [], fichaCliente = '' }) {
+  if (!cbOk()) return 'Perdoná, tuve un problema. Escribinos en unos minutos 🙏';
 
+  const systemFinal = fichaCliente
+    ? `${SISTEMA}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFICHA DE LA CLIENTA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${fichaCliente}`
+    : SISTEMA;
+
+  const messages = historial
+    .slice(-18)
+    .filter(h => h.role && h.content)
+    .map(h => ({ role: h.role, content: String(h.content) }));
+
+  // Agregar el tool_use del asistente y el resultado
+  messages.push({
+    role: 'assistant',
+    content: [{ type: 'tool_use', id: toolId, name: toolName, input: {} }],
+  });
+  messages.push({
+    role: 'user',
+    content: [{ type: 'tool_result', tool_use_id: toolId, content: toolResultado }],
+  });
+
+  try {
+    const resp = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 500,
+      system: systemFinal,
+      tools: TOOLS,
+      messages,
+    });
+    const textBlock = resp.content.find(b => b.type === 'text');
+    return textBlock?.text?.trim() || '';
+  } catch (err) {
+    cbFail();
+    console.error('[personal] continuar error:', err?.message || err);
+    return 'Tuve un problema técnico. ¿Seguimos? 🙏';
+  }
+}
+
+// ── Saludo inicial — generado por Sonnet con hora real ────────────────────────
 async function generarSaludo(profile) {
-  // Determinar saludo según hora en Argentina
   const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
-  const hora = ahora.getHours();
+  const hora  = ahora.getHours();
   const saludoHora = hora >= 6 && hora < 12 ? 'buen día'
     : hora >= 12 && hora < 20 ? 'buenas tardes'
     : 'buenas noches';
 
-  // ── CLIENTA CONOCIDA ────────────────────────────────────────────────────────
+  const MENU = `\n\n1️⃣ Sacar un turno\n2️⃣ Ver o cambiar mi turno\n3️⃣ Precios y servicios\n\n_Si en algún momento necesitás hablar con alguien del equipo, te conecto enseguida 💛_`;
+  const FALLBACK = `¡${saludoHora.charAt(0).toUpperCase() + saludoHora.slice(1)}! ¿Cómo estás? Soy Estefi, tu asistente personal en Estefan Peluquería 💛\n\nEstoy acá para que tengas el mejor servicio y lo que necesités, cuando lo necesités.${MENU}`;
+
+  if (!cbOk()) return FALLBACK;
+
+  let instruccion;
   if (profile && !profile.isNewClient && profile.firstName) {
-    const nombre = profile.firstName;
-    const contexto = profile.toPromptContext();
-    const extras = [
-      profile.nextBooking ? `Tiene turno de ${profile.nextBooking.servicio} el ${profile.nextBooking.fecha}.` : '',
+    const nombre   = profile.firstName;
+    const extras   = [
+      profile.nextBooking   ? `Tiene turno de ${profile.nextBooking.servicio} el ${profile.nextBooking.fecha}.` : '',
       profile.daysSinceVisit > 45 ? `Hace ${profile.daysSinceVisit} días que no viene.` : '',
-      profile.isVip ? 'Es clienta VIP.' : '',
+      profile.isVip         ? 'Es clienta VIP.' : '',
       profile.favoriteService ? `Su favorito es ${profile.favoriteService}.` : '',
     ].filter(Boolean).join(' ');
 
-    const instruccion = `Es de ${saludoHora}. Saludá a ${nombre} usando "${saludoHora}" al principio.
-Preguntale cómo está. Presentate como Estefi, su asistente personal de Estefan Peluquería.
-Decile que tu objetivo es brindarle el mejor servicio y que estás atenta a lo que necesite.
+    instruccion = `Es de ${saludoHora}. Saludá a ${nombre} como a alguien que ya conocés.
+Usá el saludo de hora: "${saludoHora}".
 ${extras}
-Luego ofrecé las opciones del menú de forma natural. Máximo 5 líneas.
-NO uses "¿En qué te puedo ayudar?". Tono cálido, personal, como si la conocieras bien.`;
+Preguntale cómo está. Ofrecé las opciones del menú de forma natural. Terminá mencionando que si necesita hablar con alguien del equipo, la conectás.
+NO agregues una pregunta suelta al final del menú. Máximo 5 líneas.`;
+  } else {
+    instruccion = `Es de ${saludoHora}. Primera vez que escribe esta clienta.
+Escribí el saludo completo de Estefi:
+1. Empezá con el saludo de hora ("${saludoHora}") y preguntá cómo está
+2. Presentate como Estefi, asistente personal de Estefan Peluquería
+3. Decile que tu objetivo es brindarle el mejor servicio y que estás atenta a lo que necesite
+4. Mostrá las opciones: 1️⃣ Sacar un turno  2️⃣ Ver o cambiar mi turno  3️⃣ Precios y servicios
+5. Mencioná que si necesita hablar con alguien del equipo, la conectás
 
-    const texto = await _sonnet(instruccion, [], contexto);
-    return (texto || `¡${saludoHora.charAt(0).toUpperCase() + saludoHora.slice(1)}, ${nombre}! ¿Cómo estás? Soy Estefi 💛`) + MENU;
-  }
-
-  // ── CLIENTA NUEVA ───────────────────────────────────────────────────────────
-  const instruccion = `Es de ${saludoHora}. Escribí el saludo inicial de Estefi para una clienta nueva de Estefan Peluquería.
-
-El saludo tiene que incluir, en orden natural:
-1. Saludo según la hora: "${saludoHora}" — usá esa frase exacta al empezar
-2. Preguntar cómo está
-3. Presentarte como Estefi, asistente personal de Estefan Peluquería
-4. Decirle que tu objetivo es brindarle el mejor servicio y que estás atenta a lo que necesite cuando lo necesite
-5. Las opciones del menú integradas de forma natural (no como lista corporativa):
-   1️⃣ Sacar un turno  2️⃣ Ver o cambiar mi turno  3️⃣ Precios y servicios
-   Y mencioná al final, como red de seguridad, que si en algún momento necesita hablar con alguien del equipo la conectás enseguida
-
-Tono: cálida, genuina, como una amiga profesional. Rioplatense natural.
-NO uses: "¿En qué te puedo ayudar?", "¿Qué te sirve?", "¿Qué se te antoja?"
+NO agregues una pregunta suelta después del menú. Tono cálido, profesional, rioplatense.
 Máximo 5 líneas.`;
-
-  const FALLBACK_HORA = saludoHora.charAt(0).toUpperCase() + saludoHora.slice(1);
-  const texto = await _sonnet(instruccion);
-  return texto || (
-    `¡${FALLBACK_HORA}! ¿Cómo estás? Soy Estefi, tu asistente personal de Estefan Peluquería 💛\n\n` +
-    `Mi objetivo es darte el mejor servicio y estar atenta a lo que necesités cuando lo necesités.` +
-    MENU
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RESPUESTA LIBRE — para mensajes que el state machine no captura
-// ─────────────────────────────────────────────────────────────────────────────
-async function responderLibre(mensaje, historial = [], contextoCliente = '') {
-  if (!cbOk()) return 'Perdoná, tenemos alta demanda ahora. Escribinos en unos minutitos 🙏';
-
-  const systemFinal = contextoCliente
-    ? `${SISTEMA_ESTEFI}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFICHA DE LA CLIENTA CON LA QUE HABLÁS AHORA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${contextoCliente}`
-    : SISTEMA_ESTEFI;
+  }
 
   try {
-    const messages = [
-      ...historial.slice(-10).filter(h => h.role && h.content),
-      { role: 'user', content: mensaje },
-    ];
     const resp = await client.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 400,
-      system: systemFinal,
-      messages,
+      max_tokens: 300,
+      system: SISTEMA,
+      messages: [{ role: 'user', content: instruccion }],
     });
-    return resp.content[0]?.text?.trim() || '¿En qué más te puedo ayudar? 💛';
-  } catch (err) {
-    cbFail();
-    console.error('[personal] responderLibre error:', err.message);
-    return 'Perdón, tuve un problema técnico. ¿Podés repetir? 🙏';
+    return resp.content[0]?.text?.trim() || FALLBACK;
+  } catch {
+    return FALLBACK;
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FUNCIONES DEL FLUJO DE RESERVA
-// Cada una recibe instrucción precisa + ejemplos para evitar respuestas genéricas
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function iniciarReserva(profile, historial = []) {
-  const contexto = profile?.toPromptContext?.() || '';
-  const favorito = profile?.favoriteService;
-
-  // CRÍTICO: Ya te presentaste. NO te volvés a presentar. NO decís "Hola" de nuevo.
-  // Vas directo a preguntar qué servicio quiere — como si continuara la misma conversación.
-  const instruccion = favorito
-    ? `La clienta quiere sacar un turno. Ya estás en conversación con ella — NO te presentés de nuevo, NO digas "Hola" ni "Soy Estefi". Su servicio favorito es ${favorito}. Preguntale directamente si viene por eso o quiere algo distinto. Ejemplos: "¿Venís por el ${favorito} como siempre?" o "¿Repetimos el ${favorito} o se te antojó algo nuevo?". Una línea, directo al punto.`
-    : `La clienta quiere sacar un turno. Ya estás en conversación con ella — NO te presentés de nuevo, NO digas "Hola", "Soy Estefi" ni nada de eso. Preguntale directamente qué quiere hacerse, una sola línea. Ejemplos del tono correcto: "¡Dale! ¿Qué te hacemos?" o "¡Buenísimo! ¿Qué estás buscando?" o "¡Perfecto! ¿Qué tenés en mente?". Variá, no copies exacto. Una línea.`;
-
-  const texto = await _sonnet(instruccion, historial, contexto);
-  return texto || '¡Dale! ¿Qué te hacemos? 💛';
-}
-
-async function celebrarYPreguntarObjetivo(servicio, extra, profile, historial = []) {
-  // Paso 1 del flujo consultivo: felicitar + entender el por qué
-  // Lo que diga acá lo usamos después para personalizar el upsell
-  const srvStr = servicio.nombre + (extra ? ` + ${extra.nombre}` : '');
-  const contexto = profile?.toPromptContext?.() || '';
-
-  const instruccion = `La clienta eligió ${srvStr}. Tenés que hacer DOS cosas:
-1. Felicitarla con entusiasmo genuino por la elección
-2. Preguntarle cuál es su objetivo — qué tiene en mente, qué busca lograr
-
-Ejemplos del tono y las preguntas:
-- "¡Excelente elección! ¿Tenías algo en mente — solo las puntas, un cambio más notorio, o querés renovarte con algo diferente?"
-- "¡Me encanta! ¿Qué estás buscando — mantenimiento, un cambio de look, o algo en el medio?"
-- "¡Buenísimo! ¿Venís por un retoque o se te antoja algo más?"
-
-El objetivo de la pregunta es entender QUÉ RESULTADO BUSCA — esa respuesta le sirve al estilista Y nos ayuda a recomendar mejor después.
-NO pidas el día todavía. NO menciones precios. Solo felicitá + preguntá el objetivo. Máximo 2 líneas.`;
-
-  const texto = await _sonnet(instruccion, historial, contexto);
-  return texto || `¡Excelente elección! ¿Tenías algo en mente — un retoque, un cambio más notorio, o querés renovarte con algo distinto? 💛`;
-}
-
-async function celebrarServicioYPedirDia(servicio, extra, profile, historial = []) {
-  // Mantener compatibilidad — usado cuando ya tenemos el objetivo
-  const contexto = profile?.toPromptContext?.() || '';
-  const habitual = profile?.usualDay ? ` Suele venir los ${profile.usualDay}.` : '';
-  const instruccion = `La clienta eligió ${servicio.nombre}${extra ? ' + ' + extra.nombre : ''}. Ya sabemos qué quiere hacerse. Preguntá qué día le viene bien de forma breve y cálida. Atendemos lunes a sábado de 10 a 20hs.${habitual} Una línea.`;
-  const texto = await _sonnet(instruccion, historial, contexto);
-  return texto || `¿Qué día te viene bien? Atendemos *lunes a sábado de 10:00 a 20:00hs* 💛`;
-}
-
-async function pedirHora(dia, servicio, profile, historial = []) {
-  const habitual = profile?.usualTime ? ` Habitualmente viene a las ${profile.usualTime}.` : '';
-  const instruccion = `Tenemos ${servicio.nombre} para el ${dia}. Preguntá a qué hora. Horario: 10:00 a 20:00hs.${habitual}
-Ejemplos: "¿A qué hora el ${dia}?" o "¿Y a qué hora te viene bien?" — muy breve, una línea.`;
-  const texto = await _sonnet(instruccion, historial);
-  return texto || `⏰ ¿A qué hora el ${dia}? Tenemos de 10:00 a 20:00hs`;
-}
-
-async function pedirNombre(servicio, dia, hora, historial = []) {
-  const instruccion = `Tenemos ${servicio.nombre} el ${dia} a las ${hora}. Pedí solo el nombre para anotar el turno.
-Ejemplos del tono correcto:
-- "¿Y cómo te llamás? Lo necesito para anotar el turno 😊"
-- "¡Perfecto! ¿A nombre de quién lo anoto?"
-- "Buenísimo. ¿Me decís tu nombre?"
-Una sola línea. No pidas el email acá, no expliques nada más.`;
-  const texto = await _sonnet(instruccion, historial);
-  return texto || '¿Cómo te llamás para anotar el turno? 😊';
-}
-
-async function ofrecerUpsell(servicioPrincipal, servicioExtra, profile, historial = [], objetivoCliente = '') {
-  const BENEFICIOS = {
-    'Ampolla':              'hidrata en profundidad, sella la cutícula — pelo suave, brillante y sin frizz',
-    'Ozono':                'son 15 minutitos y el pelo queda con otro brillo y textura, se nota desde lejos',
-    'Head Spa completo':    'limpieza profunda del cuero cabelludo, masajes, hidratación total — una experiencia',
-    'Brushing / Planchita': 'salís del salón con el pelo listo y divino, te ahorrás el trabajo en casa',
-  };
-  const beneficio = BENEFICIOS[servicioExtra.nombre] || 'potencia el resultado y el pelo queda increíble';
-  const precio = servicioExtra.precio.toLocaleString('es-AR');
-
-  // La clave: usamos lo que dijo la clienta para conectar el upsell con su objetivo real
-  const contextoObjetivo = objetivoCliente
-    ? `La clienta dijo que busca: "${objetivoCliente}". Usá eso para conectar el beneficio del upsell con lo que ella quiere lograr.`
-    : '';
-
-  const instruccion = `La clienta eligió ${servicioPrincipal.nombre} y es momento de ofrecerle ${servicioExtra.nombre}.
-${contextoObjetivo}
-
-FILOSOFÍA DE VENTA:
-- Usás lo que ella dijo para justificar el upsell — hablás de SU objetivo, no del producto
-- Mostrás cómo ${servicioExtra.nombre} multiplica el resultado de lo que ya eligió
-- Precio como "solo $${precio} más" — nunca el precio total
-- Pregunta final que asume el sí: "¿Lo sumamos?", "¿Le damos?", "¿Arrancamos con eso?"
-
-Ejemplos de cómo conectar el objetivo con el upsell:
-- Si dijo "quiero cortarme las puntas solamente": "El corte ya va a dejar el pelo prolijo, pero con el brushing ese pequeño cambio se va a notar como un upgrade total — el pelo cae diferente, con volumen y brillo. Son solo $20.000 más. ¿Lo sumamos?"
-- Si dijo "quiero renovarme": "Y para que la renovación se sienta de verdad, el brushing hace que el corte brille — salís completamente distinta. Por solo $20.000 más. ¿Le damos?"
-- Si dijo "me creció mucho": "El corte va a sacar todo lo que sobra. Si le sumamos el brushing, el pelo va a caer perfectamente y se va a notar mucho más. Son solo $20.000 más. ¿Lo sumamos?"
-
-Adaptá usando lo que dijo la clienta. Máximo 2 líneas. NO uses "¿Cuál preferís?" ni des opción de elegir el menos.`;
-
-  const texto = await _sonnet(instruccion, historial, profile?.toPromptContext?.() || '');
-  return texto || `Con el brushing ese corte va a lucir x10 — salís con el pelo listo y divino. Por solo $${precio} más. ¿Lo sumamos? 💛`;
-}
-
-async function pedirEmail(nombre, historial = []) {
-  // Este mensaje es crítico para generar confianza.
-  // La clienta tiene que entender el VALOR antes de dar su dato.
-  // No es spam — es su portal, sus puntos, su recordatorio.
-  const instruccion = `${nombre ? nombre : "La clienta"} confirmó el turno. Ahora pedile el email.
-IMPORTANTE: Antes de pedirlo, explicá brevemente por qué lo necesitamos y para qué sirve.
-Tiene que sonar natural, no como aviso legal. El tono es de amiga que le explica algo útil.
-
-El email sirve para:
-- Mandarle la confirmación del turno con el código de reserva
-- Acceder a su portal personal donde ve sus puntos, historial y puede cambiar turnos
-- Recibir el recordatorio del turno (para que no se olvide)
-Sus datos no se comparten con nadie y solo se usan para darle mejor atención.
-
-Ejemplo del tono correcto:
-"¿Me dejás tu mail? Te mando la confirmación con el código del turno, y también podés acceder a tu perfil para ver tus puntos y el historial. Tus datos son solo nuestros, no te mandamos publicidad que no pediste 😊 (o escribí *no* para saltear)"
-
-Adaptalo con naturalidad, máximo 3 líneas. Que suene a persona, no a política de privacidad.`;
-  const texto = await _sonnet(instruccion, historial);
-  return texto ||
-    '¿Me dejás tu mail? Te mando la confirmación con el código del turno y podés acceder a tu perfil — ahí ves tus puntos acumulados, historial y podés cambiar turnos. Tus datos son solo nuestros, sin publicidad 😊\n_(o *no* para saltear)_';
-}
-
-async function responderPrecios(mensajeCliente, historial = [], contextoCliente = '') {
-  const lista =
-    `💈 *Servicios y Precios — Estefan Peluquería*\n\n` +
-    `✂️ *Cortes*\n  • Corte de pelo: *$50.000* _(incluye lavado y aireado)_\n  • Corte + Brushing: *$70.000*\n  • Brushing / Planchita: *$20.000*\n  • Lavado + Aireado: *$15.000*\n\n` +
-    `🎨 *Color* _(consulta previa requerida)_\n  • Retoque / Raíz: *$60.000*\n  • Color entero: *desde $80.000*\n  • Contorno: *$80.000*\n  • Balayage: *desde $200.000*\n  • Decoloración total: *desde $200.000*\n\n` +
-    `💆 *Tratamientos*\n  • Ozono capilar: *$30.000* _(15 min, se suma a cualquier servicio)_\n  • Head Spa completo: *$120.000*\n  • Ampolla reparadora: *$30.000*\n\n` +
-    `💐 *Peinados* _(requieren seña)_\n  • Fiesta / 15 años: *desde $60.000*\n  • Novia: *desde $150.000*`;
-
-  const cierre = await _sonnet(
-    `Mostramos la lista de precios. Escribí UNA línea de cierre cálida que invite a reservar o preguntar. No repitas precios. Ejemplos: "¿Alguno te llama la atención?" o "¿Reservamos?" — variá.`,
-    historial,
-    contextoCliente
-  );
-
-  return lista + `\n\n${cierre || '_¿Alguno te llama la atención? ¡Escribime! 💛_'}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MENSAJES HARDCODEADOS — datos críticos, Sonnet no los toca
-// ─────────────────────────────────────────────────────────────────────────────
-
-function resumenConfirmar(d) {
-  const base = d.servicio.precio + (d.extra?.precio || 0);
-  let msg = `📋 *Resumen de tu turno:*\n\n`;
-  if (d.nombre) msg += `👤 *${d.nombre}*\n`;
-  msg += `✂️ ${d.servicio.nombre}`;
-  if (d.extra) msg += ` + ${d.extra.nombre}`;
-  msg += `\n📅 ${d.dia} · ⏰ ${d.hora}\n`;
-  msg += `💰 $${base.toLocaleString('es-AR')}`;
-  if (d.extra) msg += ` _(${d.servicio.nombre} $${d.servicio.precio.toLocaleString('es-AR')} + ${d.extra.nombre} $${d.extra.precio.toLocaleString('es-AR')})_`;
-  if (d.servicio.seña) {
-    const seña = Math.round(base * (d.servicio.pct || 10) / 100).toLocaleString('es-AR');
-    msg += `\n⚠️ Requiere seña del ${d.servicio.pct}% — $${seña}`;
-  }
-  const pts = Math.floor(base / 1000);
-  if (pts > 0) msg += `\n⭐ Ganás *+${pts} puntos* con este turno`;
-  msg += `\n\n¿Confirmamos? *(sí / no)*`;
-  return msg;
-}
-
-function turnoConfirmado(nombre, servicio, fechaDisplay, hora, code, pointsEarned) {
-  let msg = `✅ *¡Turno confirmado${nombre ? ', ' + nombre : ''}!* 💛\n\n`;
-  msg += `📅 ${fechaDisplay}\n`;
-  msg += `⏰ ${hora}\n`;
-  msg += `✂️ ${servicio}\n`;
-  msg += `🔖 Código: *${code}*\n\n`;
-  msg += `_Guardá el código — con ese podés cambiar o cancelar cuando quieras_ 😊`;
-  if (pointsEarned > 0) msg += `\n⭐ Ganaste *+${pointsEarned} puntos*`;
-  return msg;
-}
-
-function senaRequerida(nombre, servicio, fechaDisplay, hora, code, montoSena, mpLink) {
-  let msg = `⏳ *Turno registrado${nombre ? ', ' + nombre : ''}* 💛\n\n`;
-  msg += `📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n`;
-  msg += `⚠️ *Para confirmar necesitamos una seña de $${montoSena}*\n`;
-  msg += mpLink
-    ? `Podés pagarla acá 👇\n${mpLink}\n\n_Una vez recibido el pago te llega la confirmación_ 📧`
-    : `Coordinamos el pago cuando vengas o por acá 💛`;
-  return msg;
-}
-
-function turnoEncontrado(b) {
-  return (
-    `📋 *Tu turno:*\n\n` +
-    `👤 ${b.nombre}\n✂️ ${b.servicio}\n📅 ${b.fecha} · ⏰ ${b.hora}\n🔖 ${b.code}\n\n` +
-    `¿Qué querés hacer?\n1️⃣ Cambiar fecha/hora\n2️⃣ Cancelar turno\n3️⃣ Volver`
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CEO MODE — respuesta con datos del negocio
-// ─────────────────────────────────────────────────────────────────────────────
+// ── CEO mode ──────────────────────────────────────────────────────────────────
 async function handleCEO(text, historial = []) {
   const db = getDB();
-  let stats = 'Sin datos disponibles.';
+  let stats = 'Sin datos.';
   if (db) {
     try {
       const [bk, pay, cl] = await Promise.all([
@@ -515,85 +417,60 @@ async function handleCEO(text, historial = []) {
         db.query(`SELECT COALESCE(SUM(total) FILTER (WHERE created_at::date=NOW()::date),0) as hoy, COALESCE(SUM(total) FILTER (WHERE created_at>=NOW()-INTERVAL '7 days'),0) as semana, COALESCE(AVG(total),0) as ticket FROM payments WHERE status!='mp_pending'`).then(r=>r.rows[0]).catch(()=>({})),
         db.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE visit_count>=1) as activos FROM clients`).then(r=>r.rows[0]).catch(()=>({})),
       ]);
-      stats = `Turnos hoy: ${bk.hoy||0} | Confirmados: ${bk.confirmados||0} | Cancelados: ${bk.cancelados||0}\nIngresos hoy: $${Number(pay.hoy||0).toLocaleString('es-AR')} | Semana: $${Number(pay.semana||0).toLocaleString('es-AR')} | Ticket prom: $${Math.round(Number(pay.ticket||0)).toLocaleString('es-AR')}\nClientes: ${cl.total||0} total | ${cl.activos||0} activos`;
+      stats = `Turnos hoy=${bk.hoy||0} confirmados=${bk.confirmados||0} cancelados=${bk.cancelados||0}\nIngresos hoy=$${Number(pay.hoy||0).toLocaleString('es-AR')} semana=$${Number(pay.semana||0).toLocaleString('es-AR')} ticket=$${Math.round(Number(pay.ticket||0)).toLocaleString('es-AR')}\nClientes total=${cl.total||0} activos=${cl.activos||0}`;
     } catch {}
   }
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-5', max_tokens: 600,
-    system: `Sos Estefi, asistente directa del dueño de Estefan Peluquería. Respondés con datos reales, directo al punto, en español rioplatense.\n\nDATA ACTUAL:\n${stats}`,
-    messages: [...historial.slice(-6).map(h=>({role:h.role,content:h.content})), {role:'user',content:text}],
+    system: `Sos Estefi, asistente del dueño de Estefan Peluquería. Directo, datos reales, rioplatense.\n\n${stats}`,
+    messages: [...historial.slice(-6).map(h => ({ role: h.role, content: h.content })), { role: 'user', content: text }],
   });
   return resp.content[0]?.text || 'No pude procesar eso 😅';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FAQ DIRECTOS — sin IA, respuesta inmediata con datos de la ficha
-// ─────────────────────────────────────────────────────────────────────────────
-function handleFAQ(texto, clientCtx) {
-  const tl = (texto || '').toLowerCase();
-  const p  = clientCtx?.profile;
-  if (!p) return null;
-
-  if (/cuántos?.*punt|mis punt|punt.*teng|cuántos punt/i.test(tl)) {
-    return p.points > 0
-      ? `¡Tenés *${p.points} puntos* acumulados! ⭐ Con cada visita sumás más. Escribí *puntos* para ver qué podés canjear 💛`
-      : 'Todavía no tenés puntos, pero cada servicio suma. ¡Ya vas a arrancar! 💛';
-  }
-
-  if (/próximo.*turno|mi turno|cuándo.*turno|tengo.*turno|mi reserva/i.test(tl)) {
-    return p.nextBooking
-      ? `Tu próximo turno:\n\n✂️ *${p.nextBooking.servicio}*\n📅 ${p.nextBooking.fecha} a las ${p.nextBooking.hora}\n🔖 Código: *${p.nextBooking.code}*\n\n¿Necesitás cambiar algo? 💛`
-      : 'No tenés ningún turno agendado. ¿Lo sacamos ahora? 💛';
-  }
-
-  if (/últimos?.*servicio|qué.*hice|historial|mis.*visitas|cuántas.*veces/i.test(tl)) {
-    if (p.visitCount === 0) return 'Todavía no tenés visitas registradas 😊 ¿Querés sacar tu primer turno?';
-    const hist = p.lastServices?.length > 0
-      ? p.lastServices.map(s => `• ${s.servicio} (${s.fecha})`).join('\n')
-      : 'Sin detalle de servicios disponible';
-    return `Tus últimas visitas (${p.visitCount} en total):\n\n${hist}\n\n¡Siempre un gusto tenerte! 💛`;
-  }
-
-  if (/mi.*mail|mi.*email|tengo.*mail|cambiar.*mail/i.test(tl)) {
-    return p.email
-      ? `Tenemos registrado el mail *${p.email}* 📧 ¿Es correcto? Si cambió, avisame.`
-      : 'No tenemos ningún mail registrado para vos todavía. ¿Me lo pasás? Te mando las confirmaciones de tus turnos 📧';
-  }
-
-  if (/cuánto.*gasté|total.*gastado|mis.*gastos/i.test(tl)) {
-    return p.totalSpent > 0
-      ? `En total gastaste *$${Number(p.totalSpent).toLocaleString('es-AR')}* en el salón 💛${p.isVip ? ' — ¡Sos nuestra clienta VIP! ⭐' : ''}`
-      : 'Todavía no tenemos gastos registrados para vos.';
-  }
-
-  return null;
+// ── Mensajes hardcodeados — datos críticos que Sonnet no toca ─────────────────
+function msgTurnoConfirmado(nombre, servicio, fechaDisplay, hora, code, pts) {
+  let msg = `✅ *¡Turno confirmado${nombre ? ', ' + nombre : ''}!* 💛\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n_Guardá el código — con ese podés cambiar o cancelar cuando quieras_ 😊`;
+  if (pts > 0) msg += `\n⭐ Ganaste *+${pts} puntos*`;
+  return msg;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EXPORTS
-// ─────────────────────────────────────────────────────────────────────────────
+function msgSenaRequerida(nombre, servicio, fechaDisplay, hora, code, monto, mpLink) {
+  let msg = `⏳ *Turno registrado${nombre ? ', ' + nombre : ''}* 💛\n\n📅 ${fechaDisplay}\n⏰ ${hora}\n✂️ ${servicio}\n🔖 Código: *${code}*\n\n⚠️ *Para confirmar necesitamos una seña de $${monto}*\n`;
+  msg += mpLink
+    ? `Podés pagarla acá 👇\n${mpLink}\n\n_Una vez recibido, te llega la confirmación_ 📧`
+    : `Coordinamos el pago cuando vengas o por este chat 💛`;
+  return msg;
+}
+
+function msgResumenConfirmar(d) {
+  const base = (d.servicio?.precio || 0) + (d.extra?.precio || 0);
+  let msg = `📋 *Resumen de tu turno:*\n\n`;
+  if (d.nombre) msg += `👤 *${d.nombre}*\n`;
+  msg += `✂️ ${d.servicio?.nombre || d.servicio}`;
+  if (d.extra) msg += ` + ${d.extra.nombre || d.extra}`;
+  msg += `\n📅 ${d.dia} · ⏰ ${d.hora}\n💰 $${base.toLocaleString('es-AR')}`;
+  if (d.servicio?.seña) {
+    const sena = Math.round(base * (d.servicio.pct || 10) / 100).toLocaleString('es-AR');
+    msg += `\n⚠️ Requiere seña del ${d.servicio.pct}% — $${sena}`;
+  }
+  const pts = Math.floor(base / 1000);
+  if (pts > 0) msg += `\n⭐ Ganás *+${pts} puntos*`;
+  msg += `\n\n¿Confirmamos? *(sí / no)*`;
+  return msg;
+}
+
+function msgTurnoEncontrado(b) {
+  return `📋 *Tu turno:*\n\n👤 ${b.nombre}\n✂️ ${b.servicio}\n📅 ${b.fecha} · ⏰ ${b.hora}\n🔖 ${b.code}\n\n¿Qué querés hacer?\n1️⃣ Cambiar fecha/hora\n2️⃣ Cancelar turno\n3️⃣ Volver`;
+}
+
 module.exports = {
-  // Saludo y conversación libre
+  pensar,
+  continuar,
   generarSaludo,
-  responderLibre,
-  responderPrecios,
-
-  // Flujo de reserva
-  iniciarReserva,
-  celebrarYPreguntarObjetivo,
-  celebrarServicioYPedirDia,
-  pedirHora,
-  pedirNombre,
-  ofrecerUpsell,
-  pedirEmail,
-
-  // Mensajes hardcodeados (datos críticos)
-  resumenConfirmar,
-  turnoConfirmado,
-  senaRequerida,
-  turnoEncontrado,
-
-  // Utilidades
   handleCEO,
-  handleFAQ,
+  msgTurnoConfirmado,
+  msgSenaRequerida,
+  msgResumenConfirmar,
+  msgTurnoEncontrado,
 };
