@@ -1090,6 +1090,10 @@ async function init() {
       `ALTER TABLE payments ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'paid'`,
       `ALTER TABLE payments ADD COLUMN IF NOT EXISTS mp_payment_link TEXT`,
       `ALTER TABLE payments ADD COLUMN IF NOT EXISTS splits_json TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS fotos TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS pin_hash TEXT`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0`,
       `CREATE TABLE IF NOT EXISTS discount_codes (
         id            SERIAL PRIMARY KEY,
         code          VARCHAR(12) UNIQUE NOT NULL,

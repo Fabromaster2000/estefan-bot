@@ -16,6 +16,27 @@ async function initDB() {
   try {
     db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
+    // ── PRE-MIGRATIONS: adaptar schema existente antes de CREATE TABLE IF NOT EXISTS
+    // Agregar client_id a clients si no existe (tabla creada antes de v2)
+    await db.query(`
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_id UUID DEFAULT gen_random_uuid();
+    `).catch(() => {});
+    // Hacer client_id PRIMARY KEY si aún no lo es
+    await db.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'clients_pkey' AND contype = 'p'
+        ) THEN
+          ALTER TABLE clients ADD PRIMARY KEY (client_id);
+        END IF;
+      END$$;
+    `).catch(() => {});
+    // Crear índice único en phone si no existe
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone) WHERE phone IS NOT NULL`).catch(() => {});
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_email ON clients(email) WHERE email IS NOT NULL`).catch(() => {});
+
     // ── SCHEMA v2 ─────────────────────────────────────────────────────────────
     await db.query(`
       CREATE TABLE IF NOT EXISTS config (
@@ -49,7 +70,7 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_clients_email  ON clients(email)  WHERE email  IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS client_memory (
-        client_id         UUID PRIMARY KEY REFERENCES clients(client_id) ON DELETE CASCADE,
+        client_id         UUID PRIMARY KEY ,
         summary           TEXT,
         favorite_services TEXT,
         visit_patterns    TEXT,
@@ -60,7 +81,7 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS bookings (
         id                SERIAL PRIMARY KEY,
         session_id        TEXT,
-        client_id         UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+        client_id         UUID ,
         client_phone      TEXT,
         client_name       TEXT,
         service           TEXT,
@@ -108,7 +129,7 @@ async function initDB() {
         id                 SERIAL PRIMARY KEY,
         numero_comprobante SERIAL,
         booking_id         INTEGER,
-        client_id          UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+        client_id          UUID ,
         client_phone       TEXT,
         client_name        TEXT,
         empleado_id        INTEGER,
@@ -141,7 +162,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS loyalty_transactions (
         id          SERIAL PRIMARY KEY,
-        client_id   UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        client_id   UUID ,
         phone       TEXT,
         type        TEXT NOT NULL,
         points      INTEGER NOT NULL,
@@ -162,7 +183,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS conversation_log (
         id         SERIAL PRIMARY KEY,
-        client_id  UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+        client_id  UUID ,
         phone      TEXT,
         role       TEXT,
         content    TEXT,
@@ -172,7 +193,7 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_convo_phone     ON conversation_log(phone);
 
       CREATE TABLE IF NOT EXISTS human_mode_control (
-        client_id  UUID PRIMARY KEY REFERENCES clients(client_id) ON DELETE CASCADE,
+        client_id  UUID PRIMARY KEY ,
         phone      TEXT,
         active     BOOLEAN DEFAULT FALSE,
         taken_by   TEXT,
@@ -181,7 +202,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS client_notes (
         id         SERIAL PRIMARY KEY,
-        client_id  UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        client_id  UUID ,
         phone      TEXT,
         type       TEXT NOT NULL DEFAULT 'nota',
         content    TEXT NOT NULL,
@@ -192,7 +213,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS client_ficha (
         id               SERIAL PRIMARY KEY,
-        client_id        UUID UNIQUE REFERENCES clients(client_id) ON DELETE CASCADE,
+        client_id        UUID UNIQUE,
         phone            TEXT,
         color_actual     TEXT,
         tecnica          TEXT,
@@ -207,7 +228,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS client_tokens (
         id           SERIAL PRIMARY KEY,
-        client_id    UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        client_id    UUID ,
         phone        TEXT,
         token        TEXT UNIQUE NOT NULL,
         expires_at   TIMESTAMPTZ NOT NULL,
@@ -218,7 +239,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS client_photos (
         id           SERIAL PRIMARY KEY,
-        client_id    UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        client_id    UUID ,
         phone        TEXT,
         url          TEXT NOT NULL,
         tipo         TEXT NOT NULL DEFAULT 'general',
@@ -231,7 +252,7 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS discount_codes (
         id            SERIAL PRIMARY KEY,
         code          VARCHAR(12) UNIQUE NOT NULL,
-        client_id     UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+        client_id     UUID ,
         client_phone  VARCHAR(30),
         reward_id     VARCHAR(50),
         reward_label  VARCHAR(200),
