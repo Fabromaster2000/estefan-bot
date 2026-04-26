@@ -74,6 +74,11 @@ class ClientProfile {
   hydrate(client, bookings = [], ficha = null, notes = []) {
     if (!client) return this;
 
+    // Identidad
+    this.clientId = client.client_id || null;
+    this.phone    = client.phone     || null;
+    this.email    = client.email     || null;
+
     // Identity
     this.phone     = client.phone;
     this.firstName = client.name  || null;
@@ -154,6 +159,13 @@ class ClientProfile {
       this.usualTime = usualHr ? `${usualHr}:00` : null;
     }
 
+    // Score boost acumulado de canjes de puntos
+    const scoreBoostTxns = (notes || []).filter(n => n.type === 'score_boost');
+    this._scoreBonusFromPoints = scoreBoostTxns.reduce((sum, n) => {
+      const match = (n.content || '').match(/\+(\d+) puntos de score/);
+      return sum + (match ? parseInt(match[1]) : 0);
+    }, 0);
+
     // Technical ficha
     if (ficha) {
       this.colorActual      = ficha.color_actual     || null;
@@ -230,9 +242,23 @@ class ClientProfile {
 
     this.reliabilityScore = score;
 
+    // Boost por puntos: cada 100 puntos canjeados = +10 de score
+    // Se registra en loyalty_transactions con type='score_boost'
+    // Aplicar boost guardado (viene de score_boost en DB)
+    const boostedScore = Math.min(100, score + (this._scoreBonusFromPoints || 0));
+    this.reliabilityScoreBase   = score;        // score sin boost
+    this.reliabilityScore       = boostedScore; // score real con boost aplicado
+
     // Umbral: score < 60 → requiere seña en todos los servicios
-    // Equivale a ~5 cancelaciones normales, o ~3 late cancels, o ~2 no-shows
-    this.requiresSena = score < 60;
+    this.requiresSena = boostedScore < 60;
+
+    // Info para Estefi: cuántos puntos necesita para subir el score
+    if (boostedScore < 60 && this.points > 0) {
+      const puntosNecesarios = Math.ceil((60 - boostedScore) / 10) * 100;
+      this.puntosParaRehabilitacion = puntosNecesarios;
+    } else {
+      this.puntosParaRehabilitacion = null;
+    }
   }
 
   _computeUpsell(bookings) {
@@ -318,9 +344,19 @@ class ClientProfile {
     // Reliability score
     if (!this.isNewClient) {
       if (this.requiresSena) {
-        lines.push(`  ⚠️ REQUIERE SEÑA: Score de confiabilidad ${this.reliabilityScore}/100 — canceló ${this.cancelCount} de sus últimos ${this.cancelCount + this.noShowCount + (this.visitCount)} turnos. Para esta clienta, todos los servicios requieren seña no reembolsable.`);
+        let scoreMsg = `  ⚠️ REQUIERE SEÑA: Score de confiabilidad ${this.reliabilityScore}/100`;
+        if (this.reliabilityScoreBase !== this.reliabilityScore) {
+          scoreMsg += ` (base ${this.reliabilityScoreBase}/100, mejorado con puntos)`;
+        }
+        scoreMsg += `. Todos los servicios requieren seña no reembolsable.`;
+        if (this.puntosParaRehabilitacion && this.points >= this.puntosParaRehabilitacion) {
+          scoreMsg += ` Tiene ${this.points} puntos — puede canjear ${this.puntosParaRehabilitacion} puntos para subir el score y evitar la seña.`;
+        } else if (this.puntosParaRehabilitacion) {
+          scoreMsg += ` Necesitaría ${this.puntosParaRehabilitacion} puntos para mejorar el score (tiene ${this.points}).`;
+        }
+        lines.push(scoreMsg);
       } else if (this.cancelCount >= 2) {
-        lines.push(`  ⚠️ Atención: canceló ${this.cancelCount} turno${this.cancelCount > 1 ? 's' : ''} en su historial reciente (score: ${this.reliabilityScore}/100).`);
+        lines.push(`  ⚠️ Atención: canceló ${this.cancelCount} turno${this.cancelCount > 1 ? 's' : ''} recientemente (score: ${this.reliabilityScore}/100).`);
       }
       if (this.cancelledServices.length > 0) {
         const canc = this.cancelledServices.map(s => `${s.servicio} (${s.fecha})`).join(', ');

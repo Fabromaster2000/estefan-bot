@@ -1,6 +1,8 @@
 // ── CORE: DATABASE ────────────────────────────────────────────────────────────
-// Todas las operaciones con PostgreSQL centralizadas acá.
-// Ningún agente escribe SQL directamente — todo pasa por este módulo.
+// Arquitectura v2: client_id (UUID) es el identificador único.
+// phone y email son métodos de contacto opcionales — puede haber uno, ambos o ninguno.
+// Esto permite crear perfiles desde web (solo email), WhatsApp (solo phone),
+// o fusionar ambos cuando coinciden.
 
 const { Pool } = require('pg');
 
@@ -14,7 +16,7 @@ async function initDB() {
   try {
     db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-    // ── SCHEMA ──────────────────────────────────────────────────────────────
+    // ── SCHEMA v2 ─────────────────────────────────────────────────────────────
     await db.query(`
       CREATE TABLE IF NOT EXISTS config (
         key        TEXT PRIMARY KEY,
@@ -22,12 +24,14 @@ async function initDB() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
 
+      -- TABLA CENTRAL: clients con client_id como PK
+      -- phone y email son opcionales pero deben ser únicos si están presentes
       CREATE TABLE IF NOT EXISTS clients (
-        id               SERIAL PRIMARY KEY,
-        phone            TEXT UNIQUE NOT NULL,
+        client_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        phone            TEXT UNIQUE,
+        email            TEXT UNIQUE,
         name             TEXT,
         last_name        TEXT,
-        email            TEXT,
         visit_count      INTEGER DEFAULT 0,
         total_spent      INTEGER DEFAULT 0,
         points           INTEGER DEFAULT 0,
@@ -36,23 +40,27 @@ async function initDB() {
         preferences      TEXT,
         notes            TEXT,
         last_visit       TIMESTAMPTZ,
+        source           TEXT DEFAULT 'whatsapp',
         created_at       TIMESTAMPTZ DEFAULT NOW(),
-        updated_at       TIMESTAMPTZ DEFAULT NOW()
+        updated_at       TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT clients_phone_or_email CHECK (phone IS NOT NULL OR email IS NOT NULL)
       );
+      CREATE INDEX IF NOT EXISTS idx_clients_phone  ON clients(phone)  WHERE phone  IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_clients_email  ON clients(email)  WHERE email  IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS client_memory (
-        id           SERIAL PRIMARY KEY,
-        phone        TEXT UNIQUE NOT NULL,
-        summary      TEXT,
+        client_id         UUID PRIMARY KEY REFERENCES clients(client_id) ON DELETE CASCADE,
+        summary           TEXT,
         favorite_services TEXT,
         visit_patterns    TEXT,
         personality_notes TEXT,
-        last_updated TIMESTAMPTZ DEFAULT NOW()
+        last_updated      TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS bookings (
         id                SERIAL PRIMARY KEY,
         session_id        TEXT,
+        client_id         UUID REFERENCES clients(client_id) ON DELETE SET NULL,
         client_phone      TEXT,
         client_name       TEXT,
         service           TEXT,
@@ -63,29 +71,27 @@ async function initDB() {
         sena_paid         BOOLEAN DEFAULT FALSE,
         calendar_event_id TEXT,
         booking_code      TEXT,
-        status            TEXT DEFAULT 'confirmed',
+        status            TEXT DEFAULT 'Confirmado',
         notes             TEXT,
         mp_payment_id     TEXT,
         mp_payment_link   TEXT,
         email             TEXT,
+        source            VARCHAR(50) DEFAULT 'whatsapp',
+        fotos             TEXT,
+        cancelled_at      TIMESTAMPTZ,
         created_at        TIMESTAMPTZ DEFAULT NOW()
       );
-      -- Add columns if they don't exist (safe migration)
-      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS notes TEXT;
-      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_id TEXT;
-      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_link TEXT;
-      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;
-      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'whatsapp';
-      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS fotos TEXT;
-
+      CREATE INDEX IF NOT EXISTS idx_bookings_client_id    ON bookings(client_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_client_phone ON bookings(client_phone);
+      CREATE INDEX IF NOT EXISTS idx_bookings_cancelled_at ON bookings(cancelled_at) WHERE cancelled_at IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS empleados (
-        id                    SERIAL PRIMARY KEY,
-        nombre                TEXT NOT NULL,
-        rol                   TEXT DEFAULT 'Estilista',
+        id                     SERIAL PRIMARY KEY,
+        nombre                 TEXT NOT NULL,
+        rol                    TEXT DEFAULT 'Estilista',
         comision_servicios_pct INTEGER DEFAULT 0,
-        activo                BOOLEAN DEFAULT TRUE,
-        created_at            TIMESTAMPTZ DEFAULT NOW()
+        activo                 BOOLEAN DEFAULT TRUE,
+        created_at             TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS productos (
@@ -99,45 +105,51 @@ async function initDB() {
       );
 
       CREATE TABLE IF NOT EXISTS payments (
-        id                  SERIAL PRIMARY KEY,
-        numero_comprobante  SERIAL,
-        booking_id          INTEGER,
-        client_phone        TEXT,
-        client_name         TEXT,
-        empleado_id         INTEGER,
-        medio_pago          TEXT DEFAULT 'Efectivo',
-        servicios_json      TEXT DEFAULT '[]',
-        productos_json      TEXT DEFAULT '[]',
-        total_servicios     INTEGER DEFAULT 0,
-        total_productos     INTEGER DEFAULT 0,
-        descuento           INTEGER DEFAULT 0,
-        total               INTEGER DEFAULT 0,
-        notas               TEXT,
-        email               TEXT,
-        fecha_str           TEXT,
-        created_at          TIMESTAMPTZ DEFAULT NOW()
+        id                 SERIAL PRIMARY KEY,
+        numero_comprobante SERIAL,
+        booking_id         INTEGER,
+        client_id          UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+        client_phone       TEXT,
+        client_name        TEXT,
+        empleado_id        INTEGER,
+        medio_pago         TEXT DEFAULT 'Efectivo',
+        servicios_json     TEXT DEFAULT '[]',
+        productos_json     TEXT DEFAULT '[]',
+        total_servicios    INTEGER DEFAULT 0,
+        total_productos    INTEGER DEFAULT 0,
+        descuento          INTEGER DEFAULT 0,
+        total              INTEGER DEFAULT 0,
+        notas              TEXT,
+        email              TEXT,
+        fecha_str          TEXT,
+        status             VARCHAR(30) DEFAULT 'paid',
+        mp_payment_link    TEXT,
+        splits_json        TEXT,
+        created_at         TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS comisiones (
-        id           SERIAL PRIMARY KEY,
-        empleado_id  INTEGER NOT NULL,
-        payment_id   INTEGER NOT NULL,
-        producto_id  INTEGER,
-        monto        INTEGER DEFAULT 0,
-        descripcion  TEXT,
-        fecha_str    TEXT,
-        created_at   TIMESTAMPTZ DEFAULT NOW()
+        id          SERIAL PRIMARY KEY,
+        empleado_id INTEGER NOT NULL,
+        payment_id  INTEGER NOT NULL,
+        producto_id INTEGER,
+        monto       INTEGER DEFAULT 0,
+        descripcion TEXT,
+        fecha_str   TEXT,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS loyalty_transactions (
         id          SERIAL PRIMARY KEY,
-        phone       TEXT NOT NULL,
+        client_id   UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        phone       TEXT,
         type        TEXT NOT NULL,
         points      INTEGER NOT NULL,
         description TEXT,
         booking_id  INTEGER,
         created_at  TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE INDEX IF NOT EXISTS idx_loyalty_client_id ON loyalty_transactions(client_id);
 
       CREATE TABLE IF NOT EXISTS loyalty_rewards (
         id          SERIAL PRIMARY KEY,
@@ -150,53 +162,99 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS conversation_log (
         id         SERIAL PRIMARY KEY,
+        client_id  UUID REFERENCES clients(client_id) ON DELETE SET NULL,
         phone      TEXT,
         role       TEXT,
         content    TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE INDEX IF NOT EXISTS idx_convo_client_id ON conversation_log(client_id);
+      CREATE INDEX IF NOT EXISTS idx_convo_phone     ON conversation_log(phone);
 
       CREATE TABLE IF NOT EXISTS human_mode_control (
-        phone      TEXT PRIMARY KEY,
+        client_id  UUID PRIMARY KEY REFERENCES clients(client_id) ON DELETE CASCADE,
+        phone      TEXT,
         active     BOOLEAN DEFAULT FALSE,
         taken_by   TEXT,
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS client_notes (
+        id         SERIAL PRIMARY KEY,
+        client_id  UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        phone      TEXT,
+        type       TEXT NOT NULL DEFAULT 'nota',
+        content    TEXT NOT NULL,
+        created_by TEXT DEFAULT 'staff',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_client_notes_client_id ON client_notes(client_id);
+
+      CREATE TABLE IF NOT EXISTS client_ficha (
+        id               SERIAL PRIMARY KEY,
+        client_id        UUID UNIQUE REFERENCES clients(client_id) ON DELETE CASCADE,
+        phone            TEXT,
+        color_actual     TEXT,
+        tecnica          TEXT,
+        procesos_previos TEXT,
+        ultimo_proceso   TEXT,
+        alergias         TEXT,
+        observaciones    TEXT,
+        largo            TEXT,
+        textura          TEXT,
+        updated_at       TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS client_tokens (
+        id           SERIAL PRIMARY KEY,
+        client_id    UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        phone        TEXT,
+        token        TEXT UNIQUE NOT NULL,
+        expires_at   TIMESTAMPTZ NOT NULL,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_client_tokens_token     ON client_tokens(token);
+      CREATE INDEX IF NOT EXISTS idx_client_tokens_client_id ON client_tokens(client_id);
+
+      CREATE TABLE IF NOT EXISTS client_photos (
+        id           SERIAL PRIMARY KEY,
+        client_id    UUID REFERENCES clients(client_id) ON DELETE CASCADE,
+        phone        TEXT,
+        url          TEXT NOT NULL,
+        tipo         TEXT NOT NULL DEFAULT 'general',
+        descripcion  TEXT,
+        booking_code TEXT,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_client_photos_client_id ON client_photos(client_id);
+
+      CREATE TABLE IF NOT EXISTS discount_codes (
+        id            SERIAL PRIMARY KEY,
+        code          VARCHAR(12) UNIQUE NOT NULL,
+        client_id     UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+        client_phone  VARCHAR(30),
+        reward_id     VARCHAR(50),
+        reward_label  VARCHAR(200),
+        discount_type VARCHAR(20),
+        discount_value NUMERIC,
+        points_cost   INT,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        used_at       TIMESTAMPTZ,
+        used_in_cobro INT,
+        status        VARCHAR(20) DEFAULT 'active'
+      );
     `);
 
-    // ── MIGRATIONS: columnas que pueden faltar en DBs existentes ────────────
-    const migrations = [
-      `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS human_mode BOOLEAN DEFAULT FALSE`,
-      `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS taken_by TEXT`,
-      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_name TEXT`,
-      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT`,
-      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS promo_opt_in BOOLEAN DEFAULT FALSE`,
-      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS profile_complete BOOLEAN DEFAULT FALSE`,
-      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0`,
-      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code TEXT`,
-      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS monto INTEGER DEFAULT 0`,
-      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'confirmed'`,
-      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS calendar_event_id TEXT`,
-
-      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS descuento INTEGER DEFAULT 0`,
-      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS email TEXT`,
-
-    ];
-    for (const m of migrations) {
-      await db.query(m).catch(() => {});
-    }
-
-    // ── Rewards por defecto ──────────────────────────────────────────────────
+    // ── Rewards por defecto ────────────────────────────────────────────────
     await db.query(`
-      -- Limpiar rewards duplicados y recrear
-      DELETE FROM loyalty_rewards WHERE id > 0;
       INSERT INTO loyalty_rewards (name, description, points_cost, active)
       VALUES
-        ('Descuento $5.000',   '$5.000 de descuento en tu próximo servicio', 5, true),
-        ('Descuento $10.000',  '$10.000 de descuento en tu próximo servicio', 10, true),
-        ('Ampolla gratis',     'Ampolla reparadora sin cargo', 30, true),
-        ('Ozono gratis',       'Tratamiento de ozono sin cargo', 30, true),
-        ('Corte gratis',       'Corte de pelo sin cargo', 50, true)
+        ('Descuento $5.000',  '$5.000 de descuento en tu próximo servicio', 5,  true),
+        ('Descuento $10.000', '$10.000 de descuento en tu próximo servicio', 10, true),
+        ('Ampolla gratis',    'Ampolla reparadora sin cargo',                30, true),
+        ('Ozono gratis',      'Tratamiento de ozono sin cargo',              30, true),
+        ('Corte gratis',      'Corte de pelo sin cargo',                    50, true)
+      ON CONFLICT DO NOTHING
     `).catch(() => {});
 
     console.log('[db] ✓ PostgreSQL conectado y tablas listas');
@@ -209,77 +267,160 @@ async function initDB() {
 }
 
 function getDB() { return db; }
+function getConn() { return db; }
 
-// ── CONFIG ───────────────────────────────────────────────────────────────────
-async function configGet(key) {
+// ─────────────────────────────────────────────────────────────────────────────
+// RESOLUCIÓN DE IDENTIDAD
+// La función más importante del sistema. Resuelve quién es la clienta
+// a partir de cualquier combinación de phone, email o client_id.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolver de identidad flexible.
+ * Busca en este orden: client_id → phone → email
+ * Si no existe, crea el perfil. Si encuentra dos perfiles para fusionar, los fusiona.
+ * Retorna siempre un row de clients (nunca null si hay al menos phone o email).
+ */
+async function clientResolve({ clientId, phone, email, source = 'whatsapp' } = {}) {
   if (!db) return null;
-  const r = await db.query(`SELECT value FROM config WHERE key = $1`, [key]);
-  return r.rows[0]?.value || null;
-}
-async function configSet(key, value) {
-  if (!db) return;
-  await db.query(`INSERT INTO config (key,value,updated_at) VALUES ($1,$2,NOW()) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=NOW()`, [key, value]);
+
+  // 1. Por client_id directo (caso más rápido)
+  if (clientId) {
+    const r = await db.query('SELECT * FROM clients WHERE client_id=$1', [clientId]);
+    if (r.rows[0]) return r.rows[0];
+  }
+
+  // 2. Por phone
+  let byPhone = null;
+  if (phone) {
+    const r = await db.query('SELECT * FROM clients WHERE phone=$1', [phone]);
+    byPhone = r.rows[0] || null;
+  }
+
+  // 3. Por email
+  let byEmail = null;
+  if (email) {
+    const r = await db.query('SELECT * FROM clients WHERE LOWER(email)=LOWER($1)', [email]);
+    byEmail = r.rows[0] || null;
+  }
+
+  // 4. Mismo perfil
+  if (byPhone && byEmail && byPhone.client_id === byEmail.client_id) return byPhone;
+
+  // 5. Fusión: tenemos phone en un perfil y email en otro
+  if (byPhone && byEmail && byPhone.client_id !== byEmail.client_id) {
+    // Mantener el que tiene más datos (más visitas o más antiguo)
+    const keeper  = byPhone.visit_count >= byEmail.visit_count ? byPhone  : byEmail;
+    const discard = byPhone.visit_count >= byEmail.visit_count ? byEmail  : byPhone;
+    await _mergeClients(keeper.client_id, discard.client_id);
+    return keeper;
+  }
+
+  // 6. Solo uno encontrado — completar datos faltantes
+  if (byPhone && email && !byPhone.email) {
+    await db.query('UPDATE clients SET email=$1, updated_at=NOW() WHERE client_id=$2', [email.toLowerCase(), byPhone.client_id]);
+    byPhone.email = email.toLowerCase();
+    return byPhone;
+  }
+  if (byEmail && phone && !byEmail.phone) {
+    await db.query('UPDATE clients SET phone=$1, source=$2, updated_at=NOW() WHERE client_id=$3', [phone, source, byEmail.client_id]);
+    byEmail.phone = phone;
+    return byEmail;
+  }
+  if (byPhone) return byPhone;
+  if (byEmail) return byEmail;
+
+  // 7. No existe — crear perfil nuevo
+  const newClient = await db.query(`
+    INSERT INTO clients (phone, email, source, created_at, updated_at)
+    VALUES ($1, $2, $3, NOW(), NOW())
+    RETURNING *
+  `, [phone || null, email ? email.toLowerCase() : null, source]);
+  return newClient.rows[0];
 }
 
-// ── CLIENTS ──────────────────────────────────────────────────────────────────
+/**
+ * Fusionar dos perfiles: reasigna todas las FK de discard → keeper, borra discard
+ */
+async function _mergeClients(keeperId, discardId) {
+  console.log(`[db] Fusionando perfiles: ${discardId} → ${keeperId}`);
+  const tables = [
+    'bookings', 'loyalty_transactions', 'client_tokens', 'client_notes',
+    'client_photos', 'conversation_log', 'human_mode_control',
+    'payments', 'discount_codes',
+  ];
+  for (const t of tables) {
+    await db.query(`UPDATE ${t} SET client_id=$1 WHERE client_id=$2`, [keeperId, discardId]).catch(() => {});
+  }
+  // client_ficha y client_memory tienen UNIQUE en client_id — merge manual
+  await db.query(`
+    INSERT INTO client_ficha (client_id)
+    SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM client_ficha WHERE client_id=$1)
+  `, [keeperId]).catch(() => {});
+  await db.query('DELETE FROM client_ficha WHERE client_id=$1', [discardId]).catch(() => {});
+  await db.query('DELETE FROM client_memory WHERE client_id=$1', [discardId]).catch(() => {});
+
+  // Fusionar puntos y visitas del descartado al keeper
+  const discard = await db.query('SELECT * FROM clients WHERE client_id=$1', [discardId]);
+  if (discard.rows[0]) {
+    const d = discard.rows[0];
+    await db.query(`
+      UPDATE clients SET
+        visit_count = visit_count + $2,
+        total_spent = total_spent + $3,
+        points      = points + $4,
+        phone       = COALESCE(phone, $5),
+        email       = COALESCE(email, $6),
+        name        = COALESCE(name, $7),
+        updated_at  = NOW()
+      WHERE client_id=$1
+    `, [keeperId, d.visit_count || 0, d.total_spent || 0, d.points || 0, d.phone, d.email, d.name]);
+  }
+  await db.query('DELETE FROM clients WHERE client_id=$1', [discardId]).catch(() => {});
+  console.log(`[db] ✓ Fusión completa`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENTS — API pública
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function clientGet(phone) {
-  if (!db) return null;
-  const r = await db.query(`SELECT * FROM clients WHERE phone = $1`, [phone]);
+  if (!db || !phone) return null;
+  const r = await db.query('SELECT * FROM clients WHERE phone=$1', [phone]);
   return r.rows[0] || null;
 }
 
-async function clientResolve(phone, email = null) {
-  if (!db) return null;
-  if (email) {
-    const byEmail = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
-    if (byEmail.rows[0]) return byEmail.rows[0];
-  }
-  const byPhone = await db.query(`SELECT * FROM clients WHERE phone = $1`, [phone]);
-  return byPhone.rows[0] || null;
+async function clientGetById(clientId) {
+  if (!db || !clientId) return null;
+  const r = await db.query('SELECT * FROM clients WHERE client_id=$1', [clientId]);
+  return r.rows[0] || null;
 }
 
 async function clientGetByEmail(email) {
-  if (!db) return null;
-  const r = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
+  if (!db || !email) return null;
+  const r = await db.query('SELECT * FROM clients WHERE LOWER(email)=LOWER($1)', [email]);
   return r.rows[0] || null;
 }
 
-async function clientUpsert(phone, name = null, email = null) {
-  if (!db) return;
-
-  // Si tenemos email, buscar si ya existe un perfil sintético con ese email y fusionar
-  if (email) {
-    try {
-      const existing = await db.query(`SELECT * FROM clients WHERE LOWER(email) = LOWER($1)`, [email]);
-      if (existing.rows[0] && existing.rows[0].phone !== phone) {
-        const ex = existing.rows[0];
-        const exIsSynthetic = ex.phone.startsWith('web-') || ex.phone.startsWith('manual-');
-        if (exIsSynthetic) {
-          await db.query(`UPDATE clients SET phone=$1, name=COALESCE($2,name), updated_at=NOW() WHERE id=$3`, [phone, name, ex.id]);
-          await db.query(`UPDATE bookings SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-          await db.query(`UPDATE loyalty_transactions SET phone=$1 WHERE phone=$2`, [phone, ex.phone]);
-          await db.query(`UPDATE client_tokens SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-          await db.query(`UPDATE client_notes SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-          await db.query(`UPDATE client_ficha SET client_phone=$1 WHERE client_phone=$2`, [phone, ex.phone]);
-          console.log(`[db] ✓ Fusión: ${ex.phone} → ${phone} (email: ${email})`);
-          return;
-        }
-      }
-    } catch(e) { console.error('[db] fusión error:', e.message); }
+/**
+ * Upsert de cliente — siempre usa clientResolve para manejar fusiones
+ */
+async function clientUpsert(phone, name = null, email = null, source = 'whatsapp') {
+  if (!db) return null;
+  const client = await clientResolve({ phone, email, source });
+  if (!client) return null;
+  // Actualizar nombre si lo tenemos
+  if (name) {
+    await db.query('UPDATE clients SET name=COALESCE($1,name), updated_at=NOW() WHERE client_id=$2', [name, client.client_id]);
+    client.name = name || client.name;
   }
-
-  await db.query(`
-    INSERT INTO clients (phone, name, email, created_at, updated_at)
-    VALUES ($1, $2, $3, NOW(), NOW())
-    ON CONFLICT (phone) DO UPDATE SET
-      name  = COALESCE($2, clients.name),
-      email = COALESCE($3, clients.email),
-      updated_at = NOW()
-  `, [phone, name, email || null]);
+  return client;
 }
 
-async function clientUpdateProfile(phone, { lastName, email, promoOptIn, profileComplete }) {
+async function clientUpdateProfile(phone, { lastName, email, promoOptIn, profileComplete, clientId }) {
   if (!db) return;
+  const id = clientId || (await clientGet(phone))?.client_id;
+  if (!id) return;
   await db.query(`
     UPDATE clients SET
       last_name        = COALESCE($2, last_name),
@@ -287,13 +428,14 @@ async function clientUpdateProfile(phone, { lastName, email, promoOptIn, profile
       promo_opt_in     = COALESCE($4, promo_opt_in),
       profile_complete = COALESCE($5, profile_complete),
       updated_at       = NOW()
-    WHERE phone = $1
-  `, [phone, lastName, email, promoOptIn, profileComplete]);
+    WHERE client_id=$1
+  `, [id, lastName || null, email || null, promoOptIn ?? null, profileComplete ?? null]);
 }
 
-async function clientRecordVisit(phone, service, amount) {
-  if (!db) return;
-  // Calcular puntos: 1 punto cada $1.000
+async function clientRecordVisit(phone, service, amount, clientId = null) {
+  if (!db) return 0;
+  const id = clientId || (await clientGet(phone))?.client_id;
+  if (!id) return 0;
   const pointsEarned = Math.floor(amount / 1000);
   await db.query(`
     UPDATE clients SET
@@ -302,198 +444,261 @@ async function clientRecordVisit(phone, service, amount) {
       points      = points + $3,
       last_visit  = NOW(),
       updated_at  = NOW()
-    WHERE phone = $1
-  `, [phone, amount, pointsEarned]);
-  // Registrar transacción de puntos si ganó algo
+    WHERE client_id=$1
+  `, [id, amount, pointsEarned]);
   if (pointsEarned > 0) {
-    await db.query(`
-      INSERT INTO loyalty_transactions (phone, type, points, description)
-      VALUES ($1, 'earn', $2, $3)
-    `, [phone, pointsEarned, `Servicio: ${service} ($${amount.toLocaleString('es-AR')})`]);
+    await db.query(
+      'INSERT INTO loyalty_transactions (client_id, phone, type, points, description) VALUES ($1,$2,$3,$4,$5)',
+      [id, phone, 'earn', pointsEarned, `Servicio: ${service} ($${amount.toLocaleString('es-AR')})`]
+    );
   }
   return pointsEarned;
 }
 
 async function clientGetAll() {
   if (!db) return [];
-  const r = await db.query(`SELECT * FROM clients ORDER BY last_visit DESC NULLS LAST`);
+  const r = await db.query('SELECT * FROM clients ORDER BY last_visit DESC NULLS LAST');
   return r.rows;
 }
 
-// ── CLIENT MEMORY ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+async function configGet(key) {
+  if (!db) return null;
+  const r = await db.query('SELECT value FROM config WHERE key=$1', [key]);
+  return r.rows[0]?.value || null;
+}
+async function configSet(key, value) {
+  if (!db) return;
+  await db.query(
+    'INSERT INTO config (key,value,updated_at) VALUES ($1,$2,NOW()) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=NOW()',
+    [key, value]
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENT MEMORY
+// ─────────────────────────────────────────────────────────────────────────────
 async function memoryGet(phone) {
   if (!db) return null;
-  const r = await db.query(`SELECT * FROM client_memory WHERE phone = $1`, [phone]);
+  const client = await clientGet(phone);
+  if (!client) return null;
+  const r = await db.query('SELECT * FROM client_memory WHERE client_id=$1', [client.client_id]);
   return r.rows[0] || null;
 }
 
 async function memoryUpdate(phone, { summary, favoriteServices, visitPatterns, personalityNotes }) {
   if (!db) return;
+  const client = await clientGet(phone);
+  if (!client) return;
   await db.query(`
-    INSERT INTO client_memory (phone, summary, favorite_services, visit_patterns, personality_notes, last_updated)
-    VALUES ($1, $2, $3, $4, $5, NOW())
-    ON CONFLICT (phone) DO UPDATE SET
+    INSERT INTO client_memory (client_id, summary, favorite_services, visit_patterns, personality_notes, last_updated)
+    VALUES ($1,$2,$3,$4,$5,NOW())
+    ON CONFLICT (client_id) DO UPDATE SET
       summary           = COALESCE($2, client_memory.summary),
       favorite_services = COALESCE($3, client_memory.favorite_services),
       visit_patterns    = COALESCE($4, client_memory.visit_patterns),
       personality_notes = COALESCE($5, client_memory.personality_notes),
       last_updated      = NOW()
-  `, [phone, summary, favoriteServices, visitPatterns, personalityNotes]);
+  `, [client.client_id, summary, favoriteServices, visitPatterns, personalityNotes]);
 }
 
-// ── BOOKINGS ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKINGS
+// ─────────────────────────────────────────────────────────────────────────────
 function generateBookingCode() {
   return '#' + Math.random().toString(36).substring(2,6).toUpperCase();
 }
 
-async function bookingSave({ sessionId, nombre, phone, servicio, fecha, hora, monto, senaPaid, calendarEventId, email, notes, senaAmount, status, fotos }) {
+async function bookingSave({ sessionId, nombre, phone, clientId, servicio, fecha, hora, monto, senaPaid, calendarEventId, email, notes, senaAmount, status, fotos }) {
   if (!db) return null;
   const code = generateBookingCode();
-  const sena = senaAmount || (senaPaid ? monto : 0);
+  const sena = senaAmount || 0;
   const finalStatus = status || 'Confirmado';
+  // Resolver client_id si no viene
+  const resolvedClientId = clientId || (phone ? (await clientGet(phone))?.client_id : null);
   const r = await db.query(`
-    INSERT INTO bookings (session_id, client_name, client_phone, service, date_str, time_str, monto, sena_amount, sena_paid, calendar_event_id, booking_code, email, notes, status, fotos)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+    INSERT INTO bookings
+      (session_id, client_id, client_name, client_phone, service, date_str, time_str, monto,
+       sena_amount, sena_paid, calendar_event_id, booking_code, email, notes, status, fotos)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     RETURNING id, booking_code
-  `, [sessionId, nombre, phone, servicio, fecha, hora, monto||0, sena, senaPaid||false, calendarEventId||null, code, email||null, notes||null, finalStatus, fotos||null]);
+  `, [sessionId, resolvedClientId, nombre, phone || null, servicio, fecha, hora, monto||0,
+      sena, senaPaid||false, calendarEventId||null, code, email||null, notes||null, finalStatus, fotos||null]);
   return { id: r.rows[0].id, code: r.rows[0].booking_code };
 }
 
 async function bookingFindByCode(code) {
   if (!db) return null;
-  // Normalizar: buscar con y sin # 
   const clean = code.replace('#','').toUpperCase();
   const r = await db.query(`
-    SELECT id, client_name as nombre, service as servicio, date_str as fecha,
-           time_str as hora, booking_code as code, status as estado, monto
-    FROM bookings WHERE (booking_code = $1 OR booking_code = $2)
-    AND status NOT IN ('Cancelado','Reprogramado','cancelled','Consulta Pendiente')
-    ORDER BY created_at DESC LIMIT 1
-  `, ['#' + clean, clean]);
+    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
+           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
+           c.phone, c.email, c.client_id
+    FROM bookings b
+    LEFT JOIN clients c ON c.client_id = b.client_id
+    WHERE (b.booking_code=$1 OR b.booking_code=$2)
+      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+    ORDER BY b.created_at DESC LIMIT 1
+  `, ['#'+clean, clean]);
   return r.rows[0] || null;
 }
 
 async function bookingFindByName(name) {
   if (!db) return null;
   const r = await db.query(`
-    SELECT id, client_name as nombre, service as servicio, date_str as fecha,
-           time_str as hora, booking_code as code, status as estado, monto
-    FROM bookings WHERE LOWER(client_name) LIKE $1 AND status NOT IN ('Cancelado','Reprogramado','cancelled','Consulta Pendiente')
-    ORDER BY created_at DESC LIMIT 1
-  `, ['%' + name.toLowerCase() + '%']);
+    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
+           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
+           c.phone, c.email, c.client_id
+    FROM bookings b
+    LEFT JOIN clients c ON c.client_id = b.client_id
+    WHERE LOWER(b.client_name) LIKE $1
+      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+    ORDER BY b.created_at DESC LIMIT 1
+  `, ['%'+name.toLowerCase()+'%']);
   return r.rows[0] || null;
 }
 
 async function bookingCancel(bookingId, reason = 'Cancelado') {
   if (!db) return;
-  await db.query(`UPDATE bookings SET status = $1 WHERE id = $2`, [reason, bookingId]);
+  await db.query('UPDATE bookings SET status=$1, cancelled_at=NOW() WHERE id=$2', [reason, bookingId]);
 }
 
+async function bookingGetByClient(clientId, phone = null, limit = 10) {
+  if (!db) return [];
+  const r = await db.query(`
+    SELECT service, date_str, time_str, status, monto, booking_code, created_at, cancelled_at
+    FROM bookings
+    WHERE (client_id=$1 OR client_phone=$2)
+    ORDER BY created_at DESC LIMIT $3
+  `, [clientId, phone, limit]);
+  return r.rows;
+}
+
+// Alias backward-compatible
 async function bookingGetByPhone(phone, limit = 10) {
   if (!db) return [];
-  const r = await db.query(`
-    SELECT service, date_str, time_str, status, monto, booking_code, created_at
-    FROM bookings WHERE client_phone = $1 ORDER BY created_at DESC LIMIT $2
-  `, [phone, limit]);
-  return r.rows;
+  const client = await clientGet(phone);
+  return bookingGetByClient(client?.client_id, phone, limit);
 }
 
-async function bookingGetActive(phone) {
+async function bookingGetActive(phone, clientId = null) {
   if (!db) return [];
+  const id = clientId || (await clientGet(phone))?.client_id;
   const r = await db.query(`
     SELECT id, service, date_str, time_str, booking_code, monto
-    FROM bookings WHERE client_phone = $1 AND status NOT IN ('Cancelado','Reprogramado','cancelled','Consulta Pendiente')
+    FROM bookings
+    WHERE (client_id=$1 OR client_phone=$2)
+      AND status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
     ORDER BY created_at DESC
-  `, [phone]);
+  `, [id, phone]);
   return r.rows;
 }
 
-// ── LOYALTY ──────────────────────────────────────────────────────────────────
-async function loyaltyGetBalance(phone) {
+// ─────────────────────────────────────────────────────────────────────────────
+// LOYALTY
+// ─────────────────────────────────────────────────────────────────────────────
+async function loyaltyGetBalance(phone, clientId = null) {
   if (!db) return 0;
-  const r = await db.query(`SELECT points FROM clients WHERE phone = $1`, [phone]);
+  const id = clientId || (await clientGet(phone))?.client_id;
+  if (!id) return 0;
+  const r = await db.query('SELECT points FROM clients WHERE client_id=$1', [id]);
   return r.rows[0]?.points || 0;
 }
 
-async function loyaltyGetTransactions(phone, limit = 10) {
+async function loyaltyGetTransactions(phone, limit = 10, clientId = null) {
   if (!db) return [];
+  const id = clientId || (await clientGet(phone))?.client_id;
+  if (!id) return [];
   const r = await db.query(`
     SELECT type, points, description, created_at
-    FROM loyalty_transactions WHERE phone = $1
+    FROM loyalty_transactions WHERE client_id=$1
     ORDER BY created_at DESC LIMIT $2
-  `, [phone, limit]);
+  `, [id, limit]);
   return r.rows;
 }
 
 async function loyaltyGetRewards() {
   if (!db) return [];
-  const r = await db.query(`SELECT * FROM loyalty_rewards WHERE active = true ORDER BY points_cost ASC`);
+  const r = await db.query('SELECT * FROM loyalty_rewards WHERE active=true ORDER BY points_cost ASC');
   return r.rows;
 }
 
-async function loyaltyRedeem(phone, rewardId) {
+async function loyaltyRedeem(phone, rewardId, clientId = null) {
   if (!db) return { ok: false, error: 'Sin DB' };
-  const reward = await db.query(`SELECT * FROM loyalty_rewards WHERE id = $1 AND active = true`, [rewardId]);
+  const id = clientId || (await clientGet(phone))?.client_id;
+  if (!id) return { ok: false, error: 'Cliente no encontrado' };
+  const reward = await db.query('SELECT * FROM loyalty_rewards WHERE id=$1 AND active=true', [rewardId]);
   if (!reward.rows[0]) return { ok: false, error: 'Premio no encontrado' };
   const r = reward.rows[0];
-  const balance = await loyaltyGetBalance(phone);
+  const balance = await loyaltyGetBalance(phone, id);
   if (balance < r.points_cost) return { ok: false, error: `Puntos insuficientes (tenés ${balance}, necesitás ${r.points_cost})` };
-  await db.query(`UPDATE clients SET points = points - $1 WHERE phone = $2`, [r.points_cost, phone]);
-  await db.query(`INSERT INTO loyalty_transactions (phone, type, points, description) VALUES ($1, 'redeem', $2, $3)`,
-    [phone, -r.points_cost, `Canje: ${r.name}`]);
+  await db.query('UPDATE clients SET points=points-$1 WHERE client_id=$2', [r.points_cost, id]);
+  await db.query(
+    'INSERT INTO loyalty_transactions (client_id, phone, type, points, description) VALUES ($1,$2,$3,$4,$5)',
+    [id, phone, 'redeem', -r.points_cost, `Canje: ${r.name}`]
+  );
   return { ok: true, reward: r, remainingPoints: balance - r.points_cost };
 }
 
-// ── CONVERSATIONS ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSATIONS
+// ─────────────────────────────────────────────────────────────────────────────
 async function conversationLog(phone, role, content) {
   if (!db) return;
-  await db.query(`INSERT INTO conversation_log (phone, role, content) VALUES ($1,$2,$3)`, [phone, role, content]);
+  const client = phone ? await clientGet(phone) : null;
+  await db.query(
+    'INSERT INTO conversation_log (client_id, phone, role, content) VALUES ($1,$2,$3,$4)',
+    [client?.client_id || null, phone, role, content]
+  );
 }
 
 async function conversationGetRecent(phone, limit = 20) {
   if (!db) return [];
   const r = await db.query(`
     SELECT role, content, created_at FROM conversation_log
-    WHERE phone = $1 ORDER BY created_at DESC LIMIT $2
+    WHERE phone=$1 ORDER BY created_at DESC LIMIT $2
   `, [phone, limit]);
   return r.rows.reverse();
 }
 
-// ── CHAT / HUMAN MODE ────────────────────────────────────────────────────────
-
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT / HUMAN MODE
+// ─────────────────────────────────────────────────────────────────────────────
 async function chatSetHumanMode(phone, enabled, takenBy = null) {
-  // Inserta una fila especial de control de modo en conversation_log
-  // En su lugar, usamos una tabla separada liviana
+  const client = await clientResolve({ phone });
+  if (!client) return;
   await db.query(`
-    INSERT INTO human_mode_control (phone, active, taken_by, updated_at)
-    VALUES ($1, $2, $3, NOW())
-    ON CONFLICT (phone) DO UPDATE SET active=$2, taken_by=$3, updated_at=NOW()
-  `, [phone, enabled, takenBy]);
+    INSERT INTO human_mode_control (client_id, phone, active, taken_by, updated_at)
+    VALUES ($1,$2,$3,$4,NOW())
+    ON CONFLICT (client_id) DO UPDATE SET active=$3, taken_by=$4, updated_at=NOW()
+  `, [client.client_id, phone, enabled, takenBy]);
 }
 
 async function chatGetHumanMode(phone) {
   try {
-    const r = await db.query(`SELECT active, taken_by FROM human_mode_control WHERE phone=$1`, [phone]);
+    const client = await clientGet(phone);
+    if (!client) return { active: false, taken_by: null };
+    const r = await db.query('SELECT active, taken_by FROM human_mode_control WHERE client_id=$1', [client.client_id]);
     return r.rows[0] || { active: false, taken_by: null };
   } catch { return { active: false, taken_by: null }; }
 }
 
 async function chatListConversations() {
   const r = await db.query(`
-    SELECT 
-      cl.phone,
-      cl.name,
-      cl.last_name,
-      COALESCE(hm.active, false) AS human_mode,
-      COALESCE(hm.taken_by, null) AS taken_by,
-      (SELECT content FROM conversation_log WHERE phone=cl.phone ORDER BY created_at DESC LIMIT 1) AS last_message,
-      (SELECT role    FROM conversation_log WHERE phone=cl.phone ORDER BY created_at DESC LIMIT 1) AS last_role,
-      (SELECT created_at FROM conversation_log WHERE phone=cl.phone ORDER BY created_at DESC LIMIT 1) AS last_at,
-      (SELECT COUNT(*) FROM conversation_log WHERE phone=cl.phone AND role='user' 
+    SELECT
+      c.phone, c.client_id, c.name, c.last_name,
+      COALESCE(hm.active, false)   AS human_mode,
+      COALESCE(hm.taken_by, null)  AS taken_by,
+      (SELECT content    FROM conversation_log WHERE client_id=c.client_id ORDER BY created_at DESC LIMIT 1) AS last_message,
+      (SELECT role       FROM conversation_log WHERE client_id=c.client_id ORDER BY created_at DESC LIMIT 1) AS last_role,
+      (SELECT created_at FROM conversation_log WHERE client_id=c.client_id ORDER BY created_at DESC LIMIT 1) AS last_at,
+      (SELECT COUNT(*)   FROM conversation_log WHERE client_id=c.client_id AND role='user'
          AND created_at > NOW() - INTERVAL '24 hours') AS msgs_today
-    FROM clients cl
-    LEFT JOIN human_mode_control hm ON hm.phone=cl.phone
-    WHERE EXISTS (SELECT 1 FROM conversation_log WHERE phone=cl.phone)
+    FROM clients c
+    LEFT JOIN human_mode_control hm ON hm.client_id=c.client_id
+    WHERE EXISTS (SELECT 1 FROM conversation_log WHERE client_id=c.client_id)
     ORDER BY last_at DESC NULLS LAST
     LIMIT 50
   `);
@@ -501,28 +706,32 @@ async function chatListConversations() {
 }
 
 async function chatGetHistory(phone, limit = 60) {
+  const client = phone ? await clientGet(phone) : null;
   const r = await db.query(`
-    SELECT role, content, created_at
-    FROM conversation_log WHERE phone=$1
-    ORDER BY created_at ASC
-    LIMIT $2
-  `, [phone, limit]);
+    SELECT role, content, created_at FROM conversation_log
+    WHERE ${client ? 'client_id=$1' : 'phone=$1'}
+    ORDER BY created_at ASC LIMIT $2
+  `, [client?.client_id || phone, limit]);
   return r.rows;
 }
 
-async function chatSendStaffMessage(phone, content, staffName) {
-  await db.query(`
-    INSERT INTO conversation_log (phone, role, content) VALUES ($1, 'staff', $2)
-  `, [phone, content]);
-  // El mensaje al cliente via WA (cuando haya wassenger) o se lee en tiempo real
+async function chatSendStaffMessage(phone, content) {
+  const client = await clientGet(phone);
+  await db.query(
+    'INSERT INTO conversation_log (client_id, phone, role, content) VALUES ($1,$2,$3,$4)',
+    [client?.client_id || null, phone, 'staff', content]
+  );
 }
 
 module.exports = {
-  initDB, getDB,
+  initDB, getDB, getConn,
+  clientResolve, clientGet, clientGetById, clientGetByEmail,
+  clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
+  _mergeClients,
   configGet, configSet,
-  clientGet, clientGetByEmail, clientResolve, clientUpsert, clientUpdateProfile, clientRecordVisit, clientGetAll,
   memoryGet, memoryUpdate,
-  bookingSave, bookingFindByCode, bookingFindByName, bookingCancel, bookingGetByPhone, bookingGetActive, generateBookingCode,
+  bookingSave, bookingFindByCode, bookingFindByName, bookingCancel,
+  bookingGetByPhone, bookingGetByClient, bookingGetActive, generateBookingCode,
   loyaltyGetBalance, loyaltyGetTransactions, loyaltyGetRewards, loyaltyRedeem,
   conversationLog, conversationGetRecent,
   chatSetHumanMode, chatGetHumanMode, chatListConversations, chatGetHistory, chatSendStaffMessage,

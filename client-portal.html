@@ -110,6 +110,10 @@ textarea.form-input { resize:vertical; min-height:80px; }
 *{scrollbar-width:thin;scrollbar-color:var(--border-gold) transparent;}
 .cobro-card{background:var(--surface2);border:1px solid var(--border-gold);border-radius:var(--radius);padding:14px;margin-bottom:10px;}
 .cobro-total{font-family:var(--font-serif);font-weight:400;font-size:18px;color:var(--gold);letter-spacing:.02em;}
+/* ── PIN ── */
+.pin-input-wrap{display:flex;gap:10px;justify-content:center;margin:16px 0;}
+.pin-digit{width:52px;height:60px;background:var(--surface2);border:1.5px solid var(--border-gold);border-radius:var(--radius);color:var(--cream);font-size:24px;text-align:center;font-family:var(--font-serif);caret-color:var(--gold);outline:none;transition:border-color .2s;}
+.pin-digit:focus{border-color:var(--gold);}
 </style>
 </head>
 <body>
@@ -296,6 +300,52 @@ textarea.form-input { resize:vertical; min-height:80px; }
   </div>
 </div>
 <div id="toast"></div>
+
+<!-- ── Modal: Setup PIN ─────────────────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-setup-pin">
+  <div class="modal-box">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Configurá tu PIN 🔐</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px">El PIN se usa para canjear puntos y cancelar turnos. Solo lo sabés vos — nosotras no lo vemos.</div>
+    <label class="form-label" style="text-align:center;display:block">PIN de 4 dígitos</label>
+    <div class="pin-input-wrap" id="pin-setup-wrap">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="ps0">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="ps1">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="ps2">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="ps3">
+    </div>
+    <label class="form-label" style="text-align:center;display:block;margin-top:10px">Confirmá el PIN</label>
+    <div class="pin-input-wrap">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pc0">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pc1">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pc2">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pc3">
+    </div>
+    <p id="setup-pin-error" style="color:var(--red);font-size:13px;text-align:center;min-height:20px;margin:6px 0"></p>
+    <button class="btn-primary" onclick="confirmarSetupPin()">Guardar PIN</button>
+    <button class="btn-sm" style="width:100%;margin-top:8px;text-align:center" onclick="closePinSetup()">Cancelar</button>
+  </div>
+</div>
+
+<!-- ── Modal: Verificar PIN ──────────────────────────────────────────── -->
+<div class="modal-backdrop" id="modal-verify-pin">
+  <div class="modal-box">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px" id="verify-pin-titulo">Ingresá tu PIN 🔐</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px" id="verify-pin-subtitulo">Para continuar ingresá tu PIN de 4 dígitos.</div>
+    <div class="pin-input-wrap">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pv0">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pv1">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pv2">
+      <input class="pin-digit" maxlength="1" type="tel" pattern="[0-9]" id="pv3">
+    </div>
+    <p id="verify-pin-error" style="color:var(--red);font-size:13px;text-align:center;min-height:20px;margin:6px 0"></p>
+    <button class="btn-primary" onclick="confirmarVerifyPin()">Confirmar</button>
+    <div style="text-align:center;margin-top:10px">
+      <span style="font-size:12px;color:var(--muted);cursor:pointer" onclick="resetPinDesdePortal()">¿Olvidaste tu PIN? Escribinos por WhatsApp</span>
+    </div>
+    <button class="btn-sm" style="width:100%;margin-top:8px;text-align:center" onclick="closePinVerify()">Cancelar</button>
+  </div>
+</div>
+
 <script>
 var TOKEN = '';
 var perfil = null;
@@ -775,6 +825,182 @@ function sacarReset() {
   document.getElementById('sacar-paso2').style.display = 'none';
   document.getElementById('sacar-paso1').style.display = 'block';
 }
+
+// ── PIN ───────────────────────────────────────────────────────────────────────
+var _pinCallback = null;  // función a llamar con el PIN verificado
+
+// Auto-avance entre dígitos
+function initPinInputs(prefix, count) {
+  for (var i = 0; i < count; i++) {
+    (function(idx) {
+      var el = document.getElementById(prefix + idx);
+      if (!el) return;
+      el.addEventListener('input', function() {
+        this.value = this.value.replace(/[^0-9]/g,'').slice(-1);
+        if (this.value && idx < count - 1) document.getElementById(prefix + (idx+1)).focus();
+      });
+      el.addEventListener('keydown', function(e) {
+        if (e.key === 'Backspace' && !this.value && idx > 0) document.getElementById(prefix + (idx-1)).focus();
+      });
+    })(i);
+  }
+}
+function getPinValue(prefix, count) {
+  var v = '';
+  for (var i = 0; i < count; i++) v += (document.getElementById(prefix + i).value || '');
+  return v;
+}
+function clearPinInputs(prefix, count) {
+  for (var i = 0; i < count; i++) { var el = document.getElementById(prefix+i); if(el) el.value = ''; }
+}
+
+// ── Setup PIN ──────────────────────────────────────────────────────────────────
+function openPinSetup(callback) {
+  _pinCallback = callback;
+  clearPinInputs('ps', 4); clearPinInputs('pc', 4);
+  document.getElementById('setup-pin-error').textContent = '';
+  document.getElementById('modal-setup-pin').classList.add('open');
+  setTimeout(function(){ document.getElementById('ps0').focus(); }, 100);
+}
+function closePinSetup() { document.getElementById('modal-setup-pin').classList.remove('open'); }
+async function confirmarSetupPin() {
+  var pin = getPinValue('ps', 4);
+  var confirm = getPinValue('pc', 4);
+  var errEl = document.getElementById('setup-pin-error');
+  if (pin.length !== 4) { errEl.textContent = 'Ingresá 4 dígitos.'; return; }
+  if (pin !== confirm) { errEl.textContent = 'Los PIN no coinciden.'; clearPinInputs('pc',4); document.getElementById('pc0').focus(); return; }
+  try {
+    var r = await fetch('/cliente/set-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+      body: JSON.stringify({ pin: pin, pinConfirm: confirm })
+    });
+    var data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Error guardando PIN.'; return; }
+    // Actualizar estado local
+    req_hasPIN = true;
+    closePinSetup();
+    toast('¡PIN configurado! 🔐');
+    if (_pinCallback) { _pinCallback(pin); _pinCallback = null; }
+  } catch(e) { errEl.textContent = 'Error de conexión.'; }
+}
+
+// ── Verify PIN ─────────────────────────────────────────────────────────────────
+var req_hasPIN = false;
+function openPinVerify(titulo, subtitulo, callback) {
+  _pinCallback = callback;
+  clearPinInputs('pv', 4);
+  document.getElementById('verify-pin-error').textContent = '';
+  document.getElementById('verify-pin-titulo').textContent = titulo || 'Ingresá tu PIN 🔐';
+  document.getElementById('verify-pin-subtitulo').textContent = subtitulo || 'Para continuar ingresá tu PIN de 4 dígitos.';
+  document.getElementById('modal-verify-pin').classList.add('open');
+  setTimeout(function(){ document.getElementById('pv0').focus(); }, 100);
+}
+function closePinVerify() { document.getElementById('modal-verify-pin').classList.remove('open'); _pinCallback = null; }
+async function confirmarVerifyPin() {
+  var pin = getPinValue('pv', 4);
+  var errEl = document.getElementById('verify-pin-error');
+  if (pin.length !== 4) { errEl.textContent = 'Ingresá 4 dígitos.'; return; }
+  try {
+    var r = await fetch('/cliente/verify-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+      body: JSON.stringify({ pin: pin })
+    });
+    var data = await r.json();
+    if (!data.ok) {
+      errEl.textContent = data.error || 'PIN incorrecto.';
+      clearPinInputs('pv', 4); document.getElementById('pv0').focus();
+      return;
+    }
+    closePinVerify();
+    if (_pinCallback) { _pinCallback(pin); _pinCallback = null; }
+  } catch(e) { errEl.textContent = 'Error de conexión.'; }
+}
+
+// Helper: pedir PIN (setup si no tiene, verify si ya tiene) luego ejecutar callback
+function pedirPin(titulo, subtitulo, callback) {
+  if (!req_hasPIN) {
+    openPinSetup(callback);
+  } else {
+    openPinVerify(titulo, subtitulo, callback);
+  }
+}
+
+function resetPinDesdePortal() {
+  if (!confirm('¿Querés resetear tu PIN? Contactanos por WhatsApp para configurar uno nuevo.')) return;
+  toast('Escribinos por WhatsApp y te mandamos un link para resetear el PIN 💛');
+}
+
+// ── Sobrescribir canjear para incluir PIN ──────────────────────────────────────
+var _originalCanjear = canjear;
+canjear = function(rewardId) {
+  var reward = REWARDS.find(function(r) { return r.id === rewardId; });
+  if (!reward) return;
+  pedirPin(
+    'Canjear puntos 🔐',
+    'Para canjear ' + reward.pts + ' puntos por "' + reward.label + '" confirmá tu PIN.',
+    async function(pin) {
+      var pts = perfil.puntos ? (perfil.puntos.points || 0) : 0;
+      if (!confirm('¿Confirmar canje de ' + reward.pts + ' puntos?')) return;
+      try {
+        var r = await fetch('/cliente/canjear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+          body: JSON.stringify({ reward_id: rewardId, pin: pin })
+        });
+        var data = await r.json();
+        if (!r.ok) {
+          if (data.needsSetup) { openPinSetup(function(p){ canjear(rewardId); }); return; }
+          toast(data.error || 'Error al canjear'); return;
+        }
+        if (perfil.puntos) perfil.puntos.points = data.points;
+        toast('¡Código generado! 🎉');
+        renderPuntos();
+      } catch(e) { toast('Error de conexión'); }
+    }
+  );
+};
+
+// ── Sobrescribir ejecutarCancelar para incluir PIN ─────────────────────────────
+var _originalCancelar = ejecutarCancelar;
+ejecutarCancelar = function() {
+  pedirPin(
+    'Cancelar turno 🔐',
+    'Para confirmar la cancelación ingresá tu PIN.',
+    async function(pin) {
+      if (!solicitudActual) return;
+      var btn = document.getElementById('btn-confirmar-cancelar');
+      var errEl = document.getElementById('cancelar-error');
+      errEl.style.display = 'none'; btn.disabled = true; btn.textContent = 'Cancelando...';
+      try {
+        var r = await fetch('/cliente/cancelar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-client-token': TOKEN },
+          body: JSON.stringify({ booking_code: solicitudActual.bookingCode, pin: pin })
+        });
+        var data = await r.json();
+        if (!r.ok) {
+          if (data.needsSetup) { openPinSetup(function(p){ ejecutarCancelar(); }); return; }
+          throw new Error(data.error || 'Error');
+        }
+        closeSolicitud(); toast('Turno cancelado. Recibís un email de confirmación.');
+        setTimeout(function() { location.reload(); }, 1500);
+      } catch(e) { errEl.textContent = e.message || 'Error al cancelar. Reintentá.'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sí, cancelar'; }
+    }
+  );
+};
+
+// Inicializar inputs de PIN al cargar
+window.addEventListener('DOMContentLoaded', function() {
+  initPinInputs('ps', 4); initPinInputs('pc', 4); initPinInputs('pv', 4);
+});
+// Detectar si la clienta ya tiene PIN configurado al cargar el perfil
+var _originalRender = render;
+render = function() {
+  _originalRender();
+  req_hasPIN = !!(perfil && perfil.client && perfil.client.pin_hash !== undefined ? perfil.client.pin_hash : false);
+};
 </script>
 </body>
 </html>

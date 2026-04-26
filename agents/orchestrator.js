@@ -252,6 +252,38 @@ async function handle({ sessionId, phone, text }) {
     toolResultado = 'Notificación enviada al equipo. Se comunican a la brevedad.';
   }
 
+  // ── canjear_puntos_por_score ──────────────────────────────────────────────
+  else if (name === 'canjear_puntos_por_score') {
+    if (!input.confirmar) {
+      toolResultado = 'La clienta no confirmó el canje. Preguntarle si quiere proceder.';
+    } else {
+      try {
+        const db = require('../core/db').getDB();
+        // Verificar puntos suficientes
+        const cl = await db.query('SELECT points FROM clients WHERE phone=$1', [phone]);
+        const ptsActuales = cl.rows[0]?.points || 0;
+        if (ptsActuales < 100) {
+          toolResultado = `No tiene suficientes puntos. Tiene ${ptsActuales} puntos, necesita 100.`;
+        } else {
+          // Descontar 100 puntos y registrar boost
+          await db.query('UPDATE clients SET points=points-100 WHERE phone=$1', [phone]);
+          await db.query(
+            `INSERT INTO loyalty_transactions (phone, type, points, description) VALUES ($1,'redeem',-100,'Canje: +10 puntos de score de confiabilidad')`,
+            [phone]
+          ).catch(() => {});
+          await db.query(
+            `INSERT INTO client_notes (client_phone, type, content, created_by) VALUES ($1,'score_boost','+10 puntos de score (canje de 100 puntos)','sistema')`,
+            [phone]
+          );
+          const newPts = await db.query('SELECT points FROM clients WHERE phone=$1', [phone]);
+          toolResultado = `Canje exitoso. Se descontaron 100 puntos y el score de confiabilidad subió +10. Puntos restantes: ${newPts.rows[0]?.points || 0}.`;
+        }
+      } catch(e) {
+        toolResultado = `Error procesando el canje: ${e.message}`;
+      }
+    }
+  }
+
   // ── Continuar: Sonnet genera respuesta con el resultado de la tool ───────────
   memory.update(phone, clientCtx?.client, t).catch(() => {});
   const respFinal = await personal.continuar({

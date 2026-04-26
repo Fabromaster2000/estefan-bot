@@ -705,10 +705,7 @@ app.put('/staff/booking/:id/status', staffAuth, async (req, res) => {
     const { status, motivo } = req.body;
     const validStatuses = ['Confirmado','Seña pagada','Seña pendiente','Cancelado','Completado','Consulta Pendiente','Reprogramado','No asistió','Solicitud cliente'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
-    const extraFields = ['Cancelado','No asistió'].includes(status)
-      ? ', cancelled_at = NOW()'
-      : '';
-    await getConn().query(`UPDATE bookings SET status = $1${extraFields} WHERE id = $2`, [status, req.params.id]);
+    await getConn().query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
 
     // Traer datos completos del turno — email desde booking o desde clients
     const bk = await getBookingWithEmail(req.params.id);
@@ -1494,11 +1491,16 @@ async function clientAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Token requerido' });
   try {
     const r = await getConn().query(
-      'SELECT client_phone FROM client_tokens WHERE token=$1 AND expires_at > NOW()',
+      `SELECT ct.client_phone, ct.client_id, c.pin_hash
+       FROM client_tokens ct
+       LEFT JOIN clients c ON c.phone = ct.client_phone
+       WHERE ct.token=$1 AND ct.expires_at > NOW()`,
       [token]
     );
     if (!r.rows.length) return res.status(401).json({ error: 'Token invalido o expirado' });
-    req.clientPhone = r.rows[0].client_phone;
+    req.clientPhone  = r.rows[0].client_phone;
+    req.clientId     = r.rows[0].client_id;
+    req.clientPinHash = r.rows[0].pin_hash || null;
     next();
   } catch(e) { res.status(500).json({ error: e.message }); }
 }
@@ -1542,12 +1544,9 @@ async function initNewTables() {
   `);
   await db_conn.query('CREATE INDEX IF NOT EXISTS idx_client_tokens_token ON client_tokens(token)');
   await db_conn.query('CREATE INDEX IF NOT EXISTS idx_client_notes_phone  ON client_notes(client_phone)');
-
-  // Migración: cancelled_at para tracking de anticipación de cancelaciones
+  await db_conn.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS pin_hash TEXT');
   await db_conn.query('ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ');
   await db_conn.query('CREATE INDEX IF NOT EXISTS idx_bookings_cancelled_at ON bookings(cancelled_at) WHERE cancelled_at IS NOT NULL');
-  await db_conn.query('CREATE INDEX IF NOT EXISTS idx_bookings_client_status ON bookings(client_phone, status)');
-
   console.log('[init] Nuevas tablas OK');
 }
 initNewTables().catch(e => console.error('[init] Error nuevas tablas:', e.message));
@@ -1557,7 +1556,7 @@ app.get('/staff/clients/:phone/historial', staffAuth, async (req, res) => {
   try {
     const phone = req.params.phone;
     const [client, bookings, cobros, notas, ficha] = await Promise.all([
-      getConn().query(`SELECT c.*, COALESCE(c.email, '') as email FROM clients c WHERE c.phone = $1`, [phone]).then(r=>r.rows[0]||null),
+      getConn().query(`SELECT c.*, COALESCE(c.email, '') as email, (c.pin_hash IS NOT NULL) as pin_hash FROM clients c WHERE c.phone = $1`, [phone]).then(r=>r.rows[0]||null),
       getConn().query(`
         SELECT id, booking_code, service, date_str, time_str, status, monto, notes as notas, created_at
         FROM bookings WHERE client_phone=$1 ORDER BY date_str DESC, time_str DESC
@@ -1712,10 +1711,61 @@ app.get('/cliente/mis-codigos', clientAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── CLIENTE: configurar PIN ────────────────────────────────────────────────────
+app.post('/cliente/set-pin', clientAuth, async (req, res) => {
+  try {
+    const { pin, pinConfirm } = req.body;
+    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin))
+      return res.status(400).json({ error: 'El PIN debe ser exactamente 4 dígitos.' });
+    if (pin !== pinConfirm)
+      return res.status(400).json({ error: 'Los PIN no coinciden.' });
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256').update(pin + req.clientPhone).digest('hex');
+    await getConn().query('UPDATE clients SET pin_hash=$1 WHERE phone=$2', [hash, req.clientPhone]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CLIENTE: verificar PIN ──────────────────────────────────────────────────────
+app.post('/cliente/verify-pin', clientAuth, async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ ok: false, error: 'PIN requerido' });
+    if (!req.clientPinHash) return res.json({ ok: false, needsSetup: true });
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256').update(pin + req.clientPhone).digest('hex');
+    if (hash !== req.clientPinHash) return res.json({ ok: false, error: 'PIN incorrecto' });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CLIENTE: reset PIN (desde Estefi — manda email/WhatsApp con link nuevo) ────
+app.post('/cliente/reset-pin', clientAuth, async (req, res) => {
+  try {
+    await getConn().query('UPDATE clients SET pin_hash=NULL WHERE phone=$1', [req.clientPhone]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/cliente/canjear', clientAuth, async (req, res) => {
   try {
     const phone = req.clientPhone;
-    const { reward_id } = req.body;
+    const { reward_id, pin } = req.body;
+
+    // Verificar PIN antes de canjear
+    if (!req.clientPinHash) {
+      return res.status(403).json({ error: 'PIN requerido', needsSetup: true,
+        message: 'Para canjear puntos necesitás configurar tu PIN primero.' });
+    }
+    if (!pin) {
+      return res.status(403).json({ error: 'PIN requerido', needsPin: true });
+    }
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256').update(pin + phone).digest('hex');
+    if (hash !== req.clientPinHash) {
+      return res.status(403).json({ error: 'PIN incorrecto', needsPin: true });
+    }
+
     const REWARDS = [
       { id:'r500',  pts:500,  label:'Descuento 10% en tu próxima visita', type:'pct',   value:10  },
       { id:'r1000', pts:1000, label:'Tratamiento de regalo',              type:'free',  value:100 },
@@ -1865,7 +1915,15 @@ app.get('/cliente/slots', clientAuth, async (req, res) => {
 // ── CLIENTE: cancelar turno ───────────────────────────────────────────────────
 app.post('/cliente/cancelar', clientAuth, async (req, res) => {
   try {
-    const { booking_code } = req.body;
+    const { booking_code, pin } = req.body;
+    // Verificar PIN antes de cancelar
+    if (!req.clientPinHash) {
+      return res.status(403).json({ error: 'PIN requerido', needsSetup: true });
+    }
+    if (!pin) return res.status(403).json({ error: 'PIN requerido', needsPin: true });
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256').update(pin + req.clientPhone).digest('hex');
+    if (hash !== req.clientPinHash) return res.status(403).json({ error: 'PIN incorrecto', needsPin: true });
     const phone = req.clientPhone;
     const bk = await getConn().query(
       'SELECT id, service, date_str, time_str, email, client_name FROM bookings WHERE booking_code=$1 AND client_phone=$2',
@@ -1873,7 +1931,7 @@ app.post('/cliente/cancelar', clientAuth, async (req, res) => {
     );
     if (!bk.rows.length) return res.status(404).json({ error: 'Turno no encontrado' });
     const b = bk.rows[0];
-    await getConn().query("UPDATE bookings SET status='Cancelado', cancelled_at=NOW() WHERE id=$1", [b.id]);
+    await getConn().query("UPDATE bookings SET status='Cancelado' WHERE id=$1", [b.id]);
     const { updateTurnoStatus } = require('./core/sheets');
     updateTurnoStatus(booking_code, b.service, 'Cancelado').catch(() => {});
     const clientData = await db.clientGet(phone);

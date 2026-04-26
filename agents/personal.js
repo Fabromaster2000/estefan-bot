@@ -378,6 +378,17 @@ const TOOLS = [
       required: ['motivo'],
     },
   },
+  {
+    name: 'canjear_puntos_por_score',
+    description: 'Canjear 100 puntos de la clienta para subir +10 su score de confiabilidad. Usar cuando la clienta lo solicita o cuando tiene score < 60 y suficientes puntos y quiere evitar la seña.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        confirmar: { type: 'boolean', description: 'true cuando la clienta confirmó que quiere hacer el canje' },
+      },
+      required: ['confirmar'],
+    },
+  },
 ];
 
 // ── Llamada principal a Sonnet ────────────────────────────────────────────────
