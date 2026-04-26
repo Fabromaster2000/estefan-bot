@@ -55,11 +55,19 @@ async function handle({ sessionId, phone, text }) {
     : 'buenas noches';
 
   // ── Llamar a Sonnet — lee todo y decide ─────────────────────────────────────
+  // Hora y día exactos para que el bot no los invente
+  const ahoraBsAs = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const diaSemana = dias[ahoraBsAs.getDay()];
+  const horaExacta = ahoraBsAs.getHours().toString().padStart(2,'0') + ':' + ahoraBsAs.getMinutes().toString().padStart(2,'0') + 'hs';
+
   const resultado = await personal.pensar({
     mensaje:     t,
     historial:   session.historial.slice(-20),
     fichaCliente,
     saludoHora,
+    horaExacta,
+    diaSemana,
   });
 
   console.log(`[orch] tool=${resultado.tool?.name || 'none'} texto=${resultado.texto?.substring(0, 60) || ''}`);
@@ -231,7 +239,11 @@ async function handle({ sessionId, phone, text }) {
         email:  /[@.]/.test(input.contacto || '') ? input.contacto : null,
         notes,  status: 'Consulta Pendiente',
       }).catch(() => {});
-      _notificarStaff(phone, input.nombre, `Color: ${input.servicio} | ${notes}`, 'COLOR');
+      const histColorResumen = session.historial
+        .slice(-8)
+        .map(h => `<strong>${h.role === 'user' ? '👤 Cliente' : '🤖 Estefi'}:</strong> ${String(h.content).substring(0, 200)}`)
+        .join('<br>');
+      await _notificarStaff(phone, input.nombre, `Color: ${input.servicio} | ${notes}`, 'COLOR', histColorResumen);
       toolResultado = 'Consulta de color registrada. El equipo contacta a la clienta dentro de las 24hs.';
     } catch (e) {
       toolResultado = `Error registrando consulta: ${e.message}`;
@@ -270,8 +282,37 @@ async function handle({ sessionId, phone, text }) {
 
   // ── notificar_equipo ─────────────────────────────────────────────────────────
   else if (name === 'notificar_equipo') {
-    _notificarStaff(phone, profile?.firstName, input.motivo, 'DERIVACION');
-    toolResultado = 'Notificación enviada al equipo. Se comunican a la brevedad.';
+    try {
+      const nombreCliente = profile?.firstName || input.nombre || 'Sin nombre';
+      const motivo = input.motivo || 'Sin especificar';
+
+      // Resumen del historial para el mail
+      const histResumen = session.historial
+        .slice(-6)
+        .map(h => `<strong>${h.role === 'user' ? '👤 Cliente' : '🤖 Estefi'}:</strong> ${String(h.content).substring(0, 200)}`)
+        .join('<br>');
+
+      // Guardar en portal como "Solicitud cliente" para que aparezca en staff
+      const { bookingSave } = require('../core/db');
+      await bookingSave({
+        sessionId: session.id,
+        nombre: nombreCliente,
+        phone,
+        servicio: `Derivación: ${motivo.substring(0, 80)}`,
+        fecha: '', hora: '',
+        monto: 0,
+        senaPaid: false,
+        calendarEventId: null,
+        email: profile?.email || null,
+        notes: motivo,
+        status: 'Solicitud cliente',
+      }).catch(() => {});
+
+      await _notificarStaff(phone, nombreCliente, motivo, 'DERIVACION', histResumen);
+      toolResultado = 'Notificación enviada al equipo por mail y WhatsApp. Se comunican a la brevedad.';
+    } catch(e) {
+      toolResultado = 'Notificación enviada al equipo. Se comunican a la brevedad.';
+    }
   }
 
   // ── canjear_puntos_por_score ──────────────────────────────────────────────
@@ -367,14 +408,35 @@ async function _generarLinkPortal(phone) {
 }
 
 // ── Notificaciones staff ──────────────────────────────────────────────────────
-function _notificarStaff(phone, nombre, info, tipo) {
+async function _notificarStaff(phone, nombre, info, tipo, historialResumen = '') {
+  const iconos = { COLOR: '🎨', DERIVACION: '💬', CAMBIO: '🔄' };
+  const tipoLabel = tipo === 'COLOR' ? 'CONSULTA COLOR' : tipo === 'CAMBIO' ? 'CAMBIO DE TURNO' : 'DERIVACIÓN A HUMANO';
+  const emoji = iconos[tipo] || '📋';
+
+  // ── 1. Email al admin ────────────────────────────────────────────────────
+  try {
+    const { mailNotifAdmin } = require('./mailer');
+    await mailNotifAdmin({
+      asunto: `${emoji} ${tipoLabel} — ${nombre || phone}`,
+      html: `
+        <p><strong>Tipo:</strong> ${tipoLabel}</p>
+        <p><strong>Cliente:</strong> ${nombre || 'Sin nombre'}</p>
+        <p><strong>Teléfono:</strong> ${phone}</p>
+        <p><strong>Detalle:</strong> ${info}</p>
+        ${historialResumen ? `<p><strong>Contexto:</strong> ${historialResumen}</p>` : ''}
+        <p style="margin-top:16px"><a href="https://peluqueria-bot.onrender.com/staff" style="background:#c8a96e;color:#000;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">Abrir Staff Portal →</a></p>
+      `,
+    });
+  } catch(e) { console.error('[notif] Error email admin:', e.message); }
+
+  // ── 2. WhatsApp al staff (si está configurado) ───────────────────────────
   const STAFF_WA   = process.env.STAFF_WHATSAPP_PHONE;
   const WASS_TOKEN = process.env.WASSENGER_TOKEN || process.env.WASSENGER_API_KEY;
-  if (!STAFF_WA || !WASS_TOKEN) return;
-  const axios = require('axios');
-  const iconos = { COLOR: '🎨', DERIVACION: '💬' };
-  const msg = `${iconos[tipo] || '📋'} *${tipo === 'COLOR' ? 'CONSULTA COLOR' : 'DERIVACIÓN'}*\n\n👤 ${nombre || 'Sin nombre'} · 📱 ${phone}\n${info}\n\nhttps://peluqueria-bot.onrender.com/staff`;
-  axios.post('https://api.wassenger.com/v1/messages', { phone: STAFF_WA, message: msg }, { headers: { Token: WASS_TOKEN }, timeout: 8000 }).catch(() => {});
+  if (STAFF_WA && WASS_TOKEN) {
+    const axios = require('axios');
+    const msg = `${emoji} *${tipoLabel}*\n\n👤 ${nombre || 'Sin nombre'} · 📱 ${phone}\n${info}\n\nhttps://peluqueria-bot.onrender.com/staff`;
+    axios.post('https://api.wassenger.com/v1/messages', { phone: STAFF_WA, message: msg }, { headers: { Token: WASS_TOKEN }, timeout: 8000 }).catch(() => {});
+  }
 }
 
 module.exports = { handle, saludoInicial };

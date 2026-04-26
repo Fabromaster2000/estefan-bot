@@ -407,7 +407,7 @@ const TOOLS = [
 
 // ── Llamada principal a Sonnet ────────────────────────────────────────────────
 // Retorna { texto, tool } donde tool puede ser null
-async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora = '' }) {
+async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora = '', horaExacta = '', diaSemana = '' }) {
   if (!cbOk()) {
     return { texto: 'Perdoná, tenemos alta demanda ahora. Escribinos en unos minutos 🙏', tool: null };
   }
@@ -416,7 +416,7 @@ async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora =
   const systemFinal = [
     SISTEMA,
     fichaCliente ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFICHA DE LA CLIENTA CON LA QUE HABLÁS AHORA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${fichaCliente}` : '',
-    saludoHora ? `\nHora actual en Buenos Aires: ${saludoHora} — usá el saludo correspondiente si es el primer mensaje.` : '',
+    (saludoHora || horaExacta) ? `\nFECHA Y HORA ACTUAL EN BUENOS AIRES: ${diaSemana}${horaExacta ? ', ' + horaExacta : ''} (${saludoHora}).\nHorarios del salón: lunes a sábado 10:00–20:00hs. CERRADO los domingos.\nSi hoy es domingo o fuera del horario, avisá que estamos cerrados y ofrecé agendar para el próximo día hábil.` : '',
   ].filter(Boolean).join('');
 
   // Historial completo — Sonnet lee todo

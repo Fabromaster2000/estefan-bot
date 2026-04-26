@@ -209,10 +209,11 @@ async function mailNotifAdmin({ asunto, html }) {
   if (!t) return;
   const adminEmail = process.env.GMAIL_USER;
   if (!adminEmail) return;
+  const ADMIN_NOTIF = process.env.ADMIN_EMAIL || 'faberalbi@gmail.com';
   try {
     await t.sendMail({
       from: `"Estefan Peluquería Bot" <${adminEmail}>`,
-      to: adminEmail,
+      to: ADMIN_NOTIF,
       subject: asunto,
       html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;background:#1a1a1a;color:#f0f0f0">
         <img src="${LOGO_ESTEFAN}" alt="Estefan" style="height:40px;margin-bottom:16px">
