@@ -876,6 +876,15 @@ app.get('/staff', (req, res) => {
   res.sendFile(__dirname + '/staff-portal.html');
 });
 
+app.get('/reset-cb', (req, res) => {
+  // Reset circuit breaker in personal.js — use when bot stops responding after errors
+  try {
+    const personal = require('./agents/personal');
+    if (personal.resetCB) personal.resetCB();
+    res.json({ ok: true, msg: 'Circuit breaker reset' });
+  } catch(e) { res.json({ ok: false, error: e.message }); }
+});
+
 app.get('/health', async (req, res) => {
   const dbConn = db.getDB();
   const sessions = getAllSessions();
@@ -1094,6 +1103,16 @@ async function init() {
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`,
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS pin_hash TEXT`,
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'whatsapp'`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_visit TIMESTAMPTZ`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS visit_count INTEGER DEFAULT 0`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS total_spent INTEGER DEFAULT 0`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS promo_opt_in BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS profile_complete BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferences TEXT`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_name TEXT`,
+      `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS client_id UUID`,
+      `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS phone TEXT`,
       `CREATE TABLE IF NOT EXISTS discount_codes (
         id            SERIAL PRIMARY KEY,
         code          VARCHAR(12) UNIQUE NOT NULL,

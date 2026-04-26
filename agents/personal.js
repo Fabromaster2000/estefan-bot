@@ -12,10 +12,10 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // ── Circuit Breaker ───────────────────────────────────────────────────────────
 const CB = { failures: 0, lastFailure: 0, open: false };
 function cbOk() {
-  if (CB.open && Date.now() - CB.lastFailure > 30000) { CB.open = false; CB.failures = 0; }
+  if (CB.open && Date.now() - CB.lastFailure > 10000) { CB.open = false; CB.failures = 0; }
   return !CB.open;
 }
-function cbFail() { CB.failures++; CB.lastFailure = Date.now(); if (CB.failures >= 3) CB.open = true; }
+function cbFail() { CB.failures++; CB.lastFailure = Date.now(); if (CB.failures >= 5) CB.open = true; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SISTEMA PROMPT — el alma de Estefi
@@ -605,6 +605,8 @@ function msgResumenConfirmar(d) {
 function msgTurnoEncontrado(b) {
   return `📋 *Tu turno:*\n\n👤 ${b.nombre}\n✂️ ${b.servicio}\n📅 ${b.fecha} · ⏰ ${b.hora}\n🔖 ${b.code}\n\n¿Qué querés hacer?\n1️⃣ Cambiar fecha/hora\n2️⃣ Cancelar turno\n3️⃣ Volver`;
 }
+
+function resetCB() { CB.open = false; CB.failures = 0; console.log('[personal] CB reset manual'); }
 
 module.exports = {
   pensar,
