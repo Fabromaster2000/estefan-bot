@@ -64,10 +64,7 @@ async function initDB() {
         source           TEXT DEFAULT 'whatsapp',
         created_at       TIMESTAMPTZ DEFAULT NOW(),
         updated_at       TIMESTAMPTZ DEFAULT NOW(),
-        CONSTRAINT clients_phone_or_email CHECK (phone IS NOT NULL OR email IS NOT NULL)
       );
-      CREATE INDEX IF NOT EXISTS idx_clients_phone  ON clients(phone)  WHERE phone  IS NOT NULL;
-      CREATE INDEX IF NOT EXISTS idx_clients_email  ON clients(email)  WHERE email  IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS client_memory (
         client_id         UUID PRIMARY KEY ,
@@ -102,7 +99,6 @@ async function initDB() {
         cancelled_at      TIMESTAMPTZ,
         created_at        TIMESTAMPTZ DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_bookings_client_id    ON bookings(client_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_client_phone ON bookings(client_phone);
       CREATE INDEX IF NOT EXISTS idx_bookings_cancelled_at ON bookings(cancelled_at) WHERE cancelled_at IS NOT NULL;
 
@@ -170,7 +166,6 @@ async function initDB() {
         booking_id  INTEGER,
         created_at  TIMESTAMPTZ DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_loyalty_client_id ON loyalty_transactions(client_id);
 
       CREATE TABLE IF NOT EXISTS loyalty_rewards (
         id          SERIAL PRIMARY KEY,
@@ -189,7 +184,6 @@ async function initDB() {
         content    TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_convo_client_id ON conversation_log(client_id);
       CREATE INDEX IF NOT EXISTS idx_convo_phone     ON conversation_log(phone);
 
       CREATE TABLE IF NOT EXISTS human_mode_control (
@@ -209,7 +203,6 @@ async function initDB() {
         created_by TEXT DEFAULT 'staff',
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_client_notes_client_id ON client_notes(client_id);
 
       CREATE TABLE IF NOT EXISTS client_ficha (
         id               SERIAL PRIMARY KEY,
@@ -235,7 +228,6 @@ async function initDB() {
         created_at   TIMESTAMPTZ DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_client_tokens_token     ON client_tokens(token);
-      CREATE INDEX IF NOT EXISTS idx_client_tokens_client_id ON client_tokens(client_id);
 
       CREATE TABLE IF NOT EXISTS client_photos (
         id           SERIAL PRIMARY KEY,
@@ -247,7 +239,6 @@ async function initDB() {
         booking_code TEXT,
         created_at   TIMESTAMPTZ DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_client_photos_client_id ON client_photos(client_id);
 
       CREATE TABLE IF NOT EXISTS discount_codes (
         id            SERIAL PRIMARY KEY,
