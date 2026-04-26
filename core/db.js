@@ -63,7 +63,7 @@ async function initDB() {
         last_visit       TIMESTAMPTZ,
         source           TEXT DEFAULT 'whatsapp',
         created_at       TIMESTAMPTZ DEFAULT NOW(),
-        updated_at       TIMESTAMPTZ DEFAULT NOW(),
+                updated_at       TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS client_memory (
