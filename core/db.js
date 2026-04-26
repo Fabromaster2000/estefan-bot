@@ -554,7 +554,7 @@ async function bookingFindByCode(code) {
            b.client_phone as phone, b.email
     FROM bookings b
     WHERE (b.booking_code=$1 OR b.booking_code=$2)
-      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
     ORDER BY b.created_at DESC LIMIT 1
   `, ['#'+clean, clean]);
   return r.rows[0] || null;
@@ -568,7 +568,7 @@ async function bookingFindByName(name) {
            b.client_phone as phone, b.email
     FROM bookings b
     WHERE LOWER(b.client_name) LIKE $1
-      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
     ORDER BY b.created_at DESC LIMIT 1
   `, ['%'+name.toLowerCase()+'%']);
   return r.rows[0] || null;
@@ -582,7 +582,7 @@ async function bookingFindByEmail(email) {
            b.client_phone as phone, b.email
     FROM bookings b
     WHERE LOWER(b.email) = $1
-      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
     ORDER BY b.created_at DESC LIMIT 1
   `, [email.toLowerCase()]);
   return r.rows[0] || null;
@@ -596,7 +596,7 @@ async function bookingFindByPhone(phone) {
            b.client_phone as phone, b.email
     FROM bookings b
     WHERE b.client_phone = $1
-      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
     ORDER BY b.created_at DESC LIMIT 1
   `, [phone]);
   return r.rows[0] || null;
@@ -632,7 +632,7 @@ async function bookingGetActive(phone, clientId = null) {
     SELECT id, service, date_str, time_str, booking_code, monto
     FROM bookings
     WHERE (client_id=$1 OR client_phone=$2)
-      AND status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      AND status NOT IN ('Cancelado','Consulta Pendiente')
     ORDER BY created_at DESC
   `, [id, phone]);
   return r.rows;

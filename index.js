@@ -1111,6 +1111,12 @@ async function init() {
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS profile_complete BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferences TEXT`,
       `ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_name TEXT`,
+      `ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'whatsapp'`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_id TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS mp_payment_link TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS sena_amount INTEGER DEFAULT 0`,
       `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS client_id UUID`,
       `ALTER TABLE conversation_log ADD COLUMN IF NOT EXISTS phone TEXT`,
       `CREATE TABLE IF NOT EXISTS discount_codes (
