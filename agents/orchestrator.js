@@ -210,15 +210,55 @@ async function handle({ sessionId, phone, text }) {
       if (!found) {
         toolResultado = 'No hay turno cargado en sesión. Primero usar buscar_turno.';
       } else {
-        const cl = await clientGet(phone);
-        const rResult = await booking.reschedule({
-          bookingData: found, newDia: input.nuevo_dia, newHora: input.nueva_hora,
-          phone, email: cl?.email, sessionId: session.id,
-        });
-        const { formatFecha } = require('../core/utils');
-        const fechaDisplay = await formatFecha(rResult.fechaReal);
+        const { getDB } = require('../core/db');
+        const db = getDB();
+        if (!db) throw new Error('Sin conexión a DB');
+
+        const nuevaFecha = input.nuevo_dia;   // DD/MM/YYYY
+        const nuevaHora  = input.nueva_hora;  // HH:MM
+
+        // 1. Actualizar DB
+        await db.query(
+          "UPDATE bookings SET date_str=$1, time_str=$2, status='Reprogramado' WHERE id=$3",
+          [nuevaFecha, nuevaHora, found.id]
+        );
+
+        // 2. Actualizar Sheets
+        try {
+          const { updateTurnoStatus } = require('../core/sheets');
+          await updateTurnoStatus(found.code, found.servicio, 'Reprogramado').catch(() => {});
+        } catch(_) {}
+
+        // 3. Mandar mail de confirmación si hay email
+        try {
+          const emailDestino = found.email || profile?.email || null;
+          if (emailDestino) {
+            const { mailTurnoModificado } = require('./mailer');
+            await mailTurnoModificado({
+              to: emailDestino,
+              nombre: found.nombre,
+              servicio: found.servicio,
+              fechaAnterior: found.fecha,
+              horaAnterior: found.hora,
+              fechaNueva: nuevaFecha,
+              horaNueva: nuevaHora,
+              code: found.code,
+              calendarLink: null,
+              monto: found.monto,
+            }).catch(() => {});
+          }
+        } catch(_) {}
+
+        // 4. Notificar al admin por mail
+        await _notificarStaff(
+          phone,
+          found.nombre,
+          `Reprogramación: ${found.servicio} de ${found.fecha} ${found.hora} → ${nuevaFecha} ${nuevaHora}`,
+          'CAMBIO'
+        ).catch(() => {});
+
         session.lastFoundBooking = null;
-        toolResultado = `Turno reprogramado. Nuevo código: ${rResult.code}. Fecha: ${fechaDisplay}. Hora: ${rResult.horaReal}.`;
+        toolResultado = `Turno ${found.code} reprogramado exitosamente. Nueva fecha: ${nuevaFecha} a las ${nuevaHora}.`;
       }
     } catch (e) {
       toolResultado = `Error reprogramando: ${e.message}`;

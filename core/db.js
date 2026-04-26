@@ -502,18 +502,22 @@ async function memoryGet(phone) {
 
 async function memoryUpdate(phone, { summary, favoriteServices, visitPatterns, personalityNotes }) {
   if (!db) return;
-  const client = await clientGet(phone);
-  if (!client) return;
-  await db.query(`
-    INSERT INTO client_memory (client_id, summary, favorite_services, visit_patterns, personality_notes, last_updated)
-    VALUES ($1,$2,$3,$4,$5,NOW())
-    ON CONFLICT (client_id) DO UPDATE SET
-      summary           = COALESCE($2, client_memory.summary),
-      favorite_services = COALESCE($3, client_memory.favorite_services),
-      visit_patterns    = COALESCE($4, client_memory.visit_patterns),
-      personality_notes = COALESCE($5, client_memory.personality_notes),
-      last_updated      = NOW()
-  `, [client.client_id, summary, favoriteServices, visitPatterns, personalityNotes]);
+  try {
+    const client = await clientGet(phone);
+    if (!client?.client_id) return; // skip if no client_id yet (legacy schema)
+    await db.query(`
+      INSERT INTO client_memory (client_id, summary, favorite_services, visit_patterns, personality_notes, last_updated)
+      VALUES ($1,$2,$3,$4,$5,NOW())
+      ON CONFLICT (client_id) DO UPDATE SET
+        summary           = COALESCE($2, client_memory.summary),
+        favorite_services = COALESCE($3, client_memory.favorite_services),
+        visit_patterns    = COALESCE($4, client_memory.visit_patterns),
+        personality_notes = COALESCE($5, client_memory.personality_notes),
+        last_updated      = NOW()
+    `, [client.client_id, summary, favoriteServices, visitPatterns, personalityNotes]);
+  } catch(e) {
+    // Silently ignore memory errors - non-critical feature
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
