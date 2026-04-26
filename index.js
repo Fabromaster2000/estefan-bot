@@ -1545,6 +1545,33 @@ async function initNewTables() {
   await db_conn.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS pin_hash TEXT');
   await db_conn.query('ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ');
   await db_conn.query('CREATE INDEX IF NOT EXISTS idx_bookings_cancelled_at ON bookings(cancelled_at) WHERE cancelled_at IS NOT NULL');
+  await db_conn.query(`
+    CREATE TABLE IF NOT EXISTS gift_cards (
+      id              SERIAL PRIMARY KEY,
+      code            VARCHAR(20) UNIQUE NOT NULL,
+      tipo            VARCHAR(20) NOT NULL,
+      servicio        TEXT,
+      monto           NUMERIC DEFAULT 0,
+      puntos          INT DEFAULT 0,
+      buyer_phone     TEXT,
+      buyer_name      TEXT,
+      buyer_email     TEXT,
+      recipient_name  TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      recipient_phone TEXT,
+      pago_metodo     VARCHAR(30) DEFAULT 'efectivo',
+      pago_estado     VARCHAR(20) DEFAULT 'pendiente',
+      paid_at         TIMESTAMPTZ,
+      mp_payment_id   TEXT,
+      usada           BOOLEAN DEFAULT false,
+      used_at         TIMESTAMPTZ,
+      used_in_booking TEXT,
+      created_by      VARCHAR(20) DEFAULT 'staff',
+      expires_at      TIMESTAMPTZ NOT NULL,
+      created_at      TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await db_conn.query('CREATE INDEX IF NOT EXISTS idx_gift_cards_code ON gift_cards(code)');
   console.log('[init] Nuevas tablas OK');
 }
 initNewTables().catch(e => console.error('[init] Error nuevas tablas:', e.message));
