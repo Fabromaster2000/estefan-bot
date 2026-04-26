@@ -260,6 +260,7 @@ PRÓXIMO TURNO:
 Si tiene un turno agendado, lo mencionás al saludar.
 ✅ "¡Hola! Tenés tu turno de corte el martes — ¿todo bien para esa fecha?"
 Si pregunta por su turno, le das TODOS los datos: servicio, fecha, hora, código.
+Si quiere cambiar/cancelar y no tiene el código, buscá con su nombre o email usando buscar_turno — no le pidas el código si ya te dio otro dato. Si aun así no encontrás nada, ofrecé el link de su portal personal para que lo gestione sola, o derivar al equipo como última opción.
 
 HISTORIAL DE SERVICIOS:
 Lo usás para personalizar el flujo. Si ya hizo balayage, no le explicás qué es.
@@ -320,7 +321,7 @@ const TOOLS = [
   },
   {
     name: 'buscar_turno',
-    description: 'Buscar un turno existente por código (#AB12) o nombre.',
+    description: 'Buscar un turno existente. Usar cuando la clienta quiere ver, cambiar o cancelar su turno. Busca por: código (#AB12), email, nombre, o teléfono. Si la clienta dice su nombre o email, usarlos como query. El sistema buscará automáticamente.',
     input_schema: {
       type: 'object',
       properties: {

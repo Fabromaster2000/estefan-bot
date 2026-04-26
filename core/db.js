@@ -547,9 +547,8 @@ async function bookingFindByCode(code) {
   const r = await db.query(`
     SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
            b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
-           c.phone, c.email, c.client_id
+           b.client_phone as phone, b.email
     FROM bookings b
-    LEFT JOIN clients c ON c.client_id = b.client_id
     WHERE (b.booking_code=$1 OR b.booking_code=$2)
       AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
     ORDER BY b.created_at DESC LIMIT 1
@@ -562,13 +561,40 @@ async function bookingFindByName(name) {
   const r = await db.query(`
     SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
            b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
-           c.phone, c.email, c.client_id
+           b.client_phone as phone, b.email
     FROM bookings b
-    LEFT JOIN clients c ON c.client_id = b.client_id
     WHERE LOWER(b.client_name) LIKE $1
       AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
     ORDER BY b.created_at DESC LIMIT 1
   `, ['%'+name.toLowerCase()+'%']);
+  return r.rows[0] || null;
+}
+
+async function bookingFindByEmail(email) {
+  if (!db) return null;
+  const r = await db.query(`
+    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
+           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
+           b.client_phone as phone, b.email
+    FROM bookings b
+    WHERE LOWER(b.email) = $1
+      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+    ORDER BY b.created_at DESC LIMIT 1
+  `, [email.toLowerCase()]);
+  return r.rows[0] || null;
+}
+
+async function bookingFindByPhone(phone) {
+  if (!db) return null;
+  const r = await db.query(`
+    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
+           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
+           b.client_phone as phone, b.email
+    FROM bookings b
+    WHERE b.client_phone = $1
+      AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+    ORDER BY b.created_at DESC LIMIT 1
+  `, [phone]);
   return r.rows[0] || null;
 }
 
@@ -833,7 +859,7 @@ module.exports = {
   _mergeClients,
   configGet, configSet,
   memoryGet, memoryUpdate,
-  bookingSave, bookingFindByCode, bookingFindByName, bookingCancel,
+  bookingSave, bookingFindByCode, bookingFindByName, bookingFindByEmail, bookingFindByPhone, bookingCancel,
   bookingGetByPhone, bookingGetByClient, bookingGetActive, generateBookingCode,
   loyaltyGetBalance, loyaltyGetTransactions, loyaltyGetRewards, loyaltyRedeem,
   loyaltyAdd,

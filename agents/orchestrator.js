@@ -144,12 +144,34 @@ async function handle({ sessionId, phone, text }) {
   // ── buscar_turno ─────────────────────────────────────────────────────────────
   else if (name === 'buscar_turno') {
     try {
-      const found = await booking.findBooking(input.query, phone);
+      const { bookingFindByCode, bookingFindByName, bookingFindByEmail, bookingFindByPhone } = require('../core/db');
+      const q = (input.query || '').trim();
+      let found = null;
+
+      // Buscar por código
+      if (q.startsWith('#') || /^[A-Z0-9]{4,6}$/i.test(q)) {
+        found = await bookingFindByCode(q);
+      }
+      // Buscar por email
+      if (!found && q.includes('@')) {
+        found = await bookingFindByEmail(q);
+      }
+      // Buscar por teléfono del contexto (la clienta que está hablando)
+      if (!found && phone && !phone.startsWith('web-')) {
+        found = await bookingFindByPhone(phone);
+      }
+      // Buscar por nombre
+      if (!found && q.length > 2) {
+        found = await bookingFindByName(q);
+      }
+
       if (found) {
         session.lastFoundBooking = found;
-        toolResultado = `Turno encontrado. Código: ${found.code}. Servicio: ${found.servicio}. Fecha: ${found.fecha}. Hora: ${found.hora}. Cliente: ${found.nombre}. Estado: ${found.status}.`;
+        toolResultado = `Turno encontrado: Código ${found.code} | Servicio: ${found.servicio} | Fecha: ${found.fecha} | Hora: ${found.hora} | Cliente: ${found.nombre} | Estado: ${found.estado}.`;
       } else {
-        toolResultado = 'No se encontró ningún turno con esa información.';
+        // Generar link del portal para que la clienta se autogestione
+        const portalLink = await _generarLinkPortal(phone).catch(() => null);
+        toolResultado = `No se encontró ningún turno activo con "${q}". ${portalLink ? 'Link portal personal: ' + portalLink : ''} Opciones: pedir el código de reserva (#XXXX del email de confirmación), o derivar al equipo.`;
       }
     } catch (e) {
       toolResultado = `Error buscando el turno: ${e.message}`;
