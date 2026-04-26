@@ -723,6 +723,97 @@ async function chatSendStaffMessage(phone, content) {
   );
 }
 
+// ── LOYALTY: acreditar puntos ────────────────────────────────────────────────
+async function loyaltyAdd(phone, points, description) {
+  const db = getDB();
+  if (!db || !phone || !points) return;
+  await db.query(
+    'UPDATE clients SET points = COALESCE(points,0) + $1 WHERE phone = $2',
+    [points, phone]
+  ).catch(() => {});
+  await db.query(
+    "INSERT INTO loyalty_transactions (phone, type, points, description) VALUES ($1,$2,$3,$4)",
+    [phone, points > 0 ? 'earn' : 'redeem', points, description || 'Acreditación']
+  ).catch(() => {});
+}
+
+// ── GIFT CARDS ────────────────────────────────────────────────────────────────
+
+function generateGCCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 10; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return 'GC-' + code.slice(0, 4) + '-' + code.slice(4, 8);
+}
+
+async function giftCardCreate({ tipo, servicio, monto, puntos,
+  buyerPhone, buyerName, buyerEmail,
+  recipientName, recipientEmail, recipientPhone,
+  pagoMetodo, createdBy }) {
+  const db = getDB();
+  const code = generateGCCode();
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 año de validez
+
+  const paidAt = (pagoMetodo === 'efectivo' || pagoMetodo === 'transferencia') ? new Date() : null;
+  const pagoEstado = paidAt ? 'pagado' : 'pendiente';
+
+  const r = await db.query(`
+    INSERT INTO gift_cards
+      (code, tipo, servicio, monto, puntos,
+       buyer_phone, buyer_name, buyer_email,
+       recipient_name, recipient_email, recipient_phone,
+       pago_metodo, pago_estado, paid_at,
+       created_by, expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+    RETURNING *
+  `, [code, tipo, servicio||null, monto||0, puntos||0,
+      buyerPhone||null, buyerName||null, buyerEmail||null,
+      recipientName, recipientEmail, recipientPhone||null,
+      pagoMetodo||'efectivo', pagoEstado, paidAt,
+      createdBy||'staff', expiresAt]);
+  return r.rows[0];
+}
+
+async function giftCardMarkPaid(code, mpPaymentId) {
+  const db = getDB();
+  const r = await db.query(`
+    UPDATE gift_cards
+    SET pago_estado='pagado', paid_at=NOW(), mp_payment_id=$2
+    WHERE code=$1
+    RETURNING *
+  `, [code, mpPaymentId || null]);
+  return r.rows[0] || null;
+}
+
+async function giftCardGetByCode(code) {
+  const db = getDB();
+  const r = await db.query('SELECT * FROM gift_cards WHERE code=$1', [code]);
+  return r.rows[0] || null;
+}
+
+async function giftCardGetAll(filter = {}) {
+  const db = getDB();
+  let q = 'SELECT * FROM gift_cards WHERE 1=1';
+  const params = [];
+  if (filter.pago_estado) { params.push(filter.pago_estado); q += ` AND pago_estado=$${params.length}`; }
+  if (filter.usada !== undefined) { params.push(filter.usada); q += ` AND usada=$${params.length}`; }
+  q += ' ORDER BY created_at DESC LIMIT 200';
+  const r = await db.query(q, params);
+  return r.rows;
+}
+
+async function giftCardRedeem(code, bookingCode) {
+  const db = getDB();
+  const r = await db.query(`
+    UPDATE gift_cards
+    SET usada=true, used_at=NOW(), used_in_booking=$2
+    WHERE code=$1
+    RETURNING *
+  `, [code, bookingCode || null]);
+  return r.rows[0] || null;
+}
+
 module.exports = {
   initDB, getDB, getConn,
   clientResolve, clientGet, clientGetById, clientGetByEmail,
@@ -733,6 +824,8 @@ module.exports = {
   bookingSave, bookingFindByCode, bookingFindByName, bookingCancel,
   bookingGetByPhone, bookingGetByClient, bookingGetActive, generateBookingCode,
   loyaltyGetBalance, loyaltyGetTransactions, loyaltyGetRewards, loyaltyRedeem,
+  loyaltyAdd,
   conversationLog, conversationGetRecent,
   chatSetHumanMode, chatGetHumanMode, chatListConversations, chatGetHistory, chatSendStaffMessage,
+  giftCardCreate, giftCardMarkPaid, giftCardGetByCode, giftCardGetAll, giftCardRedeem,
 };
