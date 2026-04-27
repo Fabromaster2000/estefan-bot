@@ -75,7 +75,7 @@ async function handle({ sessionId, phone, text }) {
   // ── Sin tool: respuesta directa ─────────────────────────────────────────────
   if (!resultado.tool) {
     memory.update(phone, clientCtx?.client, t).catch(() => {});
-    return send(resultado.texto || '¿En qué más te puedo ayudar? 💛');
+    return send(resultado.texto || '💛');
   }
 
   // ── Con tool: ejecutar acción ────────────────────────────────────────────────
@@ -400,7 +400,7 @@ async function handle({ sessionId, phone, text }) {
     fichaCliente,
   });
 
-  return send(respFinal || '¿En qué más te puedo ayudar? 💛');
+  return send(respFinal || '💛');
 }
 
 // ── Primer mensaje / saludo inicial ──────────────────────────────────────────

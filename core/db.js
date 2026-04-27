@@ -536,11 +536,11 @@ async function bookingSave({ sessionId, nombre, phone, clientId, servicio, fecha
   const resolvedClientId = clientId || (phone ? (await clientGet(phone))?.client_id : null);
   const r = await db.query(`
     INSERT INTO bookings
-      (session_id, client_id, client_name, client_phone, service, date_str, time_str, monto,
+      (session_id, client_name, client_phone, service, date_str, time_str, monto,
        sena_amount, sena_paid, calendar_event_id, booking_code, email, notes, status, fotos)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
     RETURNING id, booking_code
-  `, [sessionId, resolvedClientId, nombre, phone || null, servicio, fecha, hora, monto||0,
+  `, [sessionId, nombre, phone || null, servicio, fecha, hora, monto||0,
       sena, senaPaid||false, calendarEventId||null, code, email||null, notes||null, finalStatus, fotos||null]);
   return { id: r.rows[0].id, code: r.rows[0].booking_code };
 }
@@ -723,20 +723,19 @@ async function conversationGetRecent(phone, limit = 20) {
 // CHAT / HUMAN MODE
 // ─────────────────────────────────────────────────────────────────────────────
 async function chatSetHumanMode(phone, enabled, takenBy = null) {
-  const client = await clientResolve({ phone });
-  if (!client) return;
+  if (!phone) return;
   await db.query(`
-    INSERT INTO human_mode_control (client_id, phone, active, taken_by, updated_at)
-    VALUES ($1,$2,$3,$4,NOW())
-    ON CONFLICT (client_id) DO UPDATE SET active=$3, taken_by=$4, updated_at=NOW()
-  `, [client.client_id, phone, enabled, takenBy]);
+    INSERT INTO human_mode_control (phone, active, taken_by, updated_at)
+    VALUES ($1,$2,$3,NOW())
+    ON CONFLICT (phone) DO UPDATE SET active=$2, taken_by=$3, updated_at=NOW()
+  `, [phone, enabled, takenBy]).catch(() => {});
 }
 
 async function chatGetHumanMode(phone) {
   try {
     const client = await clientGet(phone);
     if (!client) return { active: false, taken_by: null };
-    const r = await db.query('SELECT active, taken_by FROM human_mode_control WHERE client_id=$1', [client.client_id]);
+    const r = await db.query('SELECT active, taken_by FROM human_mode_control WHERE phone=$1', [phone]);
     return r.rows[0] || { active: false, taken_by: null };
   } catch { return { active: false, taken_by: null }; }
 }
@@ -744,30 +743,32 @@ async function chatGetHumanMode(phone) {
 async function chatListConversations() {
   const r = await db.query(`
     SELECT
-      c.phone, c.client_id, c.name, c.last_name,
+      c.phone, c.name, c.last_name,
       COALESCE(hm.active, false)   AS human_mode,
       COALESCE(hm.taken_by, null)  AS taken_by,
-      (SELECT content    FROM conversation_log WHERE client_id=c.client_id ORDER BY created_at DESC LIMIT 1) AS last_message,
-      (SELECT role       FROM conversation_log WHERE client_id=c.client_id ORDER BY created_at DESC LIMIT 1) AS last_role,
-      (SELECT created_at FROM conversation_log WHERE client_id=c.client_id ORDER BY created_at DESC LIMIT 1) AS last_at,
-      (SELECT COUNT(*)   FROM conversation_log WHERE client_id=c.client_id AND role='user'
+      (SELECT content    FROM conversation_log WHERE phone=c.phone ORDER BY created_at DESC LIMIT 1) AS last_message,
+      (SELECT role       FROM conversation_log WHERE phone=c.phone ORDER BY created_at DESC LIMIT 1) AS last_role,
+      (SELECT created_at FROM conversation_log WHERE phone=c.phone ORDER BY created_at DESC LIMIT 1) AS last_at,
+      (SELECT COUNT(*)   FROM conversation_log WHERE phone=c.phone AND role='user'
          AND created_at > NOW() - INTERVAL '24 hours') AS msgs_today
     FROM clients c
-    LEFT JOIN human_mode_control hm ON hm.client_id=c.client_id
-    WHERE EXISTS (SELECT 1 FROM conversation_log WHERE client_id=c.client_id)
+    LEFT JOIN human_mode_control hm ON hm.phone=c.phone
+    WHERE EXISTS (SELECT 1 FROM conversation_log WHERE phone=c.phone)
     ORDER BY last_at DESC NULLS LAST
     LIMIT 50
-  `);
+  `).catch(async () => {
+    // Fallback: return empty if query fails
+    return { rows: [] };
+  });
   return r.rows;
 }
 
 async function chatGetHistory(phone, limit = 60) {
-  const client = phone ? await clientGet(phone) : null;
   const r = await db.query(`
     SELECT role, content, created_at FROM conversation_log
-    WHERE ${client ? 'client_id=$1' : 'phone=$1'}
+    WHERE phone=$1
     ORDER BY created_at ASC LIMIT $2
-  `, [client?.client_id || phone, limit]);
+  `, [phone, limit]);
   return r.rows;
 }
 
