@@ -217,13 +217,16 @@ async function handle({ sessionId, phone, text }) {
         const nuevaFecha = input.nuevo_dia;   // DD/MM/YYYY
         const nuevaHora  = input.nueva_hora;  // HH:MM
 
+        console.log(`[reprogramar] booking id=${found.id} code=${found.code} nombre=${found.nombre} fecha_nueva=${nuevaFecha} ${nuevaHora}`);
+
         // 1. Actualizar DB
-        await db.query(
-          "UPDATE bookings SET date_str=$1, time_str=$2, status='Reprogramado' WHERE id=$3",
+        const updateResult = await db.query(
+          "UPDATE bookings SET date_str=$1, time_str=$2, status='Reprogramado' WHERE id=$3 RETURNING id, booking_code, client_name",
           [nuevaFecha, nuevaHora, found.id]
         );
+        console.log(`[reprogramar] DB actualizada:`, updateResult.rows[0]);
 
-        // 2. Actualizar Sheets
+        // 2. Actualizar Sheets por código exacto
         try {
           const { updateTurnoStatus } = require('../core/sheets');
           await updateTurnoStatus(found.code, found.servicio, 'Reprogramado').catch(() => {});

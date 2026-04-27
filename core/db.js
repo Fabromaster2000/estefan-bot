@@ -547,59 +547,73 @@ async function bookingSave({ sessionId, nombre, phone, clientId, servicio, fecha
 
 async function bookingFindByCode(code) {
   if (!db) return null;
-  const clean = code.replace('#','').toUpperCase();
-  const r = await db.query(`
-    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
-           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
-           b.client_phone as phone, b.email
-    FROM bookings b
-    WHERE (b.booking_code=$1 OR b.booking_code=$2)
-      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
-    ORDER BY b.created_at DESC LIMIT 1
-  `, ['#'+clean, clean]);
-  return r.rows[0] || null;
+  try {
+    const clean = code.replace('#','').toUpperCase();
+    const r = await db.query(`
+      SELECT b.id, b.client_name as nombre, b.service as servicio,
+             b.date_str as fecha, b.time_str as hora,
+             b.booking_code as code, b.status as estado, b.monto,
+             b.client_phone as phone
+      FROM bookings b
+      WHERE (b.booking_code=$1 OR b.booking_code=$2)
+        AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      ORDER BY b.created_at DESC LIMIT 1
+    `, ['#'+clean, clean]);
+    return r.rows[0] || null;
+  } catch(e) { console.error('[db] bookingFindByCode:', e.message); return null; }
 }
 
 async function bookingFindByName(name) {
   if (!db) return null;
-  const r = await db.query(`
-    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
-           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
-           b.client_phone as phone, b.email
-    FROM bookings b
-    WHERE LOWER(b.client_name) LIKE $1
-      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
-    ORDER BY b.created_at DESC LIMIT 1
-  `, ['%'+name.toLowerCase()+'%']);
-  return r.rows[0] || null;
+  try {
+    const r = await db.query(`
+      SELECT b.id, b.client_name as nombre, b.service as servicio,
+             b.date_str as fecha, b.time_str as hora,
+             b.booking_code as code, b.status as estado, b.monto,
+             b.client_phone as phone
+      FROM bookings b
+      WHERE LOWER(b.client_name) LIKE $1
+        AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      ORDER BY b.created_at DESC LIMIT 1
+    `, ['%'+name.toLowerCase()+'%']);
+    return r.rows[0] || null;
+  } catch(e) { console.error('[db] bookingFindByName:', e.message); return null; }
 }
 
 async function bookingFindByEmail(email) {
   if (!db) return null;
-  const r = await db.query(`
-    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
-           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
-           b.client_phone as phone, b.email
-    FROM bookings b
-    WHERE LOWER(b.email) = $1
-      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
-    ORDER BY b.created_at DESC LIMIT 1
-  `, [email.toLowerCase()]);
-  return r.rows[0] || null;
+  try {
+    // Join con clients para buscar por email aunque bookings.email no exista
+    const r = await db.query(`
+      SELECT b.id, b.client_name as nombre, b.service as servicio,
+             b.date_str as fecha, b.time_str as hora,
+             b.booking_code as code, b.status as estado, b.monto,
+             b.client_phone as phone
+      FROM bookings b
+      LEFT JOIN clients c ON c.phone = b.client_phone
+      WHERE LOWER(c.email) = $1
+        AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      ORDER BY b.created_at DESC LIMIT 1
+    `, [email.toLowerCase()]);
+    return r.rows[0] || null;
+  } catch(e) { console.error('[db] bookingFindByEmail:', e.message); return null; }
 }
 
-async function bookingFindByPhone(phone) {
+async function bookingFindByPhone(searchPhone) {
   if (!db) return null;
-  const r = await db.query(`
-    SELECT b.id, b.client_name as nombre, b.service as servicio, b.date_str as fecha,
-           b.time_str as hora, b.booking_code as code, b.status as estado, b.monto,
-           b.client_phone as phone, b.email
-    FROM bookings b
-    WHERE b.client_phone = $1
-      AND b.status NOT IN ('Cancelado','Consulta Pendiente')
-    ORDER BY b.created_at DESC LIMIT 1
-  `, [phone]);
-  return r.rows[0] || null;
+  try {
+    const r = await db.query(`
+      SELECT b.id, b.client_name as nombre, b.service as servicio,
+             b.date_str as fecha, b.time_str as hora,
+             b.booking_code as code, b.status as estado, b.monto,
+             b.client_phone as phone
+      FROM bookings b
+      WHERE b.client_phone = $1
+        AND b.status NOT IN ('Cancelado','Reprogramado','Consulta Pendiente')
+      ORDER BY b.created_at DESC LIMIT 1
+    `, [searchPhone]);
+    return r.rows[0] || null;
+  } catch(e) { console.error('[db] bookingFindByPhone:', e.message); return null; }
 }
 
 async function bookingCancel(bookingId, reason = 'Cancelado') {
