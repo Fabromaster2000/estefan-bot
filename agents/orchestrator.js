@@ -326,7 +326,10 @@ async function handle({ sessionId, phone, text }) {
   // ── notificar_equipo ─────────────────────────────────────────────────────────
   else if (name === 'notificar_equipo') {
     try {
-      const nombreCliente = profile?.firstName || input.nombre || 'Sin nombre';
+      // Usar todos los datos disponibles del cliente
+      const clientData = clientCtx?.client || await clientGet(phone).catch(() => null);
+      const nombreCliente = profile?.firstName || clientData?.name || input.nombre || 'Sin nombre';
+      const emailCliente  = profile?.email || clientData?.email || null;
       const motivo = input.motivo || 'Sin especificar';
 
       // Resumen del historial para el mail
@@ -346,12 +349,13 @@ async function handle({ sessionId, phone, text }) {
         monto: 0,
         senaPaid: false,
         calendarEventId: null,
-        email: profile?.email || null,
+        email: emailCliente,
         notes: motivo,
         status: 'Solicitud cliente',
       }).catch(() => {});
 
-      await _notificarStaff(phone, nombreCliente, motivo, 'DERIVACION', histResumen);
+      const detalleConEmail = emailCliente ? `${motivo}\n📧 ${emailCliente}` : motivo;
+      await _notificarStaff(phone, nombreCliente, detalleConEmail, 'DERIVACION', histResumen);
       toolResultado = 'Notificación enviada al equipo por mail y WhatsApp. Se comunican a la brevedad.';
     } catch(e) {
       toolResultado = 'Notificación enviada al equipo. Se comunican a la brevedad.';
