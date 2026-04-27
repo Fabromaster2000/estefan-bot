@@ -36,7 +36,7 @@
   .nav-tab .dot{width:6px;height:6px;background:var(--pink);border-radius:50%;display:none;}
   .nav-tab.has-pending .dot{display:inline-block;}
   .content{max-width:960px;margin:0 auto;padding:24px 16px;}
-  .panel{display:none;} .panel.active{display:block;}
+  .panel{display:none;} .panel.active{display:block;} #panel-chats.active{display:flex;flex-direction:column;padding:0;height:calc(100vh - 110px);overflow:hidden;}
   .section-title{font-family:var(--font-serif);font-size:22px;}
   .section-sub{color:var(--muted);font-size:13px;margin-top:2px;}
   .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
@@ -2902,7 +2902,8 @@ function printComprobante() {
   .chats-layout{
     display:grid;
     grid-template-columns:320px 1fr;
-    height:calc(100vh - 110px);
+    flex:1;
+    min-height:0;
     background:#111009;
     border:1px solid var(--border);
     border-radius:12px;
