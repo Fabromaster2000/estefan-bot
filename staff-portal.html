@@ -554,7 +554,7 @@
       </div>
 
   <!-- ── CHATS PANEL ─────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-chats" style="padding:0;flex-direction:column;overflow:hidden;">
+  <div class="panel" id="panel-chats" style="padding:0;flex-direction:column;overflow:hidden;margin:-24px -16px;width:calc(100% + 32px);max-width:none;">
     <div class="chats-layout" style="display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 110px);width:100%;overflow:hidden;">
       <!-- Sidebar -->
       <div class="chats-sidebar" style="display:flex;flex-direction:column;overflow:hidden;width:320px;min-width:320px;border-right:1px solid #2e2824;">
@@ -1090,7 +1090,19 @@ async function adminApi(method,path,body){
 async function showPanel(n){
   document.querySelectorAll('.panel').forEach(p=>{p.classList.remove('active');p.style.display='none';});
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  const _activePanel=document.getElementById('panel-'+n);if(_activePanel){_activePanel.classList.add('active');_activePanel.style.display='block';}
+  const _activePanel=document.getElementById('panel-'+n);
+  if(_activePanel){
+    _activePanel.classList.add('active');
+    _activePanel.style.display = (n==='chats') ? 'flex' : 'block';
+    if(n==='chats'){
+      // Remove content wrapper constraints so grid fills full width
+      const cw=document.querySelector('.content');
+      if(cw){cw.style.maxWidth='none';cw.style.padding='0';cw.style.margin='0';}
+    } else {
+      const cw=document.querySelector('.content');
+      if(cw){cw.style.maxWidth='';cw.style.padding='';cw.style.margin='';}
+    }
+  }
   document.getElementById('tab-'+n).classList.add('active');
   if(n==='cobrar'){ if(!cobrarSplitRows.length) cobrarSplitRows=[{medio:'Efectivo',monto:''}]; renderSplitRows(); }
   if(n==='agenda')loadAgenda();
