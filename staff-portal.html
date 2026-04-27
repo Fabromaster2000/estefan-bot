@@ -554,10 +554,10 @@
       </div>
 
   <!-- ── CHATS PANEL ─────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-chats" style="padding:0;">
-    <div class="chats-layout">
+  <div class="panel" id="panel-chats" style="padding:0;flex-direction:column;overflow:hidden;">
+    <div class="chats-layout" style="height:calc(100vh - 110px);flex:1;">
       <!-- Sidebar -->
-      <div class="chats-sidebar">
+      <div class="chats-sidebar" style="display:flex;flex-direction:column;overflow:hidden;width:320px;min-width:320px;border-right:1px solid #2e2824;">
         <div class="chats-sidebar-header">
           <span style="font-weight:700;font-size:13px;color:var(--text);">💬 Conversaciones</span>
           <button onclick="loadChats()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted);" title="Actualizar">↺</button>
@@ -567,7 +567,7 @@
         </div>
       </div>
       <!-- Detalle conversación -->
-      <div class="chats-main">
+      <div class="chats-main" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
         <div class="chats-empty" id="chatsEmpty">
           <div class="icon">💬</div>
           <div style="font-size:14px;">Seleccioná una conversación para verla</div>
