@@ -311,7 +311,7 @@ const TOOLS = [
         nombre:          { type: 'string' },
         servicio:        { type: 'string', description: 'Nombre exacto del catálogo' },
         extra:           { type: 'string', description: 'Servicio adicional o null' },
-        dia:             { type: 'string' },
+        dia:             { type: 'string', description: 'Fecha en formato DD/MM/YYYY. Ejemplos: hoy=02/05/2026, mañana=03/05/2026. NUNCA usar formato YYYY-MM-DD ni inventar el año.' },
         hora:            { type: 'string', description: 'HH:MM' },
         email:           { type: 'string', description: 'Email o null' },
         objetivo_notas:  { type: 'string', description: 'Lo que dijo que busca lograr — para el estilista' },
@@ -407,7 +407,7 @@ const TOOLS = [
 
 // ── Llamada principal a Sonnet ────────────────────────────────────────────────
 // Retorna { texto, tool } donde tool puede ser null
-async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora = '', horaExacta = '', diaSemana = '' }) {
+async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora = '', horaExacta = '', diaSemana = '', fechaHoy = '', fechaManana = '' }) {
   if (!cbOk()) {
     return { texto: 'Perdoná, tenemos alta demanda ahora. Escribinos en unos minutos 🙏', tool: null };
   }
@@ -416,7 +416,7 @@ async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora =
   const systemFinal = [
     SISTEMA,
     fichaCliente ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFICHA DE LA CLIENTA CON LA QUE HABLÁS AHORA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${fichaCliente}` : '',
-    (saludoHora || horaExacta) ? `\nFECHA Y HORA ACTUAL EN BUENOS AIRES: ${diaSemana}${horaExacta ? ', ' + horaExacta : ''} (${saludoHora}).\nHorarios del salón: lunes a sábado 10:00–20:00hs. CERRADO los domingos.\nSi hoy es domingo o fuera del horario, avisá que estamos cerrados y ofrecé agendar para el próximo día hábil.` : '',
+    (saludoHora || horaExacta) ? `\nFECHA Y HORA ACTUAL EN BUENOS AIRES: ${diaSemana}${horaExacta ? ', ' + horaExacta : ''} (${saludoHora}).\nFECHA DE HOY en formato DD/MM/YYYY: ${fechaHoy || ''}. Mañana sería: ${fechaManana || ''}.\nCuando uses la tool crear_turno, el campo "dia" DEBE estar en formato DD/MM/YYYY. Ejemplo: si la clienta dice "hoy" → "${fechaHoy}", si dice "mañana" → "${fechaManana}".\nHorarios del salón: lunes a sábado 10:00–20:00hs. CERRADO los domingos.\nSi hoy es domingo o fuera del horario, avisá que estamos cerrados y ofrecé agendar para el próximo día hábil.` : '',
   ].filter(Boolean).join('');
 
   // Historial completo — Sonnet lee todo

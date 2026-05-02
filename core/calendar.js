@@ -139,6 +139,19 @@ async function addToCalendar({ clientName, phone, service, date, time, duration,
       if (startDate < now) startDate.setFullYear(now.getFullYear() + 1);
     }
 
+    // Prioridad 1.5: formato ISO YYYY-MM-DD (cuando Sonnet manda fecha así)
+    if (!startDate) {
+      const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (isoMatch) {
+        // Ignorar el año que manda Sonnet (puede ser incorrecto) y usar el año actual/próximo
+        const day   = parseInt(isoMatch[3]);
+        const month = parseInt(isoMatch[2]) - 1;
+        startDate = new Date(now.getFullYear(), month, day, hours, minutes, 0);
+        // Si la fecha ya pasó este año, ir al año que viene
+        if (startDate < now) startDate.setFullYear(now.getFullYear() + 1);
+      }
+    }
+
     // Prioridad 2: formato dd/mm o dd/mm/yyyy
     if (!startDate) {
       const slashMatch = dateStr.match(/(\d{1,2})[\/](\d{1,2})(?:[\/](\d{2,4}))?/);

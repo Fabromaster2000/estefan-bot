@@ -60,6 +60,10 @@ async function handle({ sessionId, phone, text }) {
   const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
   const diaSemana = dias[ahoraBsAs.getDay()];
   const horaExacta = ahoraBsAs.getHours().toString().padStart(2,'0') + ':' + ahoraBsAs.getMinutes().toString().padStart(2,'0') + 'hs';
+  const pad2 = n => String(n).padStart(2,'0');
+  const fechaHoy = `${pad2(ahoraBsAs.getDate())}/${pad2(ahoraBsAs.getMonth()+1)}/${ahoraBsAs.getFullYear()}`;
+  const manana = new Date(ahoraBsAs); manana.setDate(manana.getDate()+1);
+  const fechaManana = `${pad2(manana.getDate())}/${pad2(manana.getMonth()+1)}/${manana.getFullYear()}`;
 
   const resultado = await personal.pensar({
     mensaje:     t,
@@ -68,6 +72,8 @@ async function handle({ sessionId, phone, text }) {
     saludoHora,
     horaExacta,
     diaSemana,
+    fechaHoy,
+    fechaManana,
   });
 
   console.log(`[orch] tool=${resultado.tool?.name || 'none'} texto=${resultado.texto?.substring(0, 60) || ''}`);
@@ -75,7 +81,10 @@ async function handle({ sessionId, phone, text }) {
   // ── Sin tool: respuesta directa ─────────────────────────────────────────────
   if (!resultado.tool) {
     memory.update(phone, clientCtx?.client, t).catch(() => {});
-    return send(resultado.texto || '💛');
+    const textoFinal = resultado.texto?.trim();
+    // No mandar respuestas vacías ni solo emojis sueltos
+    if (!textoFinal || textoFinal.length < 3) return;
+    return send(textoFinal);
   }
 
   // ── Con tool: ejecutar acción ────────────────────────────────────────────────
