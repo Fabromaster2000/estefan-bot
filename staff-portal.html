@@ -3463,6 +3463,7 @@ function renderVentasTable() {
 // ── CHATS PANEL ───────────────────────────────────────────────────────────────
 
 let activePhone = null;
+let activeNombre = null;
 let chatPollingInterval = null;
 
 async function loadChats() {
@@ -3502,11 +3503,13 @@ async function loadChats() {
 
 async function openChat(phone, nombre) {
   activePhone = phone;
+  activeNombre = nombre || phone;
   document.getElementById('chatsEmpty').style.display = 'none';
   const conv = document.getElementById('chatsConv');
   conv.style.display = 'flex';
-  document.getElementById('convName').textContent = nombre;
+  document.getElementById('convName').textContent = activeNombre;
   document.getElementById('convPhone').textContent = phone;
+  // Refresh sidebar to show active state
   loadChats();
   await refreshHistory();
   if (chatPollingInterval) clearInterval(chatPollingInterval);
@@ -3521,10 +3524,10 @@ async function refreshHistory() {
     });
     const data = await r.json();
     if (!data.ok) return;
-    document.getElementById('btnTomarControl').style.display = data.human_mode ? 'none' : 'inline-block';
-    document.getElementById('btnLiberarControl').style.display = data.human_mode ? 'inline-block' : 'none';
-    document.getElementById('humanBanner').style.display = data.human_mode ? 'block' : 'none';
-    document.getElementById('convInputBar').style.display = data.human_mode ? 'flex' : 'none';
+    const humanBtn = document.getElementById('humanBtn');
+    if(humanBtn) { humanBtn.textContent = data.human_mode ? '🤝 Liberar control' : 'Tomar control'; humanBtn.style.background = data.human_mode ? '#4ade80' : '#c9a96e'; humanBtn.style.color = data.human_mode ? '#0b1418' : '#0b1418'; }
+    const banner = document.getElementById('humanBanner');
+    if(banner) banner.style.display = data.human_mode ? 'block' : 'none';
     const msgs = document.getElementById('convMessages');
     const wasBottom = msgs.scrollHeight - msgs.scrollTop <= msgs.clientHeight + 50;
     // WhatsApp style messages with full inline styles
@@ -3559,6 +3562,12 @@ async function refreshHistory() {
       }).join('');
     if (wasBottom) msgs.scrollTop = msgs.scrollHeight;
   } catch(e) { console.error('refreshHistory', e); }
+}
+
+async function toggleHuman() {
+  const humanBtn = document.getElementById('humanBtn');
+  const isHuman = humanBtn && humanBtn.textContent.includes('Liberar');
+  if (isHuman) { liberarControl(); } else { tomarControl(); }
 }
 
 async function tomarControl() {
