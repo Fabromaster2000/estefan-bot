@@ -1044,7 +1044,7 @@ function showPhotoLightbox(src) {
   document.getElementById('photo-lightbox-img').src = src;
   lb.style.display = 'flex';
 }
-async async function doLogin(){
+async function doLogin(){
   const pw=document.getElementById('pw-input').value;
   if(!pw){document.getElementById('login-error').style.display='block';return;}
   const btn=document.querySelector('#login-screen .btn-primary');
@@ -1101,8 +1101,6 @@ async function showPanel(n){
       const cw = document.querySelector('.content');
       if(cw){ cw.style.cssText = ''; }
       _activePanel.style.cssText = 'display:block;';
-      const cw=document.querySelector('.content');
-      if(cw){cw.style.maxWidth='';cw.style.padding='';cw.style.margin='';}
     }
   }
   document.getElementById('tab-'+n).classList.add('active');
