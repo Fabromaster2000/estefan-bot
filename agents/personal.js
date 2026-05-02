@@ -407,7 +407,7 @@ const TOOLS = [
 
 // ── Llamada principal a Sonnet ────────────────────────────────────────────────
 // Retorna { texto, tool } donde tool puede ser null
-async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora = '', horaExacta = '', diaSemana = '', fechaHoy = '', fechaManana = '' }) {
+async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora = '', horaExacta = '', diaSemana = '', fechaHoy = '', fechaManana = '', estaAbierto = false, horaActualNum = 12 }) {
   if (!cbOk()) {
     return { texto: 'Perdoná, tenemos alta demanda ahora. Escribinos en unos minutos 🙏', tool: null };
   }
@@ -416,7 +416,7 @@ async function pensar({ mensaje, historial = [], fichaCliente = '', saludoHora =
   const systemFinal = [
     SISTEMA,
     fichaCliente ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFICHA DE LA CLIENTA CON LA QUE HABLÁS AHORA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${fichaCliente}` : '',
-    (saludoHora || horaExacta) ? `\nFECHA Y HORA ACTUAL EN BUENOS AIRES: ${diaSemana}${horaExacta ? ', ' + horaExacta : ''} (${saludoHora}).\nFECHA DE HOY en formato DD/MM/YYYY: ${fechaHoy || ''}. Mañana sería: ${fechaManana || ''}.\nCuando uses la tool crear_turno, el campo "dia" DEBE estar en formato DD/MM/YYYY. Ejemplo: si la clienta dice "hoy" → "${fechaHoy}", si dice "mañana" → "${fechaManana}".\nHorarios del salón: lunes a sábado 10:00–20:00hs. CERRADO los domingos.\nSi hoy es domingo o fuera del horario, avisá que estamos cerrados y ofrecé agendar para el próximo día hábil.` : '',
+    (saludoHora || horaExacta) ? `\nFECHA Y HORA ACTUAL EN BUENOS AIRES: ${diaSemana}${horaExacta ? ', ' + horaExacta : ''} (${saludoHora}).\nFECHA DE HOY en formato DD/MM/YYYY: ${fechaHoy || ''}. Mañana sería: ${fechaManana || ''}.\nCuando uses la tool crear_turno, el campo "dia" DEBE estar en formato DD/MM/YYYY. Ejemplo: si la clienta dice "hoy" → "${fechaHoy}", si dice "mañana" → "${fechaManana}".\nHorarios del salón: lunes a sábado 10:00–20:00hs. CERRADO los domingos.\nESTADO ACTUAL: ${estaAbierto ? 'ABIERTO ahora mismo' : horaActualNum < 10 ? 'Todavía no abrimos hoy (abrimos a las 10hs) — pero SÍ podés agendar para hoy si es día hábil' : 'CERRADO por hoy (ya pasaron las 20hs) — ofrecé el próximo día hábil'}.\nSi hoy es domingo, siempre estamos cerrados.` : '',
   ].filter(Boolean).join('');
 
   // Historial completo — Sonnet lee todo

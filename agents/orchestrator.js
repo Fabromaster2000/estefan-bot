@@ -64,6 +64,9 @@ async function handle({ sessionId, phone, text }) {
   const fechaHoy = `${pad2(ahoraBsAs.getDate())}/${pad2(ahoraBsAs.getMonth()+1)}/${ahoraBsAs.getFullYear()}`;
   const manana = new Date(ahoraBsAs); manana.setDate(manana.getDate()+1);
   const fechaManana = `${pad2(manana.getDate())}/${pad2(manana.getMonth()+1)}/${manana.getFullYear()}`;
+  const horaActualNum = ahoraBsAs.getHours() + ahoraBsAs.getMinutes() / 60;
+  const esDomingo = ahoraBsAs.getDay() === 0;
+  const estaAbierto = !esDomingo && horaActualNum >= 10 && horaActualNum < 20;
 
   const resultado = await personal.pensar({
     mensaje:     t,
@@ -74,6 +77,8 @@ async function handle({ sessionId, phone, text }) {
     diaSemana,
     fechaHoy,
     fechaManana,
+    estaAbierto,
+    horaActualNum,
   });
 
   console.log(`[orch] tool=${resultado.tool?.name || 'none'} texto=${resultado.texto?.substring(0, 60) || ''}`);
