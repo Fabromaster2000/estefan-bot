@@ -1044,7 +1044,7 @@ function showPhotoLightbox(src) {
   document.getElementById('photo-lightbox-img').src = src;
   lb.style.display = 'flex';
 }
-async function doLogin(){
+async async function doLogin(){
   const pw=document.getElementById('pw-input').value;
   if(!pw){document.getElementById('login-error').style.display='block';return;}
   const btn=document.querySelector('#login-screen .btn-primary');
