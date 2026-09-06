@@ -80,17 +80,66 @@ async function sendWhatsApp(phone, text) {
 }
 
 // ── WHATSAPP WEBHOOK ─────────────────────────────────────────────────────────
+// Escucha los DOS sentidos de la conversacion:
+//   message:in:new  -> la clienta escribe
+//   message:out:new -> sale un mensaje del numero del salon, lo haya mandado el
+//                     bot por API o una persona a mano desde el celular.
+// Gracias al segundo, el chat de operacion ve todo lo que se hablo con cada
+// clienta aunque nadie lo haya cargado en ningun lado.
+
+const AUTO_PAUSE_ON_HUMAN_REPLY = process.env.AUTO_PAUSE_ON_HUMAN_REPLY !== 'false';
+
+function phoneFromChatId(raw) {
+  if (!raw) return null;
+  const clean = String(raw).replace('@c.us', '').replace('@s.whatsapp.net', '');
+  return clean.startsWith('+') ? clean : `+${clean}`;
+}
+
+/**
+ * Mensaje saliente del numero del salon. Distingue si lo mando el bot (ya esta
+ * logueado, se ignora) o una persona desde el celular (se loguea como 'staff' y
+ * se pausa el bot en ese chat para que no hablen los dos encima).
+ */
+async function handleOutbound(msg) {
+  const phone = phoneFromChatId(msg.chat?.id || msg.to);
+  const text  = msg.body?.trim();
+  if (!phone || !text) return;
+
+  // Ya lo registramos nosotros hace un momento? Entonces lo mando el bot o el
+  // chat de operacion, y no hay que duplicarlo.
+  const dup = await db.getDB()?.query(`
+    SELECT 1 FROM conversation_log
+    WHERE phone=$1 AND content=$2 AND role IN ('assistant','staff')
+      AND created_at > NOW() - INTERVAL '2 minutes' LIMIT 1
+  `, [phone, text]).catch(() => ({ rows: [] }));
+  if (dup?.rows?.length) return;
+
+  await db.conversationLog(phone, 'staff', text).catch(() => {});
+  console.log(`[wa→out:humano] ${phone}: ${text.substring(0, 60)}`);
+
+  if (AUTO_PAUSE_ON_HUMAN_REPLY) {
+    const hm = await db.chatGetHumanMode(phone).catch(() => ({ active: false }));
+    if (!hm.active) {
+      await db.chatSetHumanMode(phone, true, 'celular del salon').catch(() => {});
+      console.log(`[wa→out:humano] ${phone}: bot pausado automaticamente`);
+    }
+  }
+}
+
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   try {
     const event = req.body;
-    if (event.event !== 'message:in:new') return;
     const msg = event.data;
-    if (!msg || msg.fromMe) return;
-    const originalId = msg.chat?.id || msg.from || '';
-    if (originalId.includes('@g.us')) return;
-    const rawPhone = msg.chat?.id?.replace('@c.us','') || msg.from?.replace('@c.us','');
-    const phone = rawPhone?.startsWith('+') ? rawPhone : `+${rawPhone}`;
+    if (!msg) return;
+    const chatId = msg.chat?.id || msg.from || msg.to || '';
+    if (String(chatId).includes('@g.us')) return;
+
+    if (event.event === 'message:out:new') return await handleOutbound(msg);
+    if (event.event !== 'message:in:new') return;
+    if (msg.fromMe) return;
+
+    const phone = phoneFromChatId(msg.chat?.id || msg.from);
     const text  = msg.body?.trim();
     if (!phone || !text) return;
     console.log(`[wa→in] ${phone}: ${text.substring(0,60)}`);
@@ -876,6 +925,58 @@ app.get('/staff', (req, res) => {
   res.sendFile(__dirname + '/staff-portal.html');
 });
 
+// -- CHAT DE OPERACION (Claude) ------------------------------------------------
+// La administrativa escribe lo que paso en el salon y Claude lo carga.
+// Reemplaza la carga manual del portal; el portal queda para mirar.
+
+const opsAgent = require('./agents/ops');
+const opsTools = require('./core/ops_tools');
+
+app.get('/ops', (req, res) => {
+  res.sendFile(__dirname + '/ops.html');
+});
+
+app.post('/staff/ops/chat', staffAuth, async (req, res) => {
+  try {
+    const { message, staff_id } = req.body;
+    if (!message?.trim()) return res.status(400).json({ error: 'Mensaje vacio' });
+    const out = await opsAgent.handle({
+      staffId: staff_id || 'mostrador',
+      texto: message.trim(),
+      sendWhatsApp,
+    });
+    res.json(out);
+  } catch (e) {
+    console.error('[ops/chat]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Estado del salon en vivo -- lo mismo que ve Claude, para el encabezado de la UI
+app.get('/staff/ops/estado', staffAuth, async (req, res) => {
+  try {
+    res.json({ estado: await opsAgent.snapshot() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Historial del chat de operacion
+app.get('/staff/ops/historial', staffAuth, async (req, res) => {
+  try {
+    const r = await getConn().query(
+      `SELECT role, content, created_at FROM ops_conversations
+       WHERE staff_id=$1 ORDER BY created_at DESC LIMIT $2`,
+      [req.query.staff_id || 'mostrador', Math.min(Number(req.query.limit) || 40, 200)]
+    );
+    res.json({ mensajes: r.rows.reverse() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Empezar de cero la conversacion (no borra nada de la base, solo el contexto)
+app.post('/staff/ops/reset', staffAuth, (req, res) => {
+  opsAgent.resetSesion(req.body?.staff_id || 'mostrador');
+  res.json({ ok: true });
+});
+
 app.get('/reset-cb', (req, res) => {
   // Reset circuit breaker in personal.js — use when bot stops responding after errors
   try {
@@ -1160,11 +1261,17 @@ async function init() {
     catch(e) { console.error('[sheets] Error init:', e.message); }
   }, 3000);
 
+  // 3b. Tablas del chat de operacion (ops_log, ops_conversations, saldos)
+  if (dbConn) {
+    await opsTools.initOps().catch(e => console.error('[ops] init error:', e.message));
+  }
+
   // 4. Servidor
   app.listen(PORT, () => {
     console.log(`   Puerto: ${PORT}`);
     console.log(`   Wassenger: ${WASSENGER_KEY ? '✓' : '✗ sin key'}`);
     console.log(`   DB: ${dbConn ? '✓' : '✗ sin conexión'}`);
+    console.log(`   Chat de operacion: /ops (${opsAgent.MODEL})`);
     console.log(`   URL: https://peluqueria-bot.onrender.com\n`);
   });
 }

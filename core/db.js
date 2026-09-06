@@ -14,7 +14,12 @@ async function initDB() {
     return null;
   }
   try {
-    db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    // Render exige SSL; una Postgres local no lo tiene. Sin esto, probar el bot
+    // en la maquina propia falla con "The server does not support SSL connections".
+    const url   = process.env.DATABASE_URL;
+    const local = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url) || process.env.PGSSL === 'disable';
+    db = new Pool({ connectionString: url, ssl: local ? false : { rejectUnauthorized: false } });
+    if (local) console.log('[db] Base local detectada — SSL desactivado');
 
     // ── PRE-MIGRATIONS: adaptar schema existente antes de CREATE TABLE IF NOT EXISTS
     // Agregar client_id a clients si no existe (tabla creada antes de v2)

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141210">
+<title>Estefan · Mostrador</title>
+<style>
+  :root{
+    --bg:#141210; --panel:#1d1a17; --panel-2:#262220; --line:#332e2a;
+    --ink:#f2ede7; --ink-dim:#a79c92; --gold:#c9a227; --gold-soft:#3a3018;
+    --ok:#6fbf73; --warn:#e0a34a; --err:#e06a5a;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header{
+    flex:0 0 auto; background:var(--panel); border-bottom:1px solid var(--line);
+    padding:10px 14px calc(10px + env(safe-area-inset-top)) 14px;
+    padding-top:calc(10px + env(safe-area-inset-top));
+    display:flex; align-items:center; gap:10px;
+  }
+  .logo{
+    width:30px;height:30px;border-radius:9px;background:var(--gold-soft);
+    display:grid;place-items:center;color:var(--gold);font-weight:700;font-size:13px;
+    letter-spacing:.5px;flex:0 0 auto;
+  }
+  .title{font-weight:600;font-size:15px}
+  .sub{font-size:11.5px;color:var(--ink-dim)}
+  .hbtn{
+    margin-left:auto;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--ink-dim);border-radius:9px;padding:7px 11px;font-size:12.5px;
+    cursor:pointer;font-family:inherit;
+  }
+  .hbtn:active{background:var(--line)}
+
+  /* ── Estado del salón ───────────────────────────────────── */
+  #estado{
+    display:none; flex:0 0 auto; max-height:42vh; overflow:auto;
+    background:#100e0c; border-bottom:1px solid var(--line);
+    padding:12px 14px; font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--ink-dim); white-space:pre-wrap;
+  }
+  #estado.open{display:block}
+
+  /* ── Mensajes ───────────────────────────────────────────── */
+  main{flex:1 1 auto; overflow-y:auto; padding:16px 14px 8px; -webkit-overflow-scrolling:touch}
+  .wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+  .msg{display:flex}
+  .msg.me{justify-content:flex-end}
+  .bubble{
+    max-width:82%; padding:10px 13px; border-radius:var(--radius);
+    white-space:pre-wrap; word-wrap:break-word;
+  }
+  .me .bubble{background:var(--gold-soft); border:1px solid #4a3d1c; border-bottom-right-radius:5px}
+  .bot .bubble{background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:5px}
+  .bot .bubble.err{border-color:#5a3330;background:#251a19}
+
+  .acciones{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+  .chip{
+    font-size:11px;padding:3px 8px;border-radius:20px;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);
+  }
+  .chip.ok{border-color:#2f4a31;color:var(--ok)}
+  .chip.bad{border-color:#5a3330;color:var(--err)}
+
+  .hint{text-align:center;color:var(--ink-dim);font-size:12.5px;padding:22px 10px;line-height:1.8}
+  .hint b{color:var(--ink);font-weight:500}
+
+  .typing{display:flex;gap:4px;padding:13px}
+  .typing i{width:6px;height:6px;border-radius:50%;background:var(--ink-dim);animation:bl 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s}
+  .typing i:nth-child(3){animation-delay:.4s}
+  @keyframes bl{0%,60%,100%{opacity:.25}30%{opacity:1}}
+
+  /* ── Input ──────────────────────────────────────────────── */
+  footer{
+    flex:0 0 auto; background:var(--panel); border-top:1px solid var(--line);
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
+  }
+  .box{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:flex-end}
+  textarea{
+    flex:1; background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
+    border-radius:12px; padding:11px 13px; font:15px/1.45 inherit; resize:none;
+    max-height:150px; outline:none;
+  }
+  textarea:focus{border-color:var(--gold)}
+  #send{
+    background:var(--gold); color:#221b06; border:none; border-radius:12px;
+    width:44px;height:44px;font-size:18px;cursor:pointer;flex:0 0 auto;
+  }
+  #send:disabled{opacity:.35;cursor:default}
+
+  /* ── Login ──────────────────────────────────────────────── */
+  #login{
+    position:fixed;inset:0;background:var(--bg);z-index:20;
+    display:grid;place-items:center;padding:24px;
+  }
+  #login.hide{display:none}
+  .card{width:100%;max-width:320px;text-align:center}
+  .card h1{font-size:19px;margin:0 0 6px;font-weight:600}
+  .card p{color:var(--ink-dim);font-size:13px;margin:0 0 20px}
+  .card input{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+    border-radius:11px;padding:12px;font:15px inherit;text-align:center;outline:none;margin-bottom:10px;
+  }
+  .card input:focus{border-color:var(--gold)}
+  .card button{
+    width:100%;background:var(--gold);color:#221b06;border:none;border-radius:11px;
+    padding:12px;font:600 15px inherit;cursor:pointer;
+  }
+  .card .err{color:var(--err);font-size:12.5px;min-height:18px;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card">
+    <div class="logo" style="margin:0 auto 14px;width:44px;height:44px;border-radius:13px;font-size:16px">EP</div>
+    <h1>Mostrador</h1>
+    <p>Estefan Peluquería</p>
+    <input id="pw" type="password" placeholder="Contraseña" autocomplete="current-password">
+    <button id="enter">Entrar</button>
+    <div class="err" id="lerr"></div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">EP</div>
+  <div>
+    <div class="title">Mostrador</div>
+    <div class="sub" id="sub">Estefan Peluquería</div>
+  </div>
+  <button class="hbtn" id="toggleEstado">Hoy</button>
+  <button class="hbtn" id="portal" style="margin-left:6px">Portal</button>
+</header>
+
+<div id="estado"></div>
+
+<main><div class="wrap" id="chat"></div></main>
+
+<footer>
+  <div class="box">
+    <textarea id="input" rows="1" placeholder="Contame qué pasó…"></textarea>
+    <button id="send">↑</button>
+  </div>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const STAFF_ID = 'mostrador';
+let PW = localStorage.getItem('estefan_pw') || '';
+
+// ── Auth ─────────────────────────────────────────────────────
+async function probar(pw){
+  const r = await fetch('/staff/ops/estado', { headers: { 'x-staff-password': pw } });
+  return r.ok;
+}
+async function entrar(){
+  const pw = $('#pw').value.trim();
+  if(!pw) return;
+  $('#lerr').textContent = 'Verificando…';
+  if(await probar(pw)){
+    PW = pw; localStorage.setItem('estefan_pw', pw);
+    $('#login').classList.add('hide');
+    arrancar();
+  } else {
+    $('#lerr').textContent = 'Contraseña incorrecta';
+  }
+}
+$('#enter').onclick = entrar;
+$('#pw').onkeydown = e => { if(e.key === 'Enter') entrar(); };
+
+// ── Render ───────────────────────────────────────────────────
+function burbuja(role, texto, acciones){
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role === 'user' ? 'me' : 'bot');
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = texto;
+  if(acciones && acciones.length){
+    const box = document.createElement('div');
+    box.className = 'acciones';
+    for(const a of acciones){
+      const c = document.createElement('span');
+      c.className = 'chip ' + (a.output && a.output.error ? 'bad' : 'ok');
+      c.textContent = a.tool.replace(/_/g,' ');
+      c.title = JSON.stringify(a.output, null, 2);
+      box.appendChild(c);
+    }
+    b.appendChild(box);
+  }
+  div.appendChild(b);
+  $('#chat').appendChild(div);
+  document.querySelector('main').scrollTop = 1e9;
+  return div;
+}
+
+function pensando(){
+  const div = document.createElement('div');
+  div.className = 'msg bot'; div.id = 'typing';
+  div.innerHTML = '<div class="bubble" style="padding:4px 6px"><div class="typing"><i></i><i></i><i></i></div></div>';
+  $('#chat').appendChild(div);
+  document.querySelector('main').scrollTop = 1e9;
+}
+const dejarDePensar = () => $('#typing')?.remove();
+
+// ── Enviar ───────────────────────────────────────────────────
+let ocupado = false;
+async function enviar(){
+  const t = $('#input').value.trim();
+  if(!t || ocupado) return;
+  ocupado = true; $('#send').disabled = true;
+  $('#input').value = ''; $('#input').style.height = 'auto';
+  burbuja('user', t);
+  pensando();
+  try{
+    const r = await fetch('/staff/ops/chat', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-staff-password': PW },
+      body: JSON.stringify({ message: t, staff_id: STAFF_ID }),
+    });
+    const j = await r.json();
+    dejarDePensar();
+    if(j.error) burbuja('bot', 'Error: ' + j.error);
+    else { burbuja('bot', j.reply, j.acciones); if((j.acciones||[]).length) cargarEstado(true); }
+  }catch(e){
+    dejarDePensar();
+    burbuja('bot', 'No hay conexión con el servidor. Probá de nuevo.');
+  }
+  ocupado = false; $('#send').disabled = false; $('#input').focus();
+}
+$('#send').onclick = enviar;
+$('#input').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && !e.shiftKey && window.innerWidth > 720){ e.preventDefault(); enviar(); }
+});
+$('#input').addEventListener('input', function(){
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+});
+
+// ── Estado del salón ─────────────────────────────────────────
+async function cargarEstado(silencioso){
+  try{
+    const r = await fetch('/staff/ops/estado', { headers:{ 'x-staff-password': PW } });
+    const j = await r.json();
+    $('#estado').textContent = j.estado || '';
+    const turnos = (j.estado.match(/AGENDA DE HOY \((\d+)/) || [])[1];
+    const caja   = (j.estado.match(/CAJA DE HOY: \d+ cobros · (\$[\d.,]+)/) || [])[1];
+    $('#sub').textContent = `${turnos || 0} turnos hoy${caja ? ' · ' + caja + ' en caja' : ''}`;
+  }catch(e){ if(!silencioso) $('#estado').textContent = 'No pude leer el estado.'; }
+}
+$('#toggleEstado').onclick = () => { $('#estado').classList.toggle('open'); cargarEstado(); };
+$('#portal').onclick = () => { location.href = '/staff'; };
+
+// ── Historial ────────────────────────────────────────────────
+async function cargarHistorial(){
+  try{
+    const r = await fetch(`/staff/ops/historial?staff_id=${STAFF_ID}&limit=20`, {
+      headers:{ 'x-staff-password': PW },
+    });
+    const j = await r.json();
+    if(!j.mensajes?.length) return false;
+    for(const m of j.mensajes) burbuja(m.role === 'user' ? 'user' : 'bot', m.content);
+    return true;
+  }catch(e){ return false; }
+}
+
+async function arrancar(){
+  cargarEstado();
+  const hubo = await cargarHistorial();
+  if(!hubo){
+    $('#chat').insertAdjacentHTML('beforeend', `
+      <div class="hint">
+        Escribí como le contarías a una compañera.<br><br>
+        <b>"vino marta, corte y mechas, pagó 60 en efectivo y el resto la semana que viene"</b><br>
+        <b>"la de las 15 no vino"</b><br>
+        <b>"cuánto debe sofía?"</b><br>
+        <b>"pasá el turno de laura al jueves 16"</b><br>
+        <b>"qué le dijimos a vicky por whatsapp?"</b>
+      </div>`);
+  }
+  setInterval(() => cargarEstado(true), 60000);
+}
+
+// Arranque
+(async () => {
+  if(PW && await probar(PW)){ $('#login').classList.add('hide'); arrancar(); }
+  else { $('#pw').focus(); }
+})();
+</script>
+</body>
+</html>
