@@ -1,9 +1,11 @@
-// agents/personal.js — Estefi v6
+// agents/personal.js — Stefi v6
 // ARQUITECTURA: Sonnet lee el historial completo + ficha del cliente y decide
 // qué hacer. Retorna: { texto, accion } donde accion le dice al orquestador
 // qué ejecutar (crear turno, buscar turno, registrar color, etc.)
 // El orquestador NO toma decisiones conversacionales — solo ejecuta acciones.
 'use strict';
+
+const { BOT } = require('../core/marca');
 
 const Anthropic = require('@anthropic-ai/sdk');
 const { getDB } = require('../core/db');
@@ -18,9 +20,9 @@ function cbOk() {
 function cbFail() { CB.failures++; CB.lastFailure = Date.now(); if (CB.failures >= 5) CB.open = true; }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SISTEMA PROMPT — el alma de Estefi
+// SISTEMA PROMPT — el alma de Stefi
 // ─────────────────────────────────────────────────────────────────────────────
-const SISTEMA = `Sos Estefi — la cara humana de Estefan Peluquería en WhatsApp.
+const SISTEMA = `Sos ${BOT} — la cara humana de Estefan Peluquería en WhatsApp.
 
 Estefan es un salón premium de mujeres en Puertos, Buenos Aires. Las clientas pagan bien y esperan excelencia. Vos sos su primer contacto, su agenda, y su asesora de confianza.
 
@@ -274,7 +276,7 @@ Si tiene puntos, los mencionás cuando suma — especialmente al confirmar un tu
 Si pregunta por sus puntos, le decís exactamente cuántos tiene.
 
 FICHA TÉCNICA (color, largo, procesos):
-Es oro para Estefi. La usás para sonar como alguien que realmente la conoce.
+Es oro para ${BOT}. La usás para sonar como alguien que realmente la conoce.
 ✅ Si tiene color: "¿Venís por el retoque de raíz? Vi que tenés el color castaño con raíz."
 ✅ Si tiene procesos previos: lo tenés en cuenta antes de sugerir cualquier servicio de color.
 ✅ Si tiene alergias: lo mencionás si es relevante, siempre con cuidado.
@@ -298,7 +300,7 @@ La ficha incluye el historial de cancelaciones y un score de confiabilidad (0-10
 - Si pregunta cuántos turnos canceló o su historial → le respondés exacto: cantidad y cuándo.
 - NUNCA hacés sentir mal a la clienta por esto. Es información interna para dar mejor servicio.
 
-RESUMEN: La ficha convierte a Estefi de un bot genérico en alguien que realmente conoce a la clienta. Úsala siempre. Cada dato es una oportunidad de conexión real.`;
+RESUMEN: La ficha convierte a ${BOT} de un bot genérico en alguien que realmente conoce a la clienta. Úsala siempre. Cada dato es una oportunidad de conexión real.`;
 
 // ── Tools que Sonnet usa para comunicar al orquestador qué ejecutar ───────────
 const TOOLS = [
@@ -501,7 +503,7 @@ async function generarSaludo(profile) {
     : 'buenas noches';
 
   const MENU = `\n\n1️⃣ Sacar un turno\n2️⃣ Ver o cambiar mi turno\n3️⃣ Precios y servicios\n\n_Si en algún momento necesitás hablar con alguien del equipo, te conecto enseguida 💛_`;
-  const FALLBACK = `¡${saludoHora.charAt(0).toUpperCase() + saludoHora.slice(1)}! ¿Cómo estás? Soy Estefi, tu asistente personal en Estefan Peluquería 💛\n\nEstoy acá para que tengas el mejor servicio y lo que necesités, cuando lo necesités.${MENU}`;
+  const FALLBACK = `¡${saludoHora.charAt(0).toUpperCase() + saludoHora.slice(1)}! ¿Cómo estás? Soy ${BOT}, tu asistente personal en Estefan Peluquería 💛\n\nEstoy acá para que tengas el mejor servicio y lo que necesités, cuando lo necesités.${MENU}`;
 
   if (!cbOk()) return FALLBACK;
 
@@ -522,9 +524,9 @@ Preguntale cómo está. Ofrecé las opciones del menú de forma natural. Termin�
 NO agregues una pregunta suelta al final del menú. Máximo 5 líneas.`;
   } else {
     instruccion = `Es de ${saludoHora}. Primera vez que escribe esta clienta.
-Escribí el saludo completo de Estefi:
+Escribí el saludo completo de ${BOT}:
 1. Empezá con el saludo de hora ("${saludoHora}") y preguntá cómo está
-2. Presentate como Estefi, asistente personal de Estefan Peluquería
+2. Presentate como ${BOT}, asistente personal de Estefan Peluquería
 3. Decile que tu objetivo es brindarle el mejor servicio y que estás atenta a lo que necesite
 4. Mostrá las opciones: 1️⃣ Sacar un turno  2️⃣ Ver o cambiar mi turno  3️⃣ Precios y servicios
 5. Mencioná que si necesita hablar con alguien del equipo, la conectás
@@ -562,7 +564,7 @@ async function handleCEO(text, historial = []) {
   }
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-5', max_tokens: 600,
-    system: `Sos Estefi, asistente del dueño de Estefan Peluquería. Directo, datos reales, rioplatense.\n\n${stats}`,
+    system: `Sos ${BOT}, asistente del dueño de Estefan Peluquería. Directo, datos reales, rioplatense.\n\n${stats}`,
     messages: [...historial.slice(-6).map(h => ({ role: h.role, content: h.content })), { role: 'user', content: text }],
   });
   return resp.content[0]?.text || 'No pude procesar eso 😅';

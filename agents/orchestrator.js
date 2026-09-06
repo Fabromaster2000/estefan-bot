@@ -5,6 +5,8 @@
 // NO hay regex conversacional. NO hay state machine. Sonnet manda.
 'use strict';
 
+const { BOT } = require('../core/marca');
+
 const intake   = require('./intake');
 const personal = require('./personal');
 const booking  = require('./booking');
@@ -298,7 +300,7 @@ async function handle({ sessionId, phone, text }) {
       }).catch(() => {});
       const histColorResumen = session.historial
         .slice(-8)
-        .map(h => `<strong>${h.role === 'user' ? '👤 Cliente' : '🤖 Estefi'}:</strong> ${String(h.content).substring(0, 200)}`)
+        .map(h => `<strong>${h.role === 'user' ? '👤 Cliente' : ('🤖 ' + BOT)}:</strong> ${String(h.content).substring(0, 200)}`)
         .join('<br>');
       await _notificarStaff(phone, input.nombre, `Color: ${input.servicio} | ${notes}`, 'COLOR', histColorResumen);
       toolResultado = 'Consulta de color registrada. El equipo contacta a la clienta dentro de las 24hs.';
@@ -349,7 +351,7 @@ async function handle({ sessionId, phone, text }) {
       // Resumen del historial para el mail
       const histResumen = session.historial
         .slice(-6)
-        .map(h => `<strong>${h.role === 'user' ? '👤 Cliente' : '🤖 Estefi'}:</strong> ${String(h.content).substring(0, 200)}`)
+        .map(h => `<strong>${h.role === 'user' ? '👤 Cliente' : ('🤖 ' + BOT)}:</strong> ${String(h.content).substring(0, 200)}`)
         .join('<br>');
 
       // Guardar en portal como "Solicitud cliente" para que aparezca en staff

@@ -3030,7 +3030,7 @@ function printComprobante() {
     border-radius:0 14px 14px 14px;
     border:1px solid var(--border);
   }
-  /* Bot (Estefi) — derecha, dorado oscuro */
+  /* Bot (Stefi) — derecha, dorado oscuro */
   .msg-row.bot .msg-bubble,
   .msg-row.assistant .msg-bubble{
     background:#2e2210;
@@ -3537,7 +3537,7 @@ async function refreshHistory() {
         const role = m.role === 'assistant' ? 'bot' : m.role;
         const isUser = role === 'user';
         const isStaff = role === 'staff';
-        const badgeLabel = isUser ? 'Clienta' : isStaff ? 'Staff' : 'Estefi';
+        const badgeLabel = isUser ? 'Clienta' : isStaff ? 'Staff' : 'Stefi';
         const badgeColor = isUser ? '#8eb4d3' : isStaff ? '#7bc8e0' : '#a0d9c8';
         const bubbleBg = isUser ? '#202c33' : isStaff ? '#1a3a4a' : '#005c4b';
         const align = isUser ? 'flex-start' : 'flex-end';

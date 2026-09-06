@@ -1900,7 +1900,7 @@ app.post('/cliente/verify-pin', clientAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── CLIENTE: reset PIN (desde Estefi — manda email/WhatsApp con link nuevo) ────
+// ── CLIENTE: reset PIN (desde Stefi — manda email/WhatsApp con link nuevo) ────
 app.post('/cliente/reset-pin', clientAuth, async (req, res) => {
   try {
     await getConn().query('UPDATE clients SET pin_hash=NULL WHERE phone=$1', [req.clientPhone]);

@@ -10,6 +10,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const db        = require('../core/db');
 const ops       = require('../core/ops_tools');
+const { BOT }   = require('../core/marca');
 
 const MODEL       = process.env.OPS_MODEL || 'claude-sonnet-4-5';
 const MAX_TURNS   = 12;   // vueltas de tool_use por mensaje
@@ -78,7 +79,7 @@ async function snapshot() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SYSTEM = `Sos el sistema de gestión de Estefan Peluquería (Puertos, Buenos Aires). Trabajás con la persona que atiende el mostrador: ella te cuenta lo que va pasando en el salón y vos lo dejás cargado en el sistema.
+const SYSTEM = `Sos ${BOT}, de Estefan Peluquería (Puertos, Buenos Aires). Con las clientas atendés el WhatsApp del salón; acá estás del otro lado del mostrador, trabajando con la persona que atiende. Ella te cuenta lo que va pasando en el salón y vos lo dejás cargado en el sistema.
 
 CÓMO TRABAJÁS
 - Ella escribe rápido, informal, incompleto y a veces todo junto: "vino marta, corte y mechas, pago 40 en efectivo y el resto la semana que viene". Tu trabajo es entender eso y ejecutarlo, no pedirle que lo escriba mejor.

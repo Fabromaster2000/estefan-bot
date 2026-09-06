@@ -1,7 +1,7 @@
 // core/client_profile.js
 // =============================================================================
 // ClientProfile — the "constructor" / skeleton for every client.
-// Estefi reads this object at the start of every conversation.
+// Stefi reads this object at the start of every conversation.
 // Each client is a "child" instance with their specific data filled in.
 // =============================================================================
 'use strict';
@@ -252,7 +252,7 @@ class ClientProfile {
     // Umbral: score < 60 → requiere seña en todos los servicios
     this.requiresSena = boostedScore < 60;
 
-    // Info para Estefi: cuántos puntos necesita para subir el score
+    // Info para Stefi: cuántos puntos necesita para subir el score
     if (boostedScore < 60 && this.points > 0) {
       const puntosNecesarios = Math.ceil((60 - boostedScore) / 10) * 100;
       this.puntosParaRehabilitacion = puntosNecesarios;
@@ -287,8 +287,8 @@ class ClientProfile {
   }
 
   /**
-   * Returns a compact string summary for injection into Estefi's system prompt.
-   * Estefi reads this and responds accordingly.
+   * Returns a compact string summary for injection into Stefi's system prompt.
+   * Stefi reads this and responds accordingly.
    */
   toPromptContext() {
     const lines = [];
