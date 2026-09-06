@@ -170,16 +170,36 @@ async function initOps() {
   // como está envuelto en .catch(() => {}) fallaba en silencio: pausar el bot
   // nunca llegaba a escribirse. Movemos la unicidad a phone, que es la clave que
   // realmente usa el código.
-  try {
-    await q.query(`DELETE FROM human_mode_control a USING human_mode_control b
-                   WHERE a.ctid < b.ctid AND a.phone = b.phone`);
-    await q.query(`ALTER TABLE human_mode_control DROP CONSTRAINT IF EXISTS human_mode_control_pkey`);
-    await q.query(`ALTER TABLE human_mode_control ALTER COLUMN client_id DROP NOT NULL`);
-    await q.query(`CREATE UNIQUE INDEX IF NOT EXISTS ux_hmc_phone ON human_mode_control(phone)`);
-    console.log('[ops] ✓ human_mode_control: unicidad por phone');
-  } catch (e) {
-    console.error('[ops] no pude migrar human_mode_control:', e.message);
-  }
+  // Cada paso va en su propio try: la tabla existe con formas distintas segun
+  // que version la creo (con client_id o sin el), y si un paso opcional revienta
+  // no puede llevarse puesto el que importa, que es el indice unico en phone.
+  const paso = async (etiqueta, sql, obligatorio) => {
+    try { await q.query(sql); return true; }
+    catch (e) {
+      if (obligatorio) console.error(`[ops] human_mode_control · ${etiqueta}:`, e.message);
+      return false;
+    }
+  };
+
+  await paso('deduplicar por phone',
+    `DELETE FROM human_mode_control a USING human_mode_control b
+     WHERE a.ctid < b.ctid AND a.phone = b.phone`, true);
+
+  // Primero el indice unico, despues sacar el PK viejo: asi la tabla nunca queda
+  // sin ninguna restriccion de unicidad, ni siquiera un instante.
+  const unico = await paso('indice unico en phone',
+    `CREATE UNIQUE INDEX IF NOT EXISTS ux_hmc_phone ON human_mode_control(phone)`, true);
+
+  await paso('sacar PK viejo',
+    `ALTER TABLE human_mode_control DROP CONSTRAINT IF EXISTS human_mode_control_pkey`, true);
+
+  // Solo tiene sentido si la columna existe y ya no es parte del PK. Si la tabla
+  // no tiene client_id, esto falla y esta bien: no hay nada que aflojar.
+  await paso('client_id opcional',
+    `ALTER TABLE human_mode_control ALTER COLUMN client_id DROP NOT NULL`, false);
+
+  if (unico) console.log('[ops] ✓ human_mode_control: unicidad por phone');
+  else console.error('[ops] ✗ human_mode_control sigue sin indice unico en phone — pausar el bot no va a persistir');
 
   await detectarColumnas();
   console.log('[ops] ✓ Tablas de operación listas');
